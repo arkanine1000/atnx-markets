@@ -6,6 +6,9 @@ chrome.runtime.onMessage.addListener((msg) => {
   if (msg.action === 'activate-capture') {
     activateSelection();
   }
+  if (msg.action === 'capture-status') {
+    handleStatusUpdate(msg.status, msg.detail);
+  }
 });
 
 function activateSelection() {
@@ -139,4 +142,105 @@ function sendSelection(rect) {
     pageUrl: window.location.href,
     pageTitle: document.title
   });
+}
+
+// --- Toast notification system ---
+
+let currentToast = null;
+let toastTimeout = null;
+
+function showToast({ title, subtitle, icon, spinner, isError, duration }) {
+  dismissToast();
+
+  const toast = document.createElement('div');
+  toast.className = 'atnx-toast' + (isError ? ' atnx-toast-error' : '');
+
+  if (spinner) {
+    const spinnerEl = document.createElement('div');
+    spinnerEl.className = 'atnx-toast-spinner';
+    toast.appendChild(spinnerEl);
+  } else if (icon) {
+    const iconEl = document.createElement('span');
+    iconEl.className = 'atnx-toast-icon';
+    iconEl.textContent = icon;
+    toast.appendChild(iconEl);
+  }
+
+  const textEl = document.createElement('div');
+  textEl.className = 'atnx-toast-text';
+
+  const titleEl = document.createElement('div');
+  titleEl.className = 'atnx-toast-title';
+  titleEl.textContent = title;
+  textEl.appendChild(titleEl);
+
+  if (subtitle) {
+    const subEl = document.createElement('div');
+    subEl.className = 'atnx-toast-subtitle';
+    subEl.textContent = subtitle;
+    textEl.appendChild(subEl);
+  }
+
+  toast.appendChild(textEl);
+  document.body.appendChild(toast);
+
+  // Trigger animation
+  requestAnimationFrame(() => {
+    toast.classList.add('atnx-visible');
+  });
+
+  currentToast = toast;
+
+  if (duration) {
+    toastTimeout = setTimeout(() => dismissToast(), duration);
+  }
+}
+
+function dismissToast() {
+  if (toastTimeout) {
+    clearTimeout(toastTimeout);
+    toastTimeout = null;
+  }
+  if (currentToast) {
+    currentToast.classList.remove('atnx-visible');
+    const el = currentToast;
+    setTimeout(() => el.remove(), 300);
+    currentToast = null;
+  }
+}
+
+function handleStatusUpdate(status, detail) {
+  switch (status) {
+    case 'capturing':
+      showToast({
+        title: 'CAPTURED',
+        subtitle: 'Processing screenshot...',
+        spinner: true
+      });
+      break;
+    case 'analyzing':
+      showToast({
+        title: 'ANALYZING',
+        subtitle: 'AI is identifying the content...',
+        spinner: true
+      });
+      break;
+    case 'done':
+      showToast({
+        title: 'DONE',
+        subtitle: detail || 'Analysis complete — check the dashboard',
+        icon: '\u2713',
+        duration: 4000
+      });
+      break;
+    case 'error':
+      showToast({
+        title: 'ERROR',
+        subtitle: detail || 'Something went wrong',
+        icon: '\u2717',
+        isError: true,
+        duration: 5000
+      });
+      break;
+  }
 }

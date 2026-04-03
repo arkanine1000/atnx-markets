@@ -57,6 +57,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 async function handleCapture(msg, tab) {
   try {
     updateStatus('capturing');
+    notifyTab(tab, 'capturing');
 
     // 1. Capture visible tab
     const dataUrl = await chrome.tabs.captureVisibleTab(null, { format: 'png' });
@@ -65,6 +66,7 @@ async function handleCapture(msg, tab) {
     const croppedBase64 = await cropImageOffscreen(dataUrl, msg.rect);
 
     updateStatus('analyzing');
+    notifyTab(tab, 'analyzing');
 
     // 3. Send to AI
     const analysis = await analyzeWithAI(croppedBase64, msg.pageUrl, msg.pageTitle);
@@ -100,13 +102,25 @@ async function handleCapture(msg, tab) {
       console.warn('Could not send to web app:', e.message);
     }
 
+    const name = analysis.name || 'Content';
     updateStatus('done');
+    notifyTab(tab, 'done', `Identified: ${name}`);
     setTimeout(() => updateStatus('ready'), 3000);
   } catch (err) {
     console.error('Capture error:', err);
     updateStatus('error');
+    notifyTab(tab, 'error', err.message);
     setTimeout(() => updateStatus('ready'), 5000);
   }
+}
+
+function notifyTab(tab, status, detail) {
+  if (!tab || !tab.id) return;
+  chrome.tabs.sendMessage(tab.id, {
+    action: 'capture-status',
+    status,
+    detail
+  }).catch(() => {});
 }
 
 async function cropImageOffscreen(dataUrl, rect) {
