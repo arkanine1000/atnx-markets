@@ -6,8 +6,8 @@
 
 body {
   width: 320px;
-  background: #0D0D1A;
-  color: #E0E0E0;
+  background: #0A0A0A;
+  color: #F0F0F0;
   font-family: 'JetBrains Mono', 'Fira Code', monospace;
   font-size: 13px;
 }
@@ -20,21 +20,21 @@ body {
 }
 
 .header h1 {
-  color: #00FF66;
+  color: #00D4FF;
   font-size: 22px;
   font-weight: 700;
   letter-spacing: 4px;
 }
 
 .header .subtitle {
-  color: #888888;
+  color: #999999;
   font-size: 11px;
   letter-spacing: 1px;
 }
 
 .section label {
   display: block;
-  color: #888888;
+  color: #999999;
   font-size: 11px;
   margin-bottom: 6px;
   text-transform: uppercase;
@@ -48,9 +48,9 @@ body {
 
 .input-row input {
   flex: 1;
-  background: #1A1A2E;
-  border: 1px solid #333;
-  color: #E0E0E0;
+  background: #141414;
+  border: 1px solid #2A2A2A;
+  color: #F0F0F0;
   padding: 8px 10px;
   border-radius: 4px;
   font-family: inherit;
@@ -59,13 +59,13 @@ body {
 }
 
 .input-row input:focus {
-  border-color: #00FF66;
+  border-color: #00D4FF;
 }
 
 .btn-small {
-  background: #1A1A2E;
-  border: 1px solid #00FF66;
-  color: #00FF66;
+  background: #141414;
+  border: 1px solid #00D4FF;
+  color: #00D4FF;
   padding: 8px 14px;
   border-radius: 4px;
   cursor: pointer;
@@ -75,8 +75,8 @@ body {
 }
 
 .btn-small:hover {
-  background: #00FF66;
-  color: #0D0D1A;
+  background: #00D4FF;
+  color: #0A0A0A;
 }
 
 .status-text {
@@ -86,18 +86,18 @@ body {
 }
 
 .status-text.saved {
-  color: #00FF66;
+  color: #00D4FF;
 }
 
 .status-text.error {
-  color: #ff4444;
+  color: #FF00E5;
 }
 
 .btn-capture {
   width: 100%;
   padding: 14px;
-  background: #00FF66;
-  color: #0D0D1A;
+  background: #FF00E5;
+  color: #0A0A0A;
   border: none;
   border-radius: 6px;
   font-family: inherit;
@@ -109,7 +109,7 @@ body {
 }
 
 .btn-capture:hover {
-  background: #00CC52;
+  background: #CC00B8;
 }
 
 .btn-capture:active {
@@ -117,9 +117,9 @@ body {
 }
 
 .btn-capture.analyzing {
-  background: #1A1A2E;
-  color: #00FF66;
-  border: 2px solid #00FF66;
+  background: #141414;
+  color: #FF00E5;
+  border: 2px solid #FF00E5;
   animation: pulse 1.5s infinite;
 }
 
@@ -139,21 +139,21 @@ body {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #00FF66;
+  background: #00D4FF;
 }
 
 .status-dot.capturing {
-  background: #FFaa00;
+  background: #FF00E5;
   animation: pulse 0.8s infinite;
 }
 
 .status-dot.analyzing {
-  background: #00aaFF;
+  background: #FFE500;
   animation: pulse 1s infinite;
 }
 
 .status-dot.error {
-  background: #ff4444;
+  background: #FF00E5;
 }
 
 .footer {
@@ -161,16 +161,16 @@ body {
   justify-content: space-between;
   align-items: center;
   padding-top: 6px;
-  border-top: 1px solid #1A1A2E;
+  border-top: 1px solid #2A2A2A;
 }
 
 #captureCount {
-  color: #888888;
+  color: #999999;
   font-size: 11px;
 }
 
 #openDashboard {
-  color: #00FF66;
+  color: #00D4FF;
   font-size: 11px;
   text-decoration: none;
 }

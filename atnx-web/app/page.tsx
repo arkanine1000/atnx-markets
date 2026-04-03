@@ -5,7 +5,6 @@ import { useDemoContext } from "@/context/DemoContext";
 import { Nav } from "@/components/Nav";
 import {
   TrendSparkline,
-  getScoreColor,
   getTrendIndicator,
   TradeModal,
   DemoToast,
@@ -62,24 +61,23 @@ function timeAgo(timestamp: string): string {
 function sentimentColor(sentiment?: string): string {
   switch (sentiment) {
     case "positive":
-      return "text-green-400";
+      return "text-atnx-cyan";
     case "negative":
-      return "text-red-400";
+      return "text-atnx-magenta";
     case "mixed":
-      return "text-yellow-400";
+      return "text-atnx-yellow";
     default:
-      return "text-atnx-text-muted";
+      return "text-secondary";
   }
 }
 
-// Generate a deterministic mock 24h change from the capture id
+// Deterministic mock 24h change from capture id
 function mock24hChange(id: string, score: number): number {
   let hash = 0;
   for (let i = 0; i < id.length; i++) {
     hash = (hash * 31 + id.charCodeAt(i)) | 0;
   }
-  // Bias toward positive for higher scores
-  const base = ((hash % 600) - 250) / 10; // range roughly -25 to +35
+  const base = ((hash % 600) - 250) / 10;
   const bias = score > 400 ? 5 : score > 200 ? 0 : -3;
   return Math.round((base + bias) * 10) / 10;
 }
@@ -100,13 +98,14 @@ function CaptureCard({
   const [showRaw, setShowRaw] = useState(false);
   const [showMetrics, setShowMetrics] = useState(false);
   const { analysis, trends, viralityScore } = capture;
-  const scoreColor = getScoreColor(viralityScore);
   const trendInfo = getTrendIndicator(trends?.trend);
   const change24h = useMemo(
     () => mock24hChange(capture.id, viralityScore),
     [capture.id, viralityScore]
   );
-  const changeColor = change24h >= 0 ? "#00FF66" : "#FF0040";
+  // 24h change: cyan arrow for positive, magenta arrow for negative
+  const changeArrow = change24h >= 0 ? "\u25B2" : "\u25BC";
+  const changeArrowColor = change24h >= 0 ? "#00D4FF" : "#FF00E5";
 
   const { positions } = useDemoContext();
   const openPos = positions.find(
@@ -114,14 +113,14 @@ function CaptureCard({
   );
 
   return (
-    <div className="bg-atnx-surface border border-atnx-border rounded-lg overflow-hidden transition-all duration-200">
-      {/* Compact row — always visible */}
+    <div className="bg-surface border border-surface rounded-lg overflow-hidden transition-all duration-200 hover:border-atnx-cyan/30">
+      {/* Compact row */}
       <div
         onClick={onToggle}
-        className="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-atnx-bg/30 transition-colors"
+        className="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-dark-elevated/30 transition-colors"
       >
         {/* Rank */}
-        <span className="text-xs text-atnx-text-muted font-mono w-5 text-right shrink-0">
+        <span className="text-xs text-tertiary font-mono w-5 text-right shrink-0">
           {rank}
         </span>
 
@@ -129,16 +128,16 @@ function CaptureCard({
         <img
           src={`data:image/png;base64,${capture.screenshot}`}
           alt=""
-          className="w-10 h-10 object-cover rounded border border-atnx-border shrink-0"
+          className="w-10 h-10 object-cover rounded border border-surface shrink-0"
         />
 
         {/* Name */}
         <div className="min-w-0 flex-1">
-          <div className="text-sm font-bold text-atnx-text truncate">
+          <div className="text-sm font-bold text-primary truncate">
             {analysis.name || "Untitled"}
           </div>
-          <div className="text-xs text-atnx-text-muted truncate">
-            {analysis.category || "—"}
+          <div className="text-xs text-tertiary truncate">
+            {analysis.category || "\u2014"}
           </div>
         </div>
 
@@ -146,51 +145,41 @@ function CaptureCard({
         <div className="w-24 shrink-0 hidden sm:block">
           <TrendSparkline
             dataPoints={trends?.dataPoints ?? []}
-            color={scoreColor}
+            color="#00D4FF"
             height={32}
           />
         </div>
 
-        {/* 24h Change */}
-        <div className="shrink-0 w-16 text-right">
-          <span
-            className="text-xs font-bold font-mono"
-            style={{ color: changeColor }}
-          >
-            {change24h >= 0 ? "+" : ""}
-            {change24h}%
+        {/* 24h Change — yellow number with cyan/magenta arrow */}
+        <div className="shrink-0 w-20 text-right flex items-center justify-end gap-1">
+          <span style={{ color: changeArrowColor }} className="text-xs">
+            {changeArrow}
+          </span>
+          <span className="text-xs font-bold font-mono text-atnx-yellow">
+            {Math.abs(change24h)}%
           </span>
         </div>
 
-        {/* Score */}
-        <div
-          className="shrink-0 text-lg font-bold font-mono tabular-nums px-2 py-0.5 rounded w-16 text-center"
-          style={{
-            color: scoreColor,
-            backgroundColor: `${scoreColor}15`,
-            borderWidth: 1,
-            borderColor: `${scoreColor}40`,
-          }}
-        >
+        {/* Score — yellow */}
+        <div className="shrink-0 text-lg font-bold font-mono tabular-nums px-2 py-0.5 rounded w-16 text-center text-atnx-yellow bg-atnx-yellow/10 border border-atnx-yellow/25">
           {viralityScore}
         </div>
 
         {/* Expand chevron */}
-        <span className="text-atnx-text-muted text-xs shrink-0 w-4 text-center">
+        <span className="text-secondary text-xs shrink-0 w-4 text-center">
           {isExpanded ? "\u25B4" : "\u25BE"}
         </span>
       </div>
 
       {/* Expanded details */}
       {isExpanded && (
-        <div className="border-t border-atnx-border px-4 py-4 space-y-3">
+        <div className="border-t border-surface px-4 py-4 space-y-3">
           <div className="flex gap-4">
-            {/* Larger thumbnail */}
             <div className="shrink-0">
               <img
                 src={`data:image/png;base64,${capture.screenshot}`}
                 alt="Capture"
-                className="w-36 h-28 object-cover rounded border border-atnx-border"
+                className="w-36 h-28 object-cover rounded border border-surface"
               />
             </div>
 
@@ -199,27 +188,28 @@ function CaptureCard({
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2 flex-wrap">
                   {analysis.type && (
-                    <span className="text-xs uppercase tracking-wider bg-atnx-bg px-2 py-0.5 rounded text-atnx-green border border-atnx-green/30">
+                    <span className="text-xs uppercase tracking-wider bg-atnx-cyan/10 px-2 py-0.5 rounded text-atnx-cyan border border-atnx-cyan/30">
                       {analysis.type}
                     </span>
                   )}
-                  <span className="font-bold text-atnx-green text-sm">
+                  <span className="font-bold text-atnx-cyan text-sm">
                     {analysis.name}
                   </span>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <span
                     className="text-xs font-bold"
-                    style={{ color: scoreColor }}
+                    style={{ color: trendInfo.color }}
                   >
                     {trendInfo.icon} {trendInfo.label}
                   </span>
-                  <span
-                    className="text-xs font-mono font-bold"
-                    style={{ color: changeColor }}
-                  >
-                    24h: {change24h >= 0 ? "+" : ""}
-                    {change24h}%
+                  <span className="text-xs font-mono font-bold flex items-center gap-1">
+                    <span style={{ color: changeArrowColor }}>
+                      {changeArrow}
+                    </span>
+                    <span className="text-atnx-yellow">
+                      {Math.abs(change24h)}%
+                    </span>
                   </span>
                 </div>
               </div>
@@ -228,7 +218,7 @@ function CaptureCard({
               <div className="max-w-sm">
                 <TrendSparkline
                   dataPoints={trends?.dataPoints ?? []}
-                  color={scoreColor}
+                  color="#00D4FF"
                   height={60}
                   entryIndex={openPos?.entryIndex}
                   positionType={openPos?.type}
@@ -236,12 +226,12 @@ function CaptureCard({
               </div>
 
               {analysis.error ? (
-                <div className="text-red-400 text-sm">
+                <div className="text-atnx-magenta text-sm">
                   Error: {analysis.error}
                 </div>
               ) : (
                 <>
-                  <div className="flex gap-4 text-xs text-atnx-text-muted flex-wrap">
+                  <div className="flex gap-4 text-xs text-secondary flex-wrap">
                     {analysis.category && (
                       <span>CATEGORY: {analysis.category}</span>
                     )}
@@ -252,19 +242,26 @@ function CaptureCard({
                     )}
                     {trends && (
                       <span>
-                        PEAK: {trends.peakValue} | NOW: {trends.currentValue}
+                        PEAK:{" "}
+                        <span className="text-atnx-cyan">
+                          {trends.peakValue}
+                        </span>{" "}
+                        | NOW:{" "}
+                        <span className="text-atnx-cyan">
+                          {trends.currentValue}
+                        </span>
                       </span>
                     )}
                   </div>
 
                   {analysis.description && (
-                    <p className="text-sm text-atnx-text leading-relaxed">
+                    <p className="text-sm text-primary leading-relaxed font-sans italic">
                       &ldquo;{analysis.description}&rdquo;
                     </p>
                   )}
 
                   {analysis.virality_signals && (
-                    <p className="text-xs text-atnx-text-muted">
+                    <p className="text-xs text-secondary">
                       Virality: {analysis.virality_signals}
                     </p>
                   )}
@@ -275,7 +272,7 @@ function CaptureCard({
                         {analysis.platforms_detected.map((p) => (
                           <span
                             key={p}
-                            className="text-xs bg-atnx-bg px-1.5 py-0.5 rounded text-atnx-text-muted"
+                            className="text-xs bg-atnx-cyan/10 px-1.5 py-0.5 rounded text-atnx-cyan"
                           >
                             {p}
                           </span>
@@ -286,17 +283,18 @@ function CaptureCard({
               )}
 
               <div className="flex items-center justify-between pt-1">
-                <div className="flex gap-4 text-xs text-atnx-text-muted">
+                <div className="flex gap-4 text-xs text-tertiary">
                   <span>SOURCE: {new URL(capture.pageUrl).hostname}</span>
                   <span>CAPTURED: {timeAgo(capture.timestamp)}</span>
                 </div>
 
+                {/* Trade button — magenta */}
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
                     onTrade(capture);
                   }}
-                  className="text-xs px-4 py-2 rounded border border-atnx-green text-atnx-green hover:bg-atnx-green hover:text-atnx-bg cursor-pointer transition-colors font-bold"
+                  className="text-xs px-4 py-2 rounded border border-atnx-magenta text-atnx-magenta hover:bg-atnx-magenta hover:text-black cursor-pointer transition-colors font-bold"
                 >
                   Trade This
                 </button>
@@ -311,7 +309,7 @@ function CaptureCard({
                         e.stopPropagation();
                         setShowMetrics(!showMetrics);
                       }}
-                      className="text-atnx-green hover:text-atnx-green-dark cursor-pointer"
+                      className="text-atnx-cyan hover:text-atnx-cyan-dim cursor-pointer"
                     >
                       {showMetrics ? "\u25BE" : "\u25B8"} Detected metrics
                     </button>
@@ -322,7 +320,7 @@ function CaptureCard({
                       e.stopPropagation();
                       setShowRaw(!showRaw);
                     }}
-                    className="text-atnx-green hover:text-atnx-green-dark cursor-pointer"
+                    className="text-atnx-cyan hover:text-atnx-cyan-dim cursor-pointer"
                   >
                     {showRaw ? "\u25BE" : "\u25B8"} Raw text
                   </button>
@@ -330,18 +328,18 @@ function CaptureCard({
               </div>
 
               {showMetrics && analysis.metrics_detected && (
-                <div className="bg-atnx-bg rounded p-2 text-xs space-y-0.5">
+                <div className="bg-dark-primary rounded p-2 text-xs space-y-0.5">
                   {Object.entries(analysis.metrics_detected).map(([k, v]) => (
                     <div key={k}>
-                      <span className="text-atnx-text-muted">{k}:</span>{" "}
-                      <span className="text-atnx-text">{String(v)}</span>
+                      <span className="text-secondary">{k}:</span>{" "}
+                      <span className="text-primary">{String(v)}</span>
                     </div>
                   ))}
                 </div>
               )}
 
               {showRaw && analysis.raw_text && (
-                <div className="bg-atnx-bg rounded p-2 text-xs text-atnx-text-muted whitespace-pre-wrap break-words max-h-40 overflow-auto">
+                <div className="bg-dark-primary rounded p-2 text-xs text-secondary whitespace-pre-wrap break-words max-h-40 overflow-auto">
                   {analysis.raw_text}
                 </div>
               )}
@@ -417,18 +415,18 @@ export default function Home() {
     <div className="max-w-4xl mx-auto px-4 py-8 w-full">
       <Nav captureCount={captures.length} />
 
-      {/* Sort controls */}
+      {/* Sort controls — magenta active state */}
       {captures.length > 0 && (
         <div className="flex items-center gap-2 mb-4 text-xs">
-          <span className="text-atnx-text-muted">Sort by:</span>
+          <span className="text-secondary">Sort by:</span>
           {(["virality", "newest", "category"] as SortMode[]).map((mode) => (
             <button
               key={mode}
               onClick={() => setSortMode(mode)}
               className={`px-3 py-1.5 rounded border cursor-pointer transition-colors ${
                 sortMode === mode
-                  ? "bg-atnx-green text-atnx-bg border-atnx-green font-bold"
-                  : "bg-atnx-surface text-atnx-text-muted border-atnx-border hover:border-atnx-green/50"
+                  ? "bg-atnx-magenta text-black border-atnx-magenta font-bold"
+                  : "bg-surface text-secondary border-surface hover:border-atnx-magenta/50"
               }`}
             >
               {mode === "virality"
@@ -443,14 +441,14 @@ export default function Home() {
 
       {/* Column header */}
       {captures.length > 0 && (
-        <div className="flex items-center gap-3 px-3 py-1.5 text-xs text-atnx-text-muted mb-1">
+        <div className="flex items-center gap-3 px-3 py-1.5 text-xs text-tertiary mb-1">
           <span className="w-5 text-right shrink-0">#</span>
           <span className="w-10 shrink-0" />
           <span className="flex-1">Name</span>
           <span className="w-24 shrink-0 hidden sm:block text-center">
             7d Chart
           </span>
-          <span className="w-16 text-right shrink-0">24h</span>
+          <span className="w-20 text-right shrink-0">24h</span>
           <span className="w-16 text-center shrink-0">Score</span>
           <span className="w-4 shrink-0" />
         </div>
@@ -459,9 +457,9 @@ export default function Home() {
       {/* Capture list */}
       {captures.length === 0 ? (
         <div className="text-center py-20">
-          <div className="text-atnx-green text-4xl mb-4">⌘</div>
-          <p className="text-atnx-text-muted text-sm">No captures yet.</p>
-          <p className="text-atnx-text-muted text-xs mt-2">
+          <div className="text-atnx-magenta text-4xl mb-4">⌘</div>
+          <p className="text-secondary text-sm">No captures yet.</p>
+          <p className="text-tertiary text-xs mt-2">
             Use the ATNX Chrome extension (Ctrl+Shift+X) to capture content.
           </p>
         </div>
@@ -482,12 +480,10 @@ export default function Home() {
         </div>
       )}
 
-      {/* Trade modal */}
       {tradingCapture && (
         <TradeModal capture={tradingCapture} onClose={handleTradeClose} />
       )}
 
-      {/* Toast */}
       {toast && (
         <DemoToast
           message={toast.message}

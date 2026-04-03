@@ -1,22 +1,104 @@
 @import "tailwindcss";
 
 @theme inline {
-  --color-atnx-bg: #0D0D1A;
-  --color-atnx-surface: #1A1A2E;
-  --color-atnx-green: #00FF66;
-  --color-atnx-green-dark: #00CC52;
-  --color-atnx-text: #E0E0E0;
-  --color-atnx-text-muted: #888888;
-  --color-atnx-border: #2a2a3e;
-  --font-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+  /* CMYK Core */
+  --color-atnx-cyan: #00D4FF;
+  --color-atnx-cyan-dim: #00A3CC;
+  --color-atnx-magenta: #FF00E5;
+  --color-atnx-magenta-dim: #CC00B8;
+  --color-atnx-yellow: #FFE500;
+  --color-atnx-yellow-dim: #CCB800;
+
+  /* Dark mode backgrounds */
+  --color-dark-primary: #0A0A0A;
+  --color-dark-surface: #141414;
+  --color-dark-elevated: #1E1E1E;
+  --color-dark-border: #2A2A2A;
+
+  /* Light mode backgrounds */
+  --color-light-primary: #FAFAFA;
+  --color-light-surface: #FFFFFF;
+  --color-light-elevated: #F0F0F0;
+  --color-light-border: #E0E0E0;
+
+  /* Light mode accent overrides */
+  --color-atnx-cyan-light: #00B8DB;
+  --color-atnx-magenta-light: #D900C5;
+  --color-atnx-yellow-light: #D4BE00;
+
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Consolas', ui-monospace, monospace;
+  --font-sans: 'Inter', system-ui, sans-serif;
 }
 
+/* Dark mode (default) */
 body {
-  background: var(--color-atnx-bg);
-  color: var(--color-atnx-text);
+  background: var(--color-dark-primary);
+  color: #F0F0F0;
   font-family: var(--font-mono);
 }
 
+.light body {
+  background: var(--color-light-primary);
+  color: #0A0A0A;
+}
+
+/* Theme transition */
+* {
+  transition: background-color 200ms ease,
+              border-color 200ms ease,
+              color 200ms ease;
+}
+
+/* Disable transitions on page load */
+.no-transitions * {
+  transition: none !important;
+}
+
+/* Text color helpers for dark/light */
+.text-primary {
+  color: #F0F0F0;
+}
+.light .text-primary {
+  color: #0A0A0A;
+}
+
+.text-secondary {
+  color: #999999;
+}
+.light .text-secondary {
+  color: #555555;
+}
+
+.text-tertiary {
+  color: #666666;
+}
+.light .text-tertiary {
+  color: #888888;
+}
+
+/* Surface helpers */
+.bg-surface {
+  background: var(--color-dark-surface);
+}
+.light .bg-surface {
+  background: var(--color-light-surface);
+}
+
+.bg-elevated {
+  background: var(--color-dark-elevated);
+}
+.light .bg-elevated {
+  background: var(--color-light-elevated);
+}
+
+.border-surface {
+  border-color: var(--color-dark-border);
+}
+.light .border-surface {
+  border-color: var(--color-light-border);
+}
+
+/* Slide-in animation for toasts */
 @keyframes slide-in {
   from {
     opacity: 0;
@@ -30,4 +112,14 @@ body {
 
 .animate-slide-in {
   animation: slide-in 0.3s ease-out;
+}
+
+/* Live pulse */
+@keyframes live-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.animate-live-pulse {
+  animation: live-pulse 2s ease-in-out infinite;
 }

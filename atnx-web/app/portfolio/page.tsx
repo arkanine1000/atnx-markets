@@ -26,76 +26,82 @@ function PositionCard({
 }) {
   const pnl = calculatePnL(position);
   const isLong = position.type === "long";
-  const pnlColor = pnl.isProfit ? "#00FF66" : "#FF0040";
+  // PnL arrow: cyan for profit, magenta for loss. Number always yellow.
+  const directionColor = pnl.isProfit ? "#00D4FF" : "#FF00E5";
+  const directionArrow = pnl.isProfit ? "\u25B2" : "\u25BC";
 
   return (
-    <div className="bg-atnx-surface border border-atnx-border rounded-lg p-4 space-y-3 transition-opacity duration-300">
+    <div className="bg-surface border border-surface rounded-lg p-4 space-y-3 transition-opacity duration-300 hover:border-atnx-cyan/30">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <span
             className={`text-xs font-bold px-2 py-0.5 rounded ${
               isLong
-                ? "bg-green-500/20 text-green-400 border border-green-500/30"
-                : "bg-red-500/20 text-red-400 border border-red-500/30"
+                ? "bg-atnx-cyan/15 text-atnx-cyan border border-atnx-cyan/30"
+                : "bg-atnx-magenta/15 text-atnx-magenta border border-atnx-magenta/30"
             }`}
           >
             {isLong ? "LONG" : "SHORT"}
           </span>
-          <span className="font-bold text-atnx-text text-sm">
+          <span className="font-bold text-primary text-sm">
             {position.name}
           </span>
         </div>
-        <span
-          className="text-lg font-bold font-mono tabular-nums"
-          style={{ color: pnlColor }}
-        >
-          {pnl.isProfit ? "+" : ""}${pnl.pnlAmount}
-        </span>
+        <div className="flex items-center gap-1">
+          <span style={{ color: directionColor }} className="text-sm">
+            {directionArrow}
+          </span>
+          <span className="text-lg font-bold font-mono tabular-nums text-atnx-yellow">
+            {pnl.isProfit ? "+" : ""}${pnl.pnlAmount}
+          </span>
+        </div>
       </div>
 
       {/* Stats grid */}
       <div className="grid grid-cols-3 gap-4 text-sm">
         <div>
-          <div className="text-xs text-atnx-text-muted uppercase">Entry</div>
-          <div className="font-mono text-atnx-text">{position.entryIndex}</div>
+          <div className="text-xs text-tertiary uppercase">Entry</div>
+          <div className="font-mono text-atnx-cyan">{position.entryIndex}</div>
         </div>
         <div>
-          <div className="text-xs text-atnx-text-muted uppercase">Current</div>
-          <div className="font-mono text-atnx-text">
+          <div className="text-xs text-tertiary uppercase">Current</div>
+          <div className="font-mono text-atnx-cyan">
             {position.currentIndex}
           </div>
         </div>
         <div>
-          <div className="text-xs text-atnx-text-muted uppercase">Change</div>
-          <div className="font-mono font-bold" style={{ color: pnlColor }}>
-            {pnl.isProfit ? "+" : ""}
-            {pnl.pnlPercent}%
+          <div className="text-xs text-tertiary uppercase">Change</div>
+          <div className="font-mono font-bold flex items-center gap-1">
+            <span style={{ color: directionColor }}>{directionArrow}</span>
+            <span className="text-atnx-yellow">
+              {Math.abs(parseFloat(pnl.pnlPercent))}%
+            </span>
           </div>
         </div>
         <div>
-          <div className="text-xs text-atnx-text-muted uppercase">Size</div>
-          <div className="font-mono text-atnx-text">
+          <div className="text-xs text-tertiary uppercase">Size</div>
+          <div className="font-mono text-secondary">
             ${position.size.toFixed(2)}
           </div>
         </div>
         <div>
-          <div className="text-xs text-atnx-text-muted uppercase">Value</div>
-          <div className="font-mono text-atnx-text">${pnl.currentValue}</div>
+          <div className="text-xs text-tertiary uppercase">Value</div>
+          <div className="font-mono text-primary">${pnl.currentValue}</div>
         </div>
         <div>
-          <div className="text-xs text-atnx-text-muted uppercase">Opened</div>
-          <div className="text-atnx-text-muted">
+          <div className="text-xs text-tertiary uppercase">Opened</div>
+          <div className="text-tertiary">
             {timeAgo(position.openedAt)}
           </div>
         </div>
       </div>
 
-      {/* Close button */}
+      {/* Close button — magenta */}
       <div className="flex justify-end">
         <button
           onClick={() => onClose(position)}
-          className="text-xs px-4 py-1.5 rounded border border-atnx-border text-atnx-text-muted hover:border-red-500/50 hover:text-red-400 cursor-pointer transition-colors"
+          className="text-xs px-4 py-1.5 rounded border border-surface text-secondary hover:border-atnx-magenta/50 hover:text-atnx-magenta cursor-pointer transition-colors"
         >
           Close Position
         </button>
@@ -144,53 +150,54 @@ export default function PortfolioPage() {
     setClosingPosition(null);
   }, [closingPosition]);
 
-  // Calculate totals
   const totalPnL = positions.reduce((sum, pos) => {
     const pnl = calculatePnL(pos);
     return sum + parseFloat(pnl.pnlAmount);
   }, 0);
   const totalSize = positions.reduce((sum, pos) => sum + pos.size, 0);
   const totalPnLPercent = totalSize > 0 ? (totalPnL / totalSize) * 100 : 0;
+  const totalDirColor = totalPnL >= 0 ? "#00D4FF" : "#FF00E5";
+  const totalDirArrow = totalPnL >= 0 ? "\u25B2" : "\u25BC";
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8 w-full">
       <Nav captureCount={captureCount} />
 
       {/* Portfolio summary */}
-      <div className="bg-atnx-surface border border-atnx-border rounded-lg p-5 mb-6 grid grid-cols-3 gap-4">
+      <div className="bg-surface border border-surface rounded-lg p-5 mb-6 grid grid-cols-3 gap-4">
         <div>
-          <div className="text-xs text-atnx-text-muted uppercase tracking-wider mb-1">
+          <div className="text-xs text-tertiary uppercase tracking-wider mb-1">
             Balance
           </div>
-          <div className="text-xl font-bold font-mono text-atnx-text">
+          <div className="text-xl font-bold font-mono text-atnx-yellow">
             ${balance.toFixed(2)}
           </div>
-          <div className="text-xs text-atnx-text-muted">USDC</div>
+          <div className="text-xs text-tertiary">USDC</div>
         </div>
         <div>
-          <div className="text-xs text-atnx-text-muted uppercase tracking-wider mb-1">
+          <div className="text-xs text-tertiary uppercase tracking-wider mb-1">
             Open Positions
           </div>
-          <div className="text-xl font-bold font-mono text-atnx-text">
+          <div className="text-xl font-bold font-mono text-primary">
             {positions.length}
           </div>
         </div>
         <div>
-          <div className="text-xs text-atnx-text-muted uppercase tracking-wider mb-1">
+          <div className="text-xs text-tertiary uppercase tracking-wider mb-1">
             Total PnL
           </div>
-          <div
-            className="text-xl font-bold font-mono"
-            style={{ color: totalPnL >= 0 ? "#00FF66" : "#FF0040" }}
-          >
-            {totalPnL >= 0 ? "+" : ""}${totalPnL.toFixed(2)}
+          <div className="text-xl font-bold font-mono flex items-center gap-1">
+            <span style={{ color: totalDirColor }}>{totalDirArrow}</span>
+            <span className="text-atnx-yellow">
+              {totalPnL >= 0 ? "+" : ""}${totalPnL.toFixed(2)}
+            </span>
           </div>
-          <div
-            className="text-xs font-mono"
-            style={{ color: totalPnL >= 0 ? "#00FF66" : "#FF0040" }}
-          >
-            ({totalPnLPercent >= 0 ? "+" : ""}
-            {totalPnLPercent.toFixed(2)}%)
+          <div className="text-xs font-mono flex items-center gap-1">
+            <span style={{ color: totalDirColor }}>{totalDirArrow}</span>
+            <span className="text-atnx-yellow">
+              {totalPnLPercent >= 0 ? "+" : ""}
+              {totalPnLPercent.toFixed(2)}%
+            </span>
           </div>
         </div>
       </div>
@@ -198,8 +205,8 @@ export default function PortfolioPage() {
       {/* Positions list */}
       {positions.length === 0 ? (
         <div className="text-center py-16">
-          <p className="text-atnx-text-muted text-sm">No open positions.</p>
-          <p className="text-atnx-text-muted text-xs mt-2">
+          <p className="text-secondary text-sm">No open positions.</p>
+          <p className="text-tertiary text-xs mt-2">
             Go to the Dashboard and click &ldquo;Trade This&rdquo; on a capture
             to open a position.
           </p>

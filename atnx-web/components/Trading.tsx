@@ -22,7 +22,7 @@ interface TrendSparklineProps {
 
 export function TrendSparkline({
   dataPoints,
-  color = "#00FF66",
+  color = "#00D4FF",
   height = 50,
   entryIndex,
   positionType,
@@ -35,19 +35,18 @@ export function TrendSparkline({
     return (
       <div
         style={{ height }}
-        className="flex items-center justify-center text-atnx-text-muted text-xs"
+        className="flex items-center justify-center text-secondary text-xs"
       >
         No trend data
       </div>
     );
   }
 
-  // Find the closest data point to the entry index for the ReferenceDot
   let entryPointIdx: number | undefined;
   if (entryIndex !== undefined) {
     let minDist = Infinity;
     displayData.forEach((pt, i) => {
-      const dist = Math.abs(pt.value - entryIndex / 10); // score is 0-1000, chart is 0-100
+      const dist = Math.abs(pt.value - entryIndex / 10);
       if (dist < minDist) {
         minDist = dist;
         entryPointIdx = i;
@@ -55,8 +54,9 @@ export function TrendSparkline({
     });
   }
 
-  const entryColor = positionType === "short" ? "#FF0040" : "#00FF66";
-  const entryY = entryIndex !== undefined ? entryIndex / 10 : undefined; // Normalize to 0-100
+  // Entry markers use magenta
+  const entryColor = "#FF00E5";
+  const entryY = entryIndex !== undefined ? entryIndex / 10 : undefined;
 
   return (
     <div style={{ height }} className="w-full">
@@ -94,31 +94,28 @@ export function TrendSparkline({
   );
 }
 
-// Score color helper
-export function getScoreColor(score: number): string {
-  if (score >= 800) return "#FF0040";
-  if (score >= 600) return "#FF6600";
-  if (score >= 400) return "#FFD700";
-  if (score >= 200) return "#00FF66";
-  return "#888888";
+// Score color — always yellow, just vary intensity
+export function getScoreColor(_score: number): string {
+  return "#FFE500";
 }
 
-// Trend indicator helper
+// Trend indicator — yellow for rising, secondary for stable, magenta for falling
 export function getTrendIndicator(trend?: string): {
   icon: string;
   label: string;
+  color: string;
 } {
   switch (trend) {
     case "spiking":
-      return { icon: "\u25B2", label: "SPIKING" };
+      return { icon: "\u25B2", label: "SPIKING", color: "#FFE500" };
     case "rising":
-      return { icon: "\u2197", label: "RISING" };
+      return { icon: "\u2197", label: "RISING", color: "#FFE500" };
     case "stable":
-      return { icon: "\u2192", label: "STABLE" };
+      return { icon: "\u2192", label: "STABLE", color: "#999999" };
     case "falling":
-      return { icon: "\u2198", label: "FALLING" };
+      return { icon: "\u2198", label: "FALLING", color: "#FF00E5" };
     default:
-      return { icon: "\u2605", label: "NEW" };
+      return { icon: "\u2605", label: "NEW", color: "#FFE500" };
   }
 }
 
@@ -143,7 +140,6 @@ export function TradeModal({ capture, onClose }: TradeModalProps) {
   const name = capture.analysis.name || "Unknown";
   const score = capture.viralityScore;
   const trendInfo = getTrendIndicator(capture.trends?.trend);
-  const scoreColor = getScoreColor(score);
 
   function handleSubmit() {
     if (amountNum <= 0) return;
@@ -158,7 +154,6 @@ export function TradeModal({ capture, onClose }: TradeModalProps) {
       captureId: capture.id,
     });
     onClose();
-    // Toast is handled by the parent
   }
 
   return (
@@ -166,34 +161,32 @@ export function TradeModal({ capture, onClose }: TradeModalProps) {
       className="fixed inset-0 z-50 flex items-center justify-center"
       style={{ backgroundColor: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)" }}
     >
-      <div className="bg-atnx-surface border border-atnx-border rounded-xl p-6 w-full max-w-md mx-4 relative">
-        {/* Close button */}
+      <div className="bg-elevated border border-surface rounded-xl p-6 w-full max-w-md mx-4 relative">
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 text-atnx-text-muted hover:text-atnx-text text-lg cursor-pointer"
+          className="absolute top-4 right-4 text-secondary hover:text-primary text-lg cursor-pointer"
         >
           ✕
         </button>
 
-        {/* Header */}
-        <h2 className="text-lg font-bold text-atnx-text mb-1">
+        <h2 className="text-lg font-bold text-atnx-cyan mb-1">
           TRADE: {name}
         </h2>
         <div className="flex items-center gap-3 mb-4 text-sm">
-          <span className="text-atnx-text-muted">
+          <span className="text-secondary">
             Current Virality Index:{" "}
-            <span className="font-bold" style={{ color: scoreColor }}>
+            <span className="font-bold text-atnx-yellow font-mono">
               {score}
             </span>
           </span>
-          <span style={{ color: scoreColor }} className="text-xs font-bold">
+          <span className="text-xs font-bold" style={{ color: trendInfo.color }}>
             {trendInfo.icon} {trendInfo.label}
           </span>
         </div>
 
-        {/* Position type */}
+        {/* Position type — cyan for long, magenta for short */}
         <div className="mb-4">
-          <label className="text-xs text-atnx-text-muted uppercase tracking-wider block mb-2">
+          <label className="text-xs text-secondary uppercase tracking-wider block mb-2">
             Position Type
           </label>
           <div className="flex gap-2">
@@ -201,8 +194,8 @@ export function TradeModal({ capture, onClose }: TradeModalProps) {
               onClick={() => setPosType("long")}
               className={`flex-1 py-2.5 rounded font-bold text-sm cursor-pointer transition-colors ${
                 posType === "long"
-                  ? "bg-green-500/20 text-green-400 border-2 border-green-500"
-                  : "bg-atnx-bg text-atnx-text-muted border border-atnx-border hover:border-green-500/50"
+                  ? "bg-atnx-cyan/15 text-atnx-cyan border-2 border-atnx-cyan"
+                  : "bg-surface text-secondary border border-surface hover:border-atnx-cyan/50"
               }`}
             >
               LONG
@@ -211,8 +204,8 @@ export function TradeModal({ capture, onClose }: TradeModalProps) {
               onClick={() => setPosType("short")}
               className={`flex-1 py-2.5 rounded font-bold text-sm cursor-pointer transition-colors ${
                 posType === "short"
-                  ? "bg-red-500/20 text-red-400 border-2 border-red-500"
-                  : "bg-atnx-bg text-atnx-text-muted border border-atnx-border hover:border-red-500/50"
+                  ? "bg-atnx-magenta/15 text-atnx-magenta border-2 border-atnx-magenta"
+                  : "bg-surface text-secondary border border-surface hover:border-atnx-magenta/50"
               }`}
             >
               SHORT
@@ -222,7 +215,7 @@ export function TradeModal({ capture, onClose }: TradeModalProps) {
 
         {/* Amount */}
         <div className="mb-3">
-          <label className="text-xs text-atnx-text-muted uppercase tracking-wider block mb-2">
+          <label className="text-xs text-secondary uppercase tracking-wider block mb-2">
             Amount (USDC)
           </label>
           <input
@@ -230,7 +223,7 @@ export function TradeModal({ capture, onClose }: TradeModalProps) {
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
             min="1"
-            className="w-full bg-atnx-bg border border-atnx-border rounded px-3 py-2.5 text-atnx-text font-mono text-sm focus:border-atnx-green outline-none"
+            className="w-full bg-surface border border-surface rounded px-3 py-2.5 text-primary font-mono text-sm focus:border-atnx-cyan outline-none"
           />
         </div>
 
@@ -240,7 +233,7 @@ export function TradeModal({ capture, onClose }: TradeModalProps) {
             <button
               key={val}
               onClick={() => setAmount(String(val))}
-              className="flex-1 py-1.5 text-xs bg-atnx-bg border border-atnx-border rounded text-atnx-text-muted hover:border-atnx-green/50 cursor-pointer transition-colors"
+              className="flex-1 py-1.5 text-xs bg-surface border border-surface rounded text-secondary hover:border-atnx-cyan/50 cursor-pointer transition-colors"
             >
               ${val}
             </button>
@@ -248,14 +241,14 @@ export function TradeModal({ capture, onClose }: TradeModalProps) {
         </div>
 
         {/* Summary */}
-        <div className="border-t border-atnx-border pt-3 mb-4 space-y-1 text-sm">
-          <div className="flex justify-between text-atnx-text-muted">
+        <div className="border-t border-surface pt-3 mb-4 space-y-1 text-sm">
+          <div className="flex justify-between text-secondary">
             <span>Entry Index</span>
-            <span className="text-atnx-text font-mono">{score}</span>
+            <span className="text-atnx-yellow font-mono">{score}</span>
           </div>
-          <div className="flex justify-between text-atnx-text-muted">
+          <div className="flex justify-between text-secondary">
             <span>Estimated Fee (0.5%)</span>
-            <span className="text-atnx-text font-mono">
+            <span className="text-atnx-yellow font-mono">
               ${fee.toFixed(2)}
             </span>
           </div>
@@ -267,8 +260,8 @@ export function TradeModal({ capture, onClose }: TradeModalProps) {
           disabled={amountNum <= 0}
           className={`w-full py-3 rounded font-bold text-sm cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
             posType === "long"
-              ? "bg-green-500 hover:bg-green-600 text-black"
-              : "bg-red-500 hover:bg-red-600 text-white"
+              ? "bg-atnx-cyan hover:bg-atnx-cyan-dim text-black"
+              : "bg-atnx-magenta hover:bg-atnx-magenta-dim text-black"
           }`}
         >
           OPEN {posType.toUpperCase()} POSITION &mdash; ${amountNum.toFixed(2)}
@@ -278,7 +271,7 @@ export function TradeModal({ capture, onClose }: TradeModalProps) {
   );
 }
 
-// Dashboard toast notification
+// Toast notification
 interface ToastProps {
   message: string;
   detail: string;
@@ -293,27 +286,27 @@ export function DemoToast({ message, detail, type, onDismiss }: ToastProps) {
   }, [onDismiss]);
 
   const borderColor =
-    type === "short" || type === "close-loss" ? "#FF0040" : "#00FF66";
+    type === "short" || type === "close-loss" ? "#FF00E5" : "#00D4FF";
 
   return (
     <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 animate-slide-in">
       <div
-        className="bg-atnx-surface px-5 py-3 rounded-lg shadow-lg flex items-center gap-3"
+        className="bg-elevated px-5 py-3 rounded-lg shadow-lg flex items-center gap-3"
         style={{ borderWidth: 1, borderColor }}
       >
         <span className="text-lg">
           {type === "close-loss" ? "\u274C" : "\u2705"}
         </span>
         <div>
-          <div className="text-sm font-bold text-atnx-text">{message}</div>
-          <div className="text-xs text-atnx-text-muted">{detail}</div>
+          <div className="text-sm font-bold text-primary">{message}</div>
+          <div className="text-xs text-secondary">{detail}</div>
         </div>
       </div>
     </div>
   );
 }
 
-// Close position profit/loss modal
+// Close position modal
 interface CloseModalProps {
   position: {
     type: "long" | "short";
@@ -332,7 +325,8 @@ export function ClosePositionModal({ position, onClose }: CloseModalProps) {
   const pnlPercent = changePercent * direction;
   const pnlAmount = position.size * (pnlPercent / 100);
   const isProfit = pnlAmount >= 0;
-  const accentColor = isProfit ? "#00FF66" : "#FF0040";
+  // Profit: cyan accent, Loss: magenta accent
+  const accentColor = isProfit ? "#00D4FF" : "#FF00E5";
   const barWidth = Math.min(100, Math.abs(pnlPercent));
 
   useEffect(() => {
@@ -346,42 +340,42 @@ export function ClosePositionModal({ position, onClose }: CloseModalProps) {
       style={{ backgroundColor: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)" }}
     >
       <div
-        className="bg-atnx-surface rounded-xl p-8 w-full max-w-sm mx-4 text-center"
+        className="bg-elevated rounded-xl p-8 w-full max-w-sm mx-4 text-center"
         style={{ borderWidth: 1, borderColor: accentColor }}
       >
         <div className="text-3xl mb-3">{isProfit ? "\uD83C\uDF89" : "\uD83D\uDCC9"}</div>
-        <h2 className="text-lg font-bold text-atnx-text mb-4">
+        <h2 className="text-lg font-bold text-primary mb-4">
           Position Closed
         </h2>
 
-        <p className="text-sm text-atnx-text-muted mb-4">
+        <p className="text-sm text-secondary mb-4">
           {position.name} &mdash; {position.type.toUpperCase()}
         </p>
 
         <div className="space-y-2 text-sm mb-5">
-          <div className="flex justify-between text-atnx-text-muted">
+          <div className="flex justify-between text-secondary">
             <span>Entry</span>
-            <span className="text-atnx-text font-mono">
+            <span className="text-atnx-cyan font-mono">
               {position.entryIndex}
             </span>
           </div>
-          <div className="flex justify-between text-atnx-text-muted">
+          <div className="flex justify-between text-secondary">
             <span>Exit</span>
-            <span className="text-atnx-text font-mono">
+            <span className="text-atnx-cyan font-mono">
               {position.currentIndex}
             </span>
           </div>
-          <div className="flex justify-between text-atnx-text-muted">
+          <div className="flex justify-between text-secondary">
             <span>Change</span>
             <span className="font-mono font-bold" style={{ color: accentColor }}>
               {pnlPercent >= 0 ? "+" : ""}
               {pnlPercent.toFixed(1)}%
             </span>
           </div>
-          <div className="border-t border-atnx-border my-2" />
-          <div className="flex justify-between text-atnx-text-muted">
+          <div className="border-t border-surface my-2" />
+          <div className="flex justify-between text-secondary">
             <span>Size</span>
-            <span className="text-atnx-text font-mono">
+            <span className="text-primary font-mono">
               ${position.size.toFixed(2)}
             </span>
           </div>
@@ -389,26 +383,22 @@ export function ClosePositionModal({ position, onClose }: CloseModalProps) {
             <span style={{ color: accentColor }}>
               {isProfit ? "Profit" : "Loss"}
             </span>
-            <span className="font-mono" style={{ color: accentColor }}>
+            <span className="text-atnx-yellow font-mono">
               {pnlAmount >= 0 ? "+" : ""}${pnlAmount.toFixed(2)}
             </span>
           </div>
         </div>
 
-        {/* Progress bar */}
-        <div className="w-full bg-atnx-bg rounded-full h-2 mb-5">
+        <div className="w-full bg-surface rounded-full h-2 mb-5">
           <div
             className="h-2 rounded-full transition-all duration-500"
-            style={{
-              width: `${barWidth}%`,
-              backgroundColor: accentColor,
-            }}
+            style={{ width: `${barWidth}%`, backgroundColor: accentColor }}
           />
         </div>
 
         <button
           onClick={onClose}
-          className="text-sm text-atnx-green hover:text-atnx-green-dark cursor-pointer"
+          className="text-sm text-atnx-cyan hover:text-atnx-cyan-dim cursor-pointer"
         >
           Back to Portfolio
         </button>
