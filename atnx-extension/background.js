@@ -1,11 +1,30 @@
 const WEB_APP_URL = 'http://localhost:3000';
 
+// Inject content script if not already present, then send activation message
+async function activateTab(tab) {
+  if (!tab || !tab.id) return;
+  try {
+    await chrome.tabs.sendMessage(tab.id, { action: 'activate-capture' });
+  } catch {
+    // Content script not injected yet — inject it manually
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      files: ['content.js']
+    });
+    await chrome.scripting.insertCSS({
+      target: { tabId: tab.id },
+      files: ['content.css']
+    });
+    await chrome.tabs.sendMessage(tab.id, { action: 'activate-capture' });
+  }
+}
+
 // Command listener (hotkey)
 chrome.commands.onCommand.addListener((command) => {
   if (command === 'activate-capture') {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       if (tabs[0]) {
-        chrome.tabs.sendMessage(tabs[0].id, { action: 'activate-capture' });
+        activateTab(tabs[0]);
       }
     });
   }
@@ -20,7 +39,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     // From popup
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       if (tabs[0]) {
-        chrome.tabs.sendMessage(tabs[0].id, { action: 'activate-capture' });
+        activateTab(tabs[0]);
       }
     });
   }
@@ -99,7 +118,7 @@ async function cropImageOffscreen(dataUrl, rect) {
   if (existingContexts.length === 0) {
     await chrome.offscreen.createDocument({
       url: 'offscreen.html',
-      reasons: ['CANVAS'],
+      reasons: ['BLOBS'],
       justification: 'Crop screenshot to selection area'
     });
   }
