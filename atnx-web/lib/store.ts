@@ -1,3 +1,5 @@
+import type { TrendsResult } from './trends';
+
 export interface Capture {
   id: string;
   timestamp: string;
@@ -18,13 +20,17 @@ export interface Capture {
     raw_response?: string;
     parse_error?: boolean;
   };
+  trends: TrendsResult | null;
+  viralityScore: number;
 }
 
 // In-memory store for MVP
 const captures: Capture[] = [];
 
 export function addCapture(capture: Capture) {
-  captures.unshift(capture);
+  captures.push(capture);
+  // Sort by virality score descending
+  captures.sort((a, b) => b.viralityScore - a.viralityScore);
 }
 
 export function getCaptures(): Capture[] {

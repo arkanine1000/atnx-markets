@@ -1,7 +1,17 @@
 import { addCapture, getCaptures, type Capture } from '@/lib/store';
+import { fetchTrendsData, normalizeSearchTerm } from '@/lib/trends';
 
 export async function POST(request: Request) {
   const data = await request.json();
+
+  // Extract and normalize search term from AI analysis
+  const searchTerm = normalizeSearchTerm(data.analysis);
+
+  // Query Google Trends
+  let trendsData = null;
+  if (searchTerm.length > 1) {
+    trendsData = await fetchTrendsData(searchTerm);
+  }
 
   const capture: Capture = {
     id: data.id || Date.now().toString(),
@@ -10,23 +20,23 @@ export async function POST(request: Request) {
     pageTitle: data.pageTitle,
     screenshot: data.screenshot,
     analysis: data.analysis,
+    trends: trendsData,
+    viralityScore: trendsData?.viralityScore ?? 0,
   };
 
   addCapture(capture);
 
-  return Response.json({ success: true, id: capture.id }, {
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-    },
-  });
+  return Response.json(
+    { success: true, id: capture.id, viralityScore: capture.viralityScore },
+    { headers: { 'Access-Control-Allow-Origin': '*' } }
+  );
 }
 
 export async function GET() {
-  return Response.json({ captures: getCaptures() }, {
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-    },
-  });
+  return Response.json(
+    { captures: getCaptures() },
+    { headers: { 'Access-Control-Allow-Origin': '*' } }
+  );
 }
 
 export async function OPTIONS() {

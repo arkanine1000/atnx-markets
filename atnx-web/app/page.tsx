@@ -1,6 +1,22 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import {
+  LineChart,
+  Line,
+  ResponsiveContainer,
+  YAxis,
+} from "recharts";
+
+interface TrendsData {
+  term: string;
+  dataPoints: { date: string; value: number }[];
+  viralityScore: number;
+  peakValue: number;
+  currentValue: number;
+  trend: string;
+  fetchedAt: string;
+}
 
 interface Capture {
   id: string;
@@ -22,7 +38,11 @@ interface Capture {
     raw_response?: string;
     parse_error?: boolean;
   };
+  trends: TrendsData | null;
+  viralityScore: number;
 }
+
+type SortMode = "virality" | "newest" | "category";
 
 function timeAgo(timestamp: string): string {
   const seconds = Math.floor(
@@ -49,10 +69,69 @@ function sentimentColor(sentiment?: string): string {
   }
 }
 
+function getScoreColor(score: number): string {
+  if (score >= 800) return "#FF0040";
+  if (score >= 600) return "#FF6600";
+  if (score >= 400) return "#FFD700";
+  if (score >= 200) return "#00FF66";
+  return "#888888";
+}
+
+function getTrendIndicator(trend?: string): { icon: string; label: string } {
+  switch (trend) {
+    case "spiking":
+      return { icon: "\u25B2", label: "SPIKING" };
+    case "rising":
+      return { icon: "\u2197", label: "RISING" };
+    case "stable":
+      return { icon: "\u2192", label: "STABLE" };
+    case "falling":
+      return { icon: "\u2198", label: "FALLING" };
+    default:
+      return { icon: "\u2605", label: "NEW" };
+  }
+}
+
+function TrendSparkline({
+  dataPoints,
+  color = "#00FF66",
+}: {
+  dataPoints: { date: string; value: number }[];
+  color?: string;
+}) {
+  if (!dataPoints || dataPoints.length === 0) {
+    return (
+      <div className="h-[50px] flex items-center justify-center text-atnx-text-muted text-xs">
+        No trend data
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-[50px] w-full">
+      <ResponsiveContainer width="100%" height="100%">
+        <LineChart data={dataPoints}>
+          <YAxis domain={[0, 100]} hide />
+          <Line
+            type="monotone"
+            dataKey="value"
+            stroke={color}
+            strokeWidth={1.5}
+            dot={false}
+            isAnimationActive={false}
+          />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
 function CaptureCard({ capture }: { capture: Capture }) {
   const [showRaw, setShowRaw] = useState(false);
   const [showMetrics, setShowMetrics] = useState(false);
-  const { analysis } = capture;
+  const { analysis, trends, viralityScore } = capture;
+  const scoreColor = getScoreColor(viralityScore);
+  const trendInfo = getTrendIndicator(trends?.trend);
 
   return (
     <div className="bg-atnx-surface border border-atnx-border rounded-lg p-4 flex gap-4">
@@ -67,30 +146,65 @@ function CaptureCard({ capture }: { capture: Capture }) {
 
       {/* Details */}
       <div className="flex-1 min-w-0 space-y-1.5">
-        {analysis.error ? (
-          <div className="text-red-400 text-sm">
-            Error: {analysis.error}
+        {/* Score + Trend row */}
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-3 flex-wrap min-w-0">
+            {analysis.type && (
+              <span className="text-xs uppercase tracking-wider bg-atnx-bg px-2 py-0.5 rounded text-atnx-green border border-atnx-green/30">
+                {analysis.type}
+              </span>
+            )}
+            {analysis.name && (
+              <span className="font-bold text-atnx-green text-sm truncate">
+                {analysis.name}
+              </span>
+            )}
           </div>
+
+          {/* Virality score badge */}
+          <div className="shrink-0 flex items-center gap-2">
+            <span
+              className="text-xs font-bold tracking-wide"
+              style={{ color: scoreColor }}
+            >
+              {trendInfo.icon} {trendInfo.label}
+            </span>
+            <span
+              className="text-xl font-bold tabular-nums px-2 py-0.5 rounded"
+              style={{
+                color: scoreColor,
+                backgroundColor: `${scoreColor}15`,
+                borderWidth: 1,
+                borderColor: `${scoreColor}40`,
+              }}
+            >
+              {viralityScore}
+            </span>
+          </div>
+        </div>
+
+        {/* Sparkline */}
+        <div className="max-w-xs">
+          <TrendSparkline
+            dataPoints={trends?.dataPoints ?? []}
+            color={scoreColor}
+          />
+        </div>
+
+        {analysis.error ? (
+          <div className="text-red-400 text-sm">Error: {analysis.error}</div>
         ) : (
           <>
-            <div className="flex items-center gap-3 flex-wrap">
-              {analysis.type && (
-                <span className="text-xs uppercase tracking-wider bg-atnx-bg px-2 py-0.5 rounded text-atnx-green border border-atnx-green/30">
-                  {analysis.type}
-                </span>
-              )}
-              {analysis.name && (
-                <span className="font-bold text-atnx-green text-sm">
-                  {analysis.name}
-                </span>
-              )}
-            </div>
-
             <div className="flex gap-4 text-xs text-atnx-text-muted flex-wrap">
               {analysis.category && <span>CATEGORY: {analysis.category}</span>}
               {analysis.sentiment && (
                 <span className={sentimentColor(analysis.sentiment)}>
                   SENTIMENT: {analysis.sentiment}
+                </span>
+              )}
+              {trends && (
+                <span className="text-atnx-text-muted">
+                  PEAK: {trends.peakValue} | NOW: {trends.currentValue}
                 </span>
               )}
             </div>
@@ -136,7 +250,7 @@ function CaptureCard({ capture }: { capture: Capture }) {
                 onClick={() => setShowMetrics(!showMetrics)}
                 className="text-atnx-green hover:text-atnx-green-dark cursor-pointer"
               >
-                {showMetrics ? "▾" : "▸"} Detected metrics
+                {showMetrics ? "\u25BE" : "\u25B8"} Detected metrics
               </button>
             )}
           {analysis.raw_text && (
@@ -144,7 +258,7 @@ function CaptureCard({ capture }: { capture: Capture }) {
               onClick={() => setShowRaw(!showRaw)}
               className="text-atnx-green hover:text-atnx-green-dark cursor-pointer"
             >
-              {showRaw ? "▾" : "▸"} Raw text
+              {showRaw ? "\u25BE" : "\u25B8"} Raw text
             </button>
           )}
         </div>
@@ -170,8 +284,29 @@ function CaptureCard({ capture }: { capture: Capture }) {
   );
 }
 
+function sortCaptures(captures: Capture[], mode: SortMode): Capture[] {
+  const sorted = [...captures];
+  switch (mode) {
+    case "virality":
+      return sorted.sort((a, b) => b.viralityScore - a.viralityScore);
+    case "newest":
+      return sorted.sort(
+        (a, b) =>
+          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+      );
+    case "category":
+      return sorted.sort((a, b) => {
+        const catA = a.analysis.category || "zzz";
+        const catB = b.analysis.category || "zzz";
+        if (catA !== catB) return catA.localeCompare(catB);
+        return b.viralityScore - a.viralityScore;
+      });
+  }
+}
+
 export default function Home() {
   const [captures, setCaptures] = useState<Capture[]>([]);
+  const [sortMode, setSortMode] = useState<SortMode>("virality");
 
   useEffect(() => {
     async function fetchCaptures() {
@@ -189,10 +324,12 @@ export default function Home() {
     return () => clearInterval(interval);
   }, []);
 
+  const sorted = sortCaptures(captures, sortMode);
+
   return (
     <div className="max-w-4xl mx-auto px-4 py-8 w-full">
       {/* Header */}
-      <header className="flex items-center justify-between mb-8">
+      <header className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-atnx-green tracking-widest">
             ATNX
@@ -206,6 +343,30 @@ export default function Home() {
         </div>
       </header>
 
+      {/* Sort controls */}
+      {captures.length > 0 && (
+        <div className="flex items-center gap-2 mb-6 text-xs">
+          <span className="text-atnx-text-muted">Sort by:</span>
+          {(["virality", "newest", "category"] as SortMode[]).map((mode) => (
+            <button
+              key={mode}
+              onClick={() => setSortMode(mode)}
+              className={`px-3 py-1.5 rounded border cursor-pointer transition-colors ${
+                sortMode === mode
+                  ? "bg-atnx-green text-atnx-bg border-atnx-green font-bold"
+                  : "bg-atnx-surface text-atnx-text-muted border-atnx-border hover:border-atnx-green/50"
+              }`}
+            >
+              {mode === "virality"
+                ? "Virality"
+                : mode === "newest"
+                  ? "Newest"
+                  : "Category"}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Capture list */}
       {captures.length === 0 ? (
         <div className="text-center py-20">
@@ -217,7 +378,7 @@ export default function Home() {
         </div>
       ) : (
         <div className="space-y-4">
-          {captures.map((capture) => (
+          {sorted.map((capture) => (
             <CaptureCard key={capture.id} capture={capture} />
           ))}
         </div>
