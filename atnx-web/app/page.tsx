@@ -1,12 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
+import { useDemoContext } from "@/context/DemoContext";
+import { Nav } from "@/components/Nav";
 import {
-  LineChart,
-  Line,
-  ResponsiveContainer,
-  YAxis,
-} from "recharts";
+  TrendSparkline,
+  getScoreColor,
+  getTrendIndicator,
+  TradeModal,
+  DemoToast,
+} from "@/components/Trading";
 
 interface TrendsData {
   term: string;
@@ -69,69 +72,24 @@ function sentimentColor(sentiment?: string): string {
   }
 }
 
-function getScoreColor(score: number): string {
-  if (score >= 800) return "#FF0040";
-  if (score >= 600) return "#FF6600";
-  if (score >= 400) return "#FFD700";
-  if (score >= 200) return "#00FF66";
-  return "#888888";
-}
-
-function getTrendIndicator(trend?: string): { icon: string; label: string } {
-  switch (trend) {
-    case "spiking":
-      return { icon: "\u25B2", label: "SPIKING" };
-    case "rising":
-      return { icon: "\u2197", label: "RISING" };
-    case "stable":
-      return { icon: "\u2192", label: "STABLE" };
-    case "falling":
-      return { icon: "\u2198", label: "FALLING" };
-    default:
-      return { icon: "\u2605", label: "NEW" };
-  }
-}
-
-function TrendSparkline({
-  dataPoints,
-  color = "#00FF66",
+function CaptureCard({
+  capture,
+  onTrade,
 }: {
-  dataPoints: { date: string; value: number }[];
-  color?: string;
+  capture: Capture;
+  onTrade: (capture: Capture) => void;
 }) {
-  if (!dataPoints || dataPoints.length === 0) {
-    return (
-      <div className="h-[50px] flex items-center justify-center text-atnx-text-muted text-xs">
-        No trend data
-      </div>
-    );
-  }
-
-  return (
-    <div className="h-[50px] w-full">
-      <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={dataPoints}>
-          <YAxis domain={[0, 100]} hide />
-          <Line
-            type="monotone"
-            dataKey="value"
-            stroke={color}
-            strokeWidth={1.5}
-            dot={false}
-            isAnimationActive={false}
-          />
-        </LineChart>
-      </ResponsiveContainer>
-    </div>
-  );
-}
-
-function CaptureCard({ capture }: { capture: Capture }) {
   const [showRaw, setShowRaw] = useState(false);
   const [showMetrics, setShowMetrics] = useState(false);
   const { analysis, trends, viralityScore } = capture;
   const scoreColor = getScoreColor(viralityScore);
   const trendInfo = getTrendIndicator(trends?.trend);
+
+  // Check if there's an open position for this capture
+  const { positions } = useDemoContext();
+  const openPos = positions.find(
+    (p) => p.captureId === capture.id || p.name === analysis.name
+  );
 
   return (
     <div className="bg-atnx-surface border border-atnx-border rounded-lg p-4 flex gap-4">
@@ -170,7 +128,7 @@ function CaptureCard({ capture }: { capture: Capture }) {
               {trendInfo.icon} {trendInfo.label}
             </span>
             <span
-              className="text-xl font-bold tabular-nums px-2 py-0.5 rounded"
+              className="text-xl font-bold tabular-nums px-2 py-0.5 rounded transition-colors duration-500"
               style={{
                 color: scoreColor,
                 backgroundColor: `${scoreColor}15`,
@@ -183,11 +141,13 @@ function CaptureCard({ capture }: { capture: Capture }) {
           </div>
         </div>
 
-        {/* Sparkline */}
+        {/* Sparkline with entry marker */}
         <div className="max-w-xs">
           <TrendSparkline
             dataPoints={trends?.dataPoints ?? []}
             color={scoreColor}
+            entryIndex={openPos?.entryIndex}
+            positionType={openPos?.type}
           />
         </div>
 
@@ -237,9 +197,19 @@ function CaptureCard({ capture }: { capture: Capture }) {
           </>
         )}
 
-        <div className="flex gap-4 text-xs text-atnx-text-muted pt-1">
-          <span>SOURCE: {new URL(capture.pageUrl).hostname}</span>
-          <span>CAPTURED: {timeAgo(capture.timestamp)}</span>
+        <div className="flex items-center justify-between pt-1">
+          <div className="flex gap-4 text-xs text-atnx-text-muted">
+            <span>SOURCE: {new URL(capture.pageUrl).hostname}</span>
+            <span>CAPTURED: {timeAgo(capture.timestamp)}</span>
+          </div>
+
+          {/* Trade button */}
+          <button
+            onClick={() => onTrade(capture)}
+            className="text-xs px-3 py-1.5 rounded border border-atnx-green text-atnx-green hover:bg-atnx-green hover:text-atnx-bg cursor-pointer transition-colors font-bold"
+          >
+            Trade This
+          </button>
         </div>
 
         {/* Collapsible sections */}
@@ -307,6 +277,12 @@ function sortCaptures(captures: Capture[], mode: SortMode): Capture[] {
 export default function Home() {
   const [captures, setCaptures] = useState<Capture[]>([]);
   const [sortMode, setSortMode] = useState<SortMode>("virality");
+  const [tradingCapture, setTradingCapture] = useState<Capture | null>(null);
+  const [toast, setToast] = useState<{
+    message: string;
+    detail: string;
+    type: "long" | "short";
+  } | null>(null);
 
   useEffect(() => {
     async function fetchCaptures() {
@@ -324,24 +300,23 @@ export default function Home() {
     return () => clearInterval(interval);
   }, []);
 
+  const handleTradeClose = useCallback(() => {
+    if (tradingCapture) {
+      // Show toast — the position was opened in the context by TradeModal
+      setToast({
+        message: "Position Opened",
+        detail: `${tradingCapture.analysis.name} @ ${tradingCapture.viralityScore}`,
+        type: "long", // Default, will be overridden if needed
+      });
+    }
+    setTradingCapture(null);
+  }, [tradingCapture]);
+
   const sorted = sortCaptures(captures, sortMode);
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8 w-full">
-      {/* Header */}
-      <header className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-atnx-green tracking-widest">
-            ATNX
-          </h1>
-          <p className="text-xs text-atnx-text-muted tracking-wide">
-            Attention Exchange
-          </p>
-        </div>
-        <div className="text-sm text-atnx-text-muted bg-atnx-surface px-3 py-1.5 rounded border border-atnx-border">
-          {captures.length} Capture{captures.length !== 1 ? "s" : ""}
-        </div>
-      </header>
+      <Nav captureCount={captures.length} />
 
       {/* Sort controls */}
       {captures.length > 0 && (
@@ -379,9 +354,28 @@ export default function Home() {
       ) : (
         <div className="space-y-4">
           {sorted.map((capture) => (
-            <CaptureCard key={capture.id} capture={capture} />
+            <CaptureCard
+              key={capture.id}
+              capture={capture}
+              onTrade={setTradingCapture}
+            />
           ))}
         </div>
+      )}
+
+      {/* Trade modal */}
+      {tradingCapture && (
+        <TradeModal capture={tradingCapture} onClose={handleTradeClose} />
+      )}
+
+      {/* Toast */}
+      {toast && (
+        <DemoToast
+          message={toast.message}
+          detail={toast.detail}
+          type={toast.type}
+          onDismiss={() => setToast(null)}
+        />
       )}
     </div>
   );
