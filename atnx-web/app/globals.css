@@ -1,0 +1,18 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-atnx-bg: #0D0D1A;
+  --color-atnx-surface: #1A1A2E;
+  --color-atnx-green: #00FF66;
+  --color-atnx-green-dark: #00CC52;
+  --color-atnx-text: #E0E0E0;
+  --color-atnx-text-muted: #888888;
+  --color-atnx-border: #2a2a3e;
+  --font-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+}
+
+body {
+  background: var(--color-atnx-bg);
+  color: var(--color-atnx-text);
+  font-family: var(--font-mono);
+}
