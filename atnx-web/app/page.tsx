@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useDemoContext } from "@/context/DemoContext";
 import { Nav } from "@/components/Nav";
 import {
@@ -72,11 +72,29 @@ function sentimentColor(sentiment?: string): string {
   }
 }
 
+// Generate a deterministic mock 24h change from the capture id
+function mock24hChange(id: string, score: number): number {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) {
+    hash = (hash * 31 + id.charCodeAt(i)) | 0;
+  }
+  // Bias toward positive for higher scores
+  const base = ((hash % 600) - 250) / 10; // range roughly -25 to +35
+  const bias = score > 400 ? 5 : score > 200 ? 0 : -3;
+  return Math.round((base + bias) * 10) / 10;
+}
+
 function CaptureCard({
   capture,
+  rank,
+  isExpanded,
+  onToggle,
   onTrade,
 }: {
   capture: Capture;
+  rank: number;
+  isExpanded: boolean;
+  onToggle: () => void;
   onTrade: (capture: Capture) => void;
 }) {
   const [showRaw, setShowRaw] = useState(false);
@@ -84,172 +102,253 @@ function CaptureCard({
   const { analysis, trends, viralityScore } = capture;
   const scoreColor = getScoreColor(viralityScore);
   const trendInfo = getTrendIndicator(trends?.trend);
+  const change24h = useMemo(
+    () => mock24hChange(capture.id, viralityScore),
+    [capture.id, viralityScore]
+  );
+  const changeColor = change24h >= 0 ? "#00FF66" : "#FF0040";
 
-  // Check if there's an open position for this capture
   const { positions } = useDemoContext();
   const openPos = positions.find(
     (p) => p.captureId === capture.id || p.name === analysis.name
   );
 
   return (
-    <div className="bg-atnx-surface border border-atnx-border rounded-lg p-4 flex gap-4">
-      {/* Thumbnail */}
-      <div className="shrink-0">
+    <div className="bg-atnx-surface border border-atnx-border rounded-lg overflow-hidden transition-all duration-200">
+      {/* Compact row — always visible */}
+      <div
+        onClick={onToggle}
+        className="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-atnx-bg/30 transition-colors"
+      >
+        {/* Rank */}
+        <span className="text-xs text-atnx-text-muted font-mono w-5 text-right shrink-0">
+          {rank}
+        </span>
+
+        {/* Thumbnail */}
         <img
           src={`data:image/png;base64,${capture.screenshot}`}
-          alt="Capture"
-          className="w-32 h-24 object-cover rounded border border-atnx-border"
+          alt=""
+          className="w-10 h-10 object-cover rounded border border-atnx-border shrink-0"
         />
-      </div>
 
-      {/* Details */}
-      <div className="flex-1 min-w-0 space-y-1.5">
-        {/* Score + Trend row */}
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-center gap-3 flex-wrap min-w-0">
-            {analysis.type && (
-              <span className="text-xs uppercase tracking-wider bg-atnx-bg px-2 py-0.5 rounded text-atnx-green border border-atnx-green/30">
-                {analysis.type}
-              </span>
-            )}
-            {analysis.name && (
-              <span className="font-bold text-atnx-green text-sm truncate">
-                {analysis.name}
-              </span>
-            )}
+        {/* Name */}
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-bold text-atnx-text truncate">
+            {analysis.name || "Untitled"}
           </div>
-
-          {/* Virality score badge */}
-          <div className="shrink-0 flex items-center gap-2">
-            <span
-              className="text-xs font-bold tracking-wide"
-              style={{ color: scoreColor }}
-            >
-              {trendInfo.icon} {trendInfo.label}
-            </span>
-            <span
-              className="text-xl font-bold tabular-nums px-2 py-0.5 rounded transition-colors duration-500"
-              style={{
-                color: scoreColor,
-                backgroundColor: `${scoreColor}15`,
-                borderWidth: 1,
-                borderColor: `${scoreColor}40`,
-              }}
-            >
-              {viralityScore}
-            </span>
+          <div className="text-xs text-atnx-text-muted truncate">
+            {analysis.category || "—"}
           </div>
         </div>
 
-        {/* Sparkline with entry marker */}
-        <div className="max-w-xs">
+        {/* Mini sparkline */}
+        <div className="w-24 shrink-0 hidden sm:block">
           <TrendSparkline
             dataPoints={trends?.dataPoints ?? []}
             color={scoreColor}
-            entryIndex={openPos?.entryIndex}
-            positionType={openPos?.type}
+            height={32}
           />
         </div>
 
-        {analysis.error ? (
-          <div className="text-red-400 text-sm">Error: {analysis.error}</div>
-        ) : (
-          <>
-            <div className="flex gap-4 text-xs text-atnx-text-muted flex-wrap">
-              {analysis.category && <span>CATEGORY: {analysis.category}</span>}
-              {analysis.sentiment && (
-                <span className={sentimentColor(analysis.sentiment)}>
-                  SENTIMENT: {analysis.sentiment}
-                </span>
-              )}
-              {trends && (
-                <span className="text-atnx-text-muted">
-                  PEAK: {trends.peakValue} | NOW: {trends.currentValue}
-                </span>
-              )}
+        {/* 24h Change */}
+        <div className="shrink-0 w-16 text-right">
+          <span
+            className="text-xs font-bold font-mono"
+            style={{ color: changeColor }}
+          >
+            {change24h >= 0 ? "+" : ""}
+            {change24h}%
+          </span>
+        </div>
+
+        {/* Score */}
+        <div
+          className="shrink-0 text-lg font-bold font-mono tabular-nums px-2 py-0.5 rounded w-16 text-center"
+          style={{
+            color: scoreColor,
+            backgroundColor: `${scoreColor}15`,
+            borderWidth: 1,
+            borderColor: `${scoreColor}40`,
+          }}
+        >
+          {viralityScore}
+        </div>
+
+        {/* Expand chevron */}
+        <span className="text-atnx-text-muted text-xs shrink-0 w-4 text-center">
+          {isExpanded ? "\u25B4" : "\u25BE"}
+        </span>
+      </div>
+
+      {/* Expanded details */}
+      {isExpanded && (
+        <div className="border-t border-atnx-border px-4 py-4 space-y-3">
+          <div className="flex gap-4">
+            {/* Larger thumbnail */}
+            <div className="shrink-0">
+              <img
+                src={`data:image/png;base64,${capture.screenshot}`}
+                alt="Capture"
+                className="w-36 h-28 object-cover rounded border border-atnx-border"
+              />
             </div>
 
-            {analysis.description && (
-              <p className="text-sm text-atnx-text leading-relaxed">
-                &ldquo;{analysis.description}&rdquo;
-              </p>
-            )}
-
-            {analysis.virality_signals && (
-              <p className="text-xs text-atnx-text-muted">
-                Virality: {analysis.virality_signals}
-              </p>
-            )}
-
-            {analysis.platforms_detected &&
-              analysis.platforms_detected.length > 0 && (
-                <div className="flex gap-1.5 flex-wrap">
-                  {analysis.platforms_detected.map((p) => (
-                    <span
-                      key={p}
-                      className="text-xs bg-atnx-bg px-1.5 py-0.5 rounded text-atnx-text-muted"
-                    >
-                      {p}
+            <div className="flex-1 min-w-0 space-y-2">
+              {/* Score header */}
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 flex-wrap">
+                  {analysis.type && (
+                    <span className="text-xs uppercase tracking-wider bg-atnx-bg px-2 py-0.5 rounded text-atnx-green border border-atnx-green/30">
+                      {analysis.type}
                     </span>
+                  )}
+                  <span className="font-bold text-atnx-green text-sm">
+                    {analysis.name}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span
+                    className="text-xs font-bold"
+                    style={{ color: scoreColor }}
+                  >
+                    {trendInfo.icon} {trendInfo.label}
+                  </span>
+                  <span
+                    className="text-xs font-mono font-bold"
+                    style={{ color: changeColor }}
+                  >
+                    24h: {change24h >= 0 ? "+" : ""}
+                    {change24h}%
+                  </span>
+                </div>
+              </div>
+
+              {/* Sparkline with entry marker */}
+              <div className="max-w-sm">
+                <TrendSparkline
+                  dataPoints={trends?.dataPoints ?? []}
+                  color={scoreColor}
+                  height={60}
+                  entryIndex={openPos?.entryIndex}
+                  positionType={openPos?.type}
+                />
+              </div>
+
+              {analysis.error ? (
+                <div className="text-red-400 text-sm">
+                  Error: {analysis.error}
+                </div>
+              ) : (
+                <>
+                  <div className="flex gap-4 text-xs text-atnx-text-muted flex-wrap">
+                    {analysis.category && (
+                      <span>CATEGORY: {analysis.category}</span>
+                    )}
+                    {analysis.sentiment && (
+                      <span className={sentimentColor(analysis.sentiment)}>
+                        SENTIMENT: {analysis.sentiment}
+                      </span>
+                    )}
+                    {trends && (
+                      <span>
+                        PEAK: {trends.peakValue} | NOW: {trends.currentValue}
+                      </span>
+                    )}
+                  </div>
+
+                  {analysis.description && (
+                    <p className="text-sm text-atnx-text leading-relaxed">
+                      &ldquo;{analysis.description}&rdquo;
+                    </p>
+                  )}
+
+                  {analysis.virality_signals && (
+                    <p className="text-xs text-atnx-text-muted">
+                      Virality: {analysis.virality_signals}
+                    </p>
+                  )}
+
+                  {analysis.platforms_detected &&
+                    analysis.platforms_detected.length > 0 && (
+                      <div className="flex gap-1.5 flex-wrap">
+                        {analysis.platforms_detected.map((p) => (
+                          <span
+                            key={p}
+                            className="text-xs bg-atnx-bg px-1.5 py-0.5 rounded text-atnx-text-muted"
+                          >
+                            {p}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                </>
+              )}
+
+              <div className="flex items-center justify-between pt-1">
+                <div className="flex gap-4 text-xs text-atnx-text-muted">
+                  <span>SOURCE: {new URL(capture.pageUrl).hostname}</span>
+                  <span>CAPTURED: {timeAgo(capture.timestamp)}</span>
+                </div>
+
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onTrade(capture);
+                  }}
+                  className="text-xs px-4 py-2 rounded border border-atnx-green text-atnx-green hover:bg-atnx-green hover:text-atnx-bg cursor-pointer transition-colors font-bold"
+                >
+                  Trade This
+                </button>
+              </div>
+
+              {/* Collapsible sub-sections */}
+              <div className="flex gap-3 text-xs pt-1">
+                {analysis.metrics_detected &&
+                  Object.keys(analysis.metrics_detected).length > 0 && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowMetrics(!showMetrics);
+                      }}
+                      className="text-atnx-green hover:text-atnx-green-dark cursor-pointer"
+                    >
+                      {showMetrics ? "\u25BE" : "\u25B8"} Detected metrics
+                    </button>
+                  )}
+                {analysis.raw_text && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowRaw(!showRaw);
+                    }}
+                    className="text-atnx-green hover:text-atnx-green-dark cursor-pointer"
+                  >
+                    {showRaw ? "\u25BE" : "\u25B8"} Raw text
+                  </button>
+                )}
+              </div>
+
+              {showMetrics && analysis.metrics_detected && (
+                <div className="bg-atnx-bg rounded p-2 text-xs space-y-0.5">
+                  {Object.entries(analysis.metrics_detected).map(([k, v]) => (
+                    <div key={k}>
+                      <span className="text-atnx-text-muted">{k}:</span>{" "}
+                      <span className="text-atnx-text">{String(v)}</span>
+                    </div>
                   ))}
                 </div>
               )}
-          </>
-        )}
 
-        <div className="flex items-center justify-between pt-1">
-          <div className="flex gap-4 text-xs text-atnx-text-muted">
-            <span>SOURCE: {new URL(capture.pageUrl).hostname}</span>
-            <span>CAPTURED: {timeAgo(capture.timestamp)}</span>
+              {showRaw && analysis.raw_text && (
+                <div className="bg-atnx-bg rounded p-2 text-xs text-atnx-text-muted whitespace-pre-wrap break-words max-h-40 overflow-auto">
+                  {analysis.raw_text}
+                </div>
+              )}
+            </div>
           </div>
-
-          {/* Trade button */}
-          <button
-            onClick={() => onTrade(capture)}
-            className="text-xs px-3 py-1.5 rounded border border-atnx-green text-atnx-green hover:bg-atnx-green hover:text-atnx-bg cursor-pointer transition-colors font-bold"
-          >
-            Trade This
-          </button>
         </div>
-
-        {/* Collapsible sections */}
-        <div className="flex gap-3 text-xs pt-1">
-          {analysis.metrics_detected &&
-            Object.keys(analysis.metrics_detected).length > 0 && (
-              <button
-                onClick={() => setShowMetrics(!showMetrics)}
-                className="text-atnx-green hover:text-atnx-green-dark cursor-pointer"
-              >
-                {showMetrics ? "\u25BE" : "\u25B8"} Detected metrics
-              </button>
-            )}
-          {analysis.raw_text && (
-            <button
-              onClick={() => setShowRaw(!showRaw)}
-              className="text-atnx-green hover:text-atnx-green-dark cursor-pointer"
-            >
-              {showRaw ? "\u25BE" : "\u25B8"} Raw text
-            </button>
-          )}
-        </div>
-
-        {showMetrics && analysis.metrics_detected && (
-          <div className="bg-atnx-bg rounded p-2 text-xs space-y-0.5">
-            {Object.entries(analysis.metrics_detected).map(([k, v]) => (
-              <div key={k}>
-                <span className="text-atnx-text-muted">{k}:</span>{" "}
-                <span className="text-atnx-text">{String(v)}</span>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {showRaw && analysis.raw_text && (
-          <div className="bg-atnx-bg rounded p-2 text-xs text-atnx-text-muted whitespace-pre-wrap break-words max-h-40 overflow-auto">
-            {analysis.raw_text}
-          </div>
-        )}
-      </div>
+      )}
     </div>
   );
 }
@@ -277,6 +376,7 @@ function sortCaptures(captures: Capture[], mode: SortMode): Capture[] {
 export default function Home() {
   const [captures, setCaptures] = useState<Capture[]>([]);
   const [sortMode, setSortMode] = useState<SortMode>("virality");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [tradingCapture, setTradingCapture] = useState<Capture | null>(null);
   const [toast, setToast] = useState<{
     message: string;
@@ -302,11 +402,10 @@ export default function Home() {
 
   const handleTradeClose = useCallback(() => {
     if (tradingCapture) {
-      // Show toast — the position was opened in the context by TradeModal
       setToast({
         message: "Position Opened",
         detail: `${tradingCapture.analysis.name} @ ${tradingCapture.viralityScore}`,
-        type: "long", // Default, will be overridden if needed
+        type: "long",
       });
     }
     setTradingCapture(null);
@@ -320,7 +419,7 @@ export default function Home() {
 
       {/* Sort controls */}
       {captures.length > 0 && (
-        <div className="flex items-center gap-2 mb-6 text-xs">
+        <div className="flex items-center gap-2 mb-4 text-xs">
           <span className="text-atnx-text-muted">Sort by:</span>
           {(["virality", "newest", "category"] as SortMode[]).map((mode) => (
             <button
@@ -342,6 +441,21 @@ export default function Home() {
         </div>
       )}
 
+      {/* Column header */}
+      {captures.length > 0 && (
+        <div className="flex items-center gap-3 px-3 py-1.5 text-xs text-atnx-text-muted mb-1">
+          <span className="w-5 text-right shrink-0">#</span>
+          <span className="w-10 shrink-0" />
+          <span className="flex-1">Name</span>
+          <span className="w-24 shrink-0 hidden sm:block text-center">
+            7d Chart
+          </span>
+          <span className="w-16 text-right shrink-0">24h</span>
+          <span className="w-16 text-center shrink-0">Score</span>
+          <span className="w-4 shrink-0" />
+        </div>
+      )}
+
       {/* Capture list */}
       {captures.length === 0 ? (
         <div className="text-center py-20">
@@ -352,11 +466,16 @@ export default function Home() {
           </p>
         </div>
       ) : (
-        <div className="space-y-4">
-          {sorted.map((capture) => (
+        <div className="space-y-1">
+          {sorted.map((capture, i) => (
             <CaptureCard
               key={capture.id}
               capture={capture}
+              rank={i + 1}
+              isExpanded={expandedId === capture.id}
+              onToggle={() =>
+                setExpandedId(expandedId === capture.id ? null : capture.id)
+              }
               onTrade={setTradingCapture}
             />
           ))}
