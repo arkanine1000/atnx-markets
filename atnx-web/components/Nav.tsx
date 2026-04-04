@@ -28,9 +28,9 @@ export function Nav({ captureCount }: { captureCount: number }) {
       <div className="flex items-center gap-2">
         <nav className="flex gap-1 text-xs">
           <Link
-            href="/"
+            href="/app"
             className={`px-3 py-1.5 rounded border transition-colors ${
-              pathname === "/"
+              pathname === "/app"
                 ? "bg-atnx-magenta text-black border-atnx-magenta font-bold"
                 : "bg-surface text-secondary border-surface hover:border-atnx-cyan/50"
             }`}
@@ -38,9 +38,9 @@ export function Nav({ captureCount }: { captureCount: number }) {
             Dashboard
           </Link>
           <Link
-            href="/portfolio"
+            href="/app/portfolio"
             className={`px-3 py-1.5 rounded border transition-colors ${
-              pathname === "/portfolio"
+              pathname === "/app/portfolio"
                 ? "bg-atnx-magenta text-black border-atnx-magenta font-bold"
                 : "bg-surface text-secondary border-surface hover:border-atnx-cyan/50"
             }`}
