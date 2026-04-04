@@ -16,14 +16,14 @@ export function Nav({ captureCount }: { captureCount: number }) {
 
   return (
     <header className="flex items-center justify-between mb-6 flex-wrap gap-4">
-      <div>
-        <h1 className="text-2xl font-bold text-atnx-cyan tracking-widest">
+      <Link href="/" className="group">
+        <h1 className="text-2xl font-bold text-atnx-cyan tracking-widest group-hover:text-atnx-cyan-dim transition-colors">
           ATNX
         </h1>
         <p className="text-xs text-secondary tracking-wide">
           Attention Exchange
         </p>
-      </div>
+      </Link>
 
       <div className="flex items-center gap-2">
         <nav className="flex gap-1 text-xs">
