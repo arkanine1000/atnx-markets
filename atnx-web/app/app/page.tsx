@@ -117,10 +117,10 @@ function CaptureCard({
       {/* Compact row */}
       <div
         onClick={onToggle}
-        className="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-dark-elevated/30 transition-colors"
+        className="flex items-center gap-2 sm:gap-3 px-2 sm:px-3 py-2.5 cursor-pointer hover:bg-dark-elevated/30 transition-colors"
       >
         {/* Rank */}
-        <span className="text-xs text-tertiary font-mono w-5 text-right shrink-0">
+        <span className="text-xs text-tertiary font-mono w-4 sm:w-5 text-right shrink-0">
           {rank}
         </span>
 
@@ -128,7 +128,7 @@ function CaptureCard({
         <img
           src={`data:image/png;base64,${capture.screenshot}`}
           alt=""
-          className="w-10 h-10 object-cover rounded border border-surface shrink-0"
+          className="w-9 h-9 sm:w-10 sm:h-10 object-cover rounded border border-surface shrink-0"
         />
 
         {/* Name */}
@@ -151,35 +151,35 @@ function CaptureCard({
         </div>
 
         {/* 24h Change — yellow number with cyan/magenta arrow */}
-        <div className="shrink-0 w-20 text-right flex items-center justify-end gap-1">
-          <span style={{ color: changeArrowColor }} className="text-xs">
+        <div className="shrink-0 w-14 sm:w-20 text-right flex items-center justify-end gap-1">
+          <span style={{ color: changeArrowColor }} className="text-[10px] sm:text-xs">
             {changeArrow}
           </span>
-          <span className="text-xs font-bold font-mono text-atnx-yellow">
+          <span className="text-[11px] sm:text-xs font-bold font-mono text-atnx-yellow">
             {Math.abs(change24h)}%
           </span>
         </div>
 
         {/* Score — yellow */}
-        <div className="shrink-0 text-lg font-bold font-mono tabular-nums px-2 py-0.5 rounded w-16 text-center text-atnx-yellow bg-atnx-yellow/10 border border-atnx-yellow/25">
+        <div className="shrink-0 text-base sm:text-lg font-bold font-mono tabular-nums px-1.5 sm:px-2 py-0.5 rounded w-12 sm:w-16 text-center text-atnx-yellow bg-atnx-yellow/10 border border-atnx-yellow/25">
           {viralityScore}
         </div>
 
         {/* Expand chevron */}
-        <span className="text-secondary text-xs shrink-0 w-4 text-center">
+        <span className="text-secondary text-xs shrink-0 w-3 sm:w-4 text-center">
           {isExpanded ? "\u25B4" : "\u25BE"}
         </span>
       </div>
 
       {/* Expanded details */}
       {isExpanded && (
-        <div className="border-t border-surface px-4 py-4 space-y-3">
-          <div className="flex gap-4">
+        <div className="border-t border-surface px-3 sm:px-4 py-4 space-y-3">
+          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
             <div className="shrink-0">
               <img
                 src={`data:image/png;base64,${capture.screenshot}`}
                 alt="Capture"
-                className="w-36 h-28 object-cover rounded border border-surface"
+                className="w-full sm:w-36 h-40 sm:h-28 object-cover rounded border border-surface"
               />
             </div>
 
@@ -282,10 +282,10 @@ function CaptureCard({
                 </>
               )}
 
-              <div className="flex items-center justify-between pt-1">
-                <div className="flex gap-4 text-xs text-tertiary">
-                  <span>SOURCE: {new URL(capture.pageUrl).hostname}</span>
-                  <span>CAPTURED: {timeAgo(capture.timestamp)}</span>
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pt-1">
+                <div className="flex gap-3 sm:gap-4 text-xs text-tertiary flex-wrap min-w-0">
+                  <span className="truncate">SOURCE: {new URL(capture.pageUrl).hostname}</span>
+                  <span className="whitespace-nowrap">CAPTURED: {timeAgo(capture.timestamp)}</span>
                 </div>
 
                 {/* Trade button — magenta */}
@@ -294,7 +294,7 @@ function CaptureCard({
                     e.stopPropagation();
                     onTrade(capture);
                   }}
-                  className="text-xs px-4 py-2 rounded border border-atnx-magenta text-atnx-magenta hover:bg-atnx-magenta hover:text-black cursor-pointer transition-colors font-bold"
+                  className="text-xs px-4 py-2 rounded border border-atnx-magenta text-atnx-magenta hover:bg-atnx-magenta hover:text-black cursor-pointer transition-colors font-bold w-full sm:w-auto shrink-0"
                 >
                   Trade This
                 </button>
@@ -441,16 +441,16 @@ export default function Home() {
 
       {/* Column header */}
       {captures.length > 0 && (
-        <div className="flex items-center gap-3 px-3 py-1.5 text-xs text-tertiary mb-1">
-          <span className="w-5 text-right shrink-0">#</span>
-          <span className="w-10 shrink-0" />
+        <div className="flex items-center gap-2 sm:gap-3 px-2 sm:px-3 py-1.5 text-[11px] sm:text-xs text-tertiary mb-1">
+          <span className="w-4 sm:w-5 text-right shrink-0">#</span>
+          <span className="w-9 sm:w-10 shrink-0" />
           <span className="flex-1">Name</span>
           <span className="w-24 shrink-0 hidden sm:block text-center">
             7d Chart
           </span>
-          <span className="w-20 text-right shrink-0">24h</span>
-          <span className="w-16 text-center shrink-0">Score</span>
-          <span className="w-4 shrink-0" />
+          <span className="w-14 sm:w-20 text-right shrink-0">24h</span>
+          <span className="w-12 sm:w-16 text-center shrink-0">Score</span>
+          <span className="w-3 sm:w-4 shrink-0" />
         </div>
       )}
 

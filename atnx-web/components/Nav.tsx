@@ -15,8 +15,8 @@ export function Nav({ captureCount }: { captureCount: number }) {
   useEffect(() => setMounted(true), []);
 
   return (
-    <header className="flex items-center justify-between mb-6 flex-wrap gap-4">
-      <Link href="/" className="group">
+    <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 gap-3 sm:gap-4">
+      <Link href="/" className="group shrink-0">
         <h1 className="text-2xl font-bold text-atnx-cyan tracking-widest group-hover:text-atnx-cyan-dim transition-colors">
           ATNX
         </h1>
@@ -25,7 +25,7 @@ export function Nav({ captureCount }: { captureCount: number }) {
         </p>
       </Link>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
         <nav className="flex gap-1 text-xs">
           <Link
             href="/app"
@@ -71,7 +71,7 @@ export function Nav({ captureCount }: { captureCount: number }) {
           </button>
         )}
 
-        <div className="text-xs text-atnx-magenta bg-surface px-3 py-1.5 rounded border border-atnx-magenta/30 font-bold">
+        <div className="text-xs text-atnx-magenta bg-surface px-3 py-1.5 rounded border border-atnx-magenta/30 font-bold whitespace-nowrap">
           {captureCount} Capture{captureCount !== 1 ? "s" : ""}
         </div>
       </div>
