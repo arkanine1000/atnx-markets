@@ -126,7 +126,7 @@ function CaptureCard({
 
         {/* Thumbnail */}
         <img
-          src={`data:image/png;base64,${capture.screenshot}`}
+          src={capture.screenshot}
           alt=""
           className="w-9 h-9 sm:w-10 sm:h-10 object-cover rounded border border-surface shrink-0"
         />
@@ -177,7 +177,7 @@ function CaptureCard({
           <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
             <div className="shrink-0">
               <img
-                src={`data:image/png;base64,${capture.screenshot}`}
+                src={capture.screenshot}
                 alt="Capture"
                 className="w-full sm:w-36 h-40 sm:h-28 object-cover rounded border border-surface"
               />
