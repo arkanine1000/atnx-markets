@@ -33,10 +33,10 @@ function PositionCard({
   return (
     <div className="bg-surface border border-surface rounded-lg p-4 space-y-3 transition-opacity duration-300 hover:border-atnx-cyan/30">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between gap-2">
           <span
-            className={`text-xs font-bold px-2 py-0.5 rounded ${
+            className={`text-xs font-bold px-2 py-0.5 rounded shrink-0 ${
               isLong
                 ? "bg-atnx-cyan/15 text-atnx-cyan border border-atnx-cyan/30"
                 : "bg-atnx-magenta/15 text-atnx-magenta border border-atnx-magenta/30"
@@ -44,22 +44,22 @@ function PositionCard({
           >
             {isLong ? "LONG" : "SHORT"}
           </span>
-          <span className="font-bold text-primary text-sm">
-            {position.name}
-          </span>
+          <div className="flex items-center gap-1 shrink-0">
+            <span style={{ color: directionColor }} className="text-sm">
+              {directionArrow}
+            </span>
+            <span className="text-lg font-bold font-mono tabular-nums text-atnx-yellow">
+              {pnl.isProfit ? "+" : ""}${pnl.pnlAmount}
+            </span>
+          </div>
         </div>
-        <div className="flex items-center gap-1">
-          <span style={{ color: directionColor }} className="text-sm">
-            {directionArrow}
-          </span>
-          <span className="text-lg font-bold font-mono tabular-nums text-atnx-yellow">
-            {pnl.isProfit ? "+" : ""}${pnl.pnlAmount}
-          </span>
+        <div className="font-bold text-primary text-sm break-words">
+          {position.name}
         </div>
       </div>
 
       {/* Stats grid */}
-      <div className="grid grid-cols-3 gap-4 text-sm">
+      <div className="grid grid-cols-3 gap-2 sm:gap-4 text-sm">
         <div>
           <div className="text-xs text-tertiary uppercase">Entry</div>
           <div className="font-mono text-atnx-cyan">{position.entryIndex}</div>
@@ -98,10 +98,10 @@ function PositionCard({
       </div>
 
       {/* Close button — magenta */}
-      <div className="flex justify-end">
+      <div className="flex justify-stretch sm:justify-end">
         <button
           onClick={() => onClose(position)}
-          className="text-xs px-4 py-1.5 rounded border border-surface text-secondary hover:border-atnx-magenta/50 hover:text-atnx-magenta cursor-pointer transition-colors"
+          className="text-xs px-4 py-2 sm:py-1.5 rounded border border-surface text-secondary hover:border-atnx-magenta/50 hover:text-atnx-magenta cursor-pointer transition-colors w-full sm:w-auto"
         >
           Close Position
         </button>
@@ -164,37 +164,38 @@ export default function PortfolioPage() {
       <Nav captureCount={captureCount} />
 
       {/* Portfolio summary */}
-      <div className="bg-surface border border-surface rounded-lg p-5 mb-6 grid grid-cols-3 gap-4">
-        <div>
-          <div className="text-xs text-tertiary uppercase tracking-wider mb-1">
+      <div className="bg-surface border border-surface rounded-lg p-4 sm:p-5 mb-6 grid grid-cols-3 gap-2 sm:gap-4">
+        <div className="min-w-0">
+          <div className="text-[10px] sm:text-xs text-tertiary uppercase tracking-wider mb-1">
             Balance
           </div>
-          <div className="text-xl font-bold font-mono text-atnx-yellow">
+          <div className="text-base sm:text-xl font-bold font-mono text-atnx-yellow truncate">
             ${balance.toFixed(2)}
           </div>
-          <div className="text-xs text-tertiary">USDC</div>
+          <div className="text-[10px] sm:text-xs text-tertiary">USDC</div>
         </div>
-        <div>
-          <div className="text-xs text-tertiary uppercase tracking-wider mb-1">
-            Open Positions
+        <div className="min-w-0">
+          <div className="text-[10px] sm:text-xs text-tertiary uppercase tracking-wider mb-1">
+            <span className="sm:hidden">Positions</span>
+            <span className="hidden sm:inline">Open Positions</span>
           </div>
-          <div className="text-xl font-bold font-mono text-primary">
+          <div className="text-base sm:text-xl font-bold font-mono text-primary">
             {positions.length}
           </div>
         </div>
-        <div>
-          <div className="text-xs text-tertiary uppercase tracking-wider mb-1">
+        <div className="min-w-0">
+          <div className="text-[10px] sm:text-xs text-tertiary uppercase tracking-wider mb-1">
             Total PnL
           </div>
-          <div className="text-xl font-bold font-mono flex items-center gap-1">
+          <div className="text-base sm:text-xl font-bold font-mono flex items-center gap-1">
             <span style={{ color: totalDirColor }}>{totalDirArrow}</span>
-            <span className="text-atnx-yellow">
+            <span className="text-atnx-yellow truncate">
               {totalPnL >= 0 ? "+" : ""}${totalPnL.toFixed(2)}
             </span>
           </div>
-          <div className="text-xs font-mono flex items-center gap-1">
+          <div className="text-[10px] sm:text-xs font-mono flex items-center gap-1">
             <span style={{ color: totalDirColor }}>{totalDirArrow}</span>
-            <span className="text-atnx-yellow">
+            <span className="text-atnx-yellow truncate">
               {totalPnLPercent >= 0 ? "+" : ""}
               {totalPnLPercent.toFixed(2)}%
             </span>
