@@ -395,43 +395,44 @@ export interface TradeLogEvent {
   at: string;                      // opened_at for open, closed_at for close
 }
 
-type PositionRow = {
-  id: string;
-  direction: 'long' | 'short';
-  size_usd: number;
-  leverage: number;
-  entry_vi: number;
-  exit_vi: number | null;
-  realized_pnl: number | null;
-  opened_at: string;
-  closed_at: string | null;
-  user: { handle: string | null } | null;
-};
-
 // Public trade log for a market. `positions` has no RLS today (all existing
 // code filters by user_id at the app layer), so we read via the admin client
 // and only expose the handle + trade-shape fields — no user_id or email leak.
+// We fetch positions and user_profiles separately because positions.user_id
+// FKs to auth.users (Supabase native), not to public.user_profiles — so
+// PostgREST can't auto-embed the relation.
 export async function getMarketTradeLog(
   marketId: string,
   limit = 50
 ): Promise<TradeLogEvent[]> {
   const supabase = createAdminClient();
 
-  const { data, error } = await supabase
+  const { data: positions, error: posErr } = await supabase
     .from('positions')
     .select(
-      'id, direction, size_usd, leverage, entry_vi, exit_vi, realized_pnl, opened_at, closed_at, user:user_profiles(handle)'
+      'id, user_id, direction, size_usd, leverage, entry_vi, exit_vi, realized_pnl, opened_at, closed_at'
     )
     .eq('market_id', marketId)
     .order('opened_at', { ascending: false })
-    .limit(limit)
-    .returns<PositionRow[]>();
-  if (error) throw error;
-  if (!data) return [];
+    .limit(limit);
+  if (posErr) throw posErr;
+  if (!positions || positions.length === 0) return [];
+
+  const userIds = Array.from(new Set(positions.map((p) => p.user_id)));
+  const { data: profiles, error: profErr } = await supabase
+    .from('user_profiles')
+    .select('id, handle')
+    .in('id', userIds);
+  if (profErr) throw profErr;
+
+  const handleById = new Map<string, string>();
+  for (const row of profiles ?? []) {
+    if (row.handle) handleById.set(row.id, row.handle);
+  }
 
   const events: TradeLogEvent[] = [];
-  for (const p of data) {
-    const handle = p.user?.handle || 'anon';
+  for (const p of positions) {
+    const handle = handleById.get(p.user_id) ?? 'anon';
     events.push({
       id: `${p.id}:open`,
       kind: 'open',
