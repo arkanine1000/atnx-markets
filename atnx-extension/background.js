@@ -1,9 +1,23 @@
-const WEB_APP_URL = 'http://localhost:3000';
+const DEFAULT_WEB_APP_URL = 'https://atnx.app';
 
 // One-time cleanup: legacy `captures` array stored base64 screenshots and
 // blew the 10 MB chrome.storage.local quota. Web dashboard is now the source
 // of truth, so drop the key on every service-worker wake.
 chrome.storage.local.remove('captures').catch(() => {});
+
+async function getWebAppUrl() {
+  const { webAppUrl } = await chrome.storage.local.get('webAppUrl');
+  const raw = (webAppUrl || '').trim().replace(/\/+$/, '');
+  return raw || DEFAULT_WEB_APP_URL;
+}
+
+function hostOf(url) {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}
 
 // Inject content script if not already present, then send activation message
 async function activateTab(tab) {
@@ -93,22 +107,23 @@ async function handleCapture(msg, tab) {
     // 6. POST to web app. `credentials: 'include'` attaches the Supabase auth
     // cookie so the route handler can attribute the capture to the signed-in
     // user. If the user isn't signed in, the server returns 401.
+    const webAppUrl = await getWebAppUrl();
     let persistFailed = null;
     try {
-      const res = await fetch(`${WEB_APP_URL}/api/captures`, {
+      const res = await fetch(`${webAppUrl}/api/captures`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(result)
       });
       if (res.status === 401) {
-        persistFailed = 'Sign in at the ATNX web app first';
+        persistFailed = `Sign in at ${hostOf(webAppUrl)} first`;
       } else if (!res.ok) {
         persistFailed = `Save failed (${res.status})`;
       }
     } catch (e) {
       console.warn('Could not send to web app:', e.message);
-      persistFailed = 'Web app unreachable';
+      persistFailed = 'Web app unreachable — check URL in popup';
     }
 
     const name = analysis.name || 'Content';

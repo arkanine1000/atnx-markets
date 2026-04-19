@@ -14,6 +14,15 @@
     </div>
 
     <div class="section">
+      <label for="webAppUrl">Web App URL</label>
+      <div class="input-row">
+        <input type="url" id="webAppUrl" placeholder="https://atnx.app" autocomplete="off">
+        <button id="saveUrl" class="btn-small">Save</button>
+      </div>
+      <div id="urlStatus" class="status-text"></div>
+    </div>
+
+    <div class="section">
       <label for="apiKey">Anthropic API Key</label>
       <div class="input-row">
         <input type="password" id="apiKey" placeholder="sk-ant-..." autocomplete="off">
