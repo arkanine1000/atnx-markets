@@ -129,7 +129,7 @@ async function resolveOrCreateMarket(
   return { market: created as MarketRow, similarity: null };
 }
 
-async function recordVi(marketId: string, vi: number, dataPoints: TrendsResult['dataPoints']) {
+export async function recordVi(marketId: string, vi: number, dataPoints: TrendsResult['dataPoints']) {
   const supabase = createAdminClient();
 
   // If this is the first capture for the market and Google Trends gave us a
