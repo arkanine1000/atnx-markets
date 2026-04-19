@@ -19,18 +19,18 @@ export interface UrlImage {
   pageContext?: string;
 }
 
-// Only allow plain http(s) URLs where the hostname is a real domain — not
-// an IP literal and not localhost. That blocks the common SSRF targets
-// (169.254.169.254 cloud metadata, 127.0.0.1 services, etc.) without needing
-// full DNS resolution. Serverless outbound networks typically block private
-// ranges at the infra layer anyway, so this is defense-in-depth.
+// Caller treats this specially: the .reason string is safe to surface to users.
+export class OgFetchError extends Error {
+  constructor(public reason: string) {
+    super(reason);
+  }
+}
+
 function isSafeUrl(u: URL): boolean {
   if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
   const host = u.hostname.toLowerCase();
   if (host === 'localhost') return false;
-  // IPv4 literal
   if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) return false;
-  // IPv6 literal (always wrapped in [])
   if (host.includes(':')) return false;
   return true;
 }
@@ -39,14 +39,16 @@ async function fetchWithLimits(
   url: string,
   maxBytes: number,
   accept: string
-): Promise<{ buffer: Buffer; contentType: string; finalUrl: string } | null> {
+): Promise<{ buffer: Buffer; contentType: string; finalUrl: string }> {
   let parsed: URL;
   try {
     parsed = new URL(url);
   } catch {
-    return null;
+    throw new OgFetchError('Invalid URL');
   }
-  if (!isSafeUrl(parsed)) return null;
+  if (!isSafeUrl(parsed)) {
+    throw new OgFetchError('URL not allowed (private or non-http)');
+  }
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
@@ -61,13 +63,20 @@ async function fetchWithLimits(
         'accept-language': 'en-US,en;q=0.9',
       },
     });
-    if (!res.ok || !res.body) return null;
-    // Re-validate the post-redirect URL against SSRF rules.
+    if (!res.ok) {
+      throw new OgFetchError(`Upstream returned ${res.status}`);
+    }
+    if (!res.body) {
+      throw new OgFetchError('Empty response body');
+    }
     try {
       const finalParsed = new URL(res.url);
-      if (!isSafeUrl(finalParsed)) return null;
-    } catch {
-      return null;
+      if (!isSafeUrl(finalParsed)) {
+        throw new OgFetchError('Redirected to disallowed URL');
+      }
+    } catch (e) {
+      if (e instanceof OgFetchError) throw e;
+      throw new OgFetchError('Invalid redirect target');
     }
 
     const contentType = res.headers.get('content-type')?.split(';')[0].trim() ?? '';
@@ -81,22 +90,23 @@ async function fetchWithLimits(
         total += value.byteLength;
         if (total > maxBytes) {
           await reader.cancel();
-          return null;
+          throw new OgFetchError(`Response exceeded ${maxBytes} bytes`);
         }
         chunks.push(value);
       }
     }
     return { buffer: Buffer.concat(chunks), contentType, finalUrl: res.url };
-  } catch {
-    return null;
+  } catch (e) {
+    if (e instanceof OgFetchError) throw e;
+    if ((e as Error).name === 'AbortError') {
+      throw new OgFetchError('Fetch timed out');
+    }
+    throw new OgFetchError(`Fetch failed: ${(e as Error).message}`);
   } finally {
     clearTimeout(timer);
   }
 }
 
-// Parse <meta> tags into a property→content map. We accept both `property=`
-// (OGP) and `name=` (Twitter Cards, generic). Handles single/double quotes
-// and either attribute order.
 function parseMetaTags(html: string): Record<string, string> {
   const out: Record<string, string> = {};
   const metaRe = /<meta\s+([^>]+?)\/?>/gi;
@@ -129,28 +139,69 @@ function extractTitle(html: string): string | undefined {
   return m ? decodeEntities(m[1]).trim() || undefined : undefined;
 }
 
-// Fetch an OG image (or direct image URL) for a shared link and shape it into
-// the form processCapture wants. Returns null if no usable image was found —
-// caller decides how to surface that to the user.
-export async function fetchImageFromUrl(url: string): Promise<UrlImage | null> {
-  // First hop: could be HTML or an image depending on what the user shared.
+// Platform-specific thumbnail shortcuts. These dodge the HTML-scraping path
+// for sites that either block server UAs (X, IG) or gate content behind JS.
+function youtubeThumbnailUrl(u: URL): string | null {
+  const host = u.hostname.toLowerCase().replace(/^www\./, '');
+  let id: string | null = null;
+  if (host === 'youtu.be') {
+    id = u.pathname.split('/').filter(Boolean)[0] ?? null;
+  } else if (host === 'youtube.com' || host.endsWith('.youtube.com')) {
+    id = u.searchParams.get('v');
+    if (!id) {
+      const m = /\/(?:shorts|embed|v)\/([^/?]+)/.exec(u.pathname);
+      if (m) id = m[1];
+    }
+  }
+  if (!id || !/^[A-Za-z0-9_-]{6,}$/.test(id)) return null;
+  return `https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
+}
+
+function platformFastPath(u: URL): string | null {
+  const yt = youtubeThumbnailUrl(u);
+  if (yt) return yt;
+  return null;
+}
+
+export async function fetchImageFromUrl(url: string): Promise<UrlImage> {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new OgFetchError('Invalid URL');
+  }
+
+  // Platform fast-paths (YouTube thumbnails) avoid the main fetch entirely.
+  const fast = platformFastPath(parsed);
+  if (fast) {
+    console.log('[og] fast-path', { host: parsed.hostname, image: fast });
+    const imgRes = await fetchWithLimits(fast, MAX_IMAGE_BYTES, 'image/*');
+    if (!imgRes.contentType.startsWith('image/')) {
+      throw new OgFetchError(
+        `Platform thumbnail returned ${imgRes.contentType || 'unknown type'}`
+      );
+    }
+    return {
+      imageBase64: imgRes.buffer.toString('base64'),
+      mediaType: toMediaType(imgRes.contentType),
+    };
+  }
+
+  console.log('[og] fetch', { url });
   const first = await fetchWithLimits(
     url,
-    // Generous cap because the first hop might be either an image or HTML.
     Math.max(MAX_HTML_BYTES, MAX_IMAGE_BYTES),
     'text/html,image/*;q=0.9,*/*;q=0.1'
   );
-  if (!first) return null;
 
-  // Direct image link (imgur, raw CDN, etc).
   if (first.contentType.startsWith('image/')) {
+    console.log('[og] direct image', { contentType: first.contentType });
     return {
       imageBase64: first.buffer.toString('base64'),
       mediaType: toMediaType(first.contentType),
     };
   }
 
-  // Treat anything non-image as HTML and scrape.
   const html = first.buffer.toString('utf8');
   const meta = parseMetaTags(html);
   const imageUrl =
@@ -158,16 +209,26 @@ export async function fetchImageFromUrl(url: string): Promise<UrlImage | null> {
     meta['og:image:secure_url'] ||
     meta['twitter:image'] ||
     meta['twitter:image:src'];
-  if (!imageUrl) return null;
+  console.log('[og] html parsed', {
+    contentType: first.contentType,
+    htmlBytes: first.buffer.byteLength,
+    hasOgImage: Boolean(meta['og:image']),
+    hasTwitterImage: Boolean(meta['twitter:image'] || meta['twitter:image:src']),
+    title: meta['og:title'] || meta['twitter:title'] || extractTitle(html),
+  });
+  if (!imageUrl) {
+    throw new OgFetchError(
+      'No og:image or twitter:image on the page (site may block bots)'
+    );
+  }
 
   const absoluteImageUrl = new URL(imageUrl, first.finalUrl).toString();
-  const imgRes = await fetchWithLimits(
-    absoluteImageUrl,
-    MAX_IMAGE_BYTES,
-    'image/*'
-  );
-  if (!imgRes) return null;
-  if (!imgRes.contentType.startsWith('image/')) return null;
+  const imgRes = await fetchWithLimits(absoluteImageUrl, MAX_IMAGE_BYTES, 'image/*');
+  if (!imgRes.contentType.startsWith('image/')) {
+    throw new OgFetchError(
+      `og:image URL returned ${imgRes.contentType || 'unknown type'}`
+    );
+  }
 
   const pageTitle = decodeEntities(
     meta['og:title'] || meta['twitter:title'] || extractTitle(html) || ''
