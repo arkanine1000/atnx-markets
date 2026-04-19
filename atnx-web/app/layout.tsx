@@ -1,13 +1,32 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { ThemeProvider } from "next-themes";
 import { AuthProvider } from "@/context/AuthContext";
 import { DemoProvider } from "@/context/DemoContext";
 import { LoginModal } from "@/components/LoginModal";
+import { PWARegister } from "@/components/PWARegister";
+import { InstallPrompt } from "@/components/InstallPrompt";
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: "ATNX — Attention Exchange",
   description: "Capture, identify, and track trending content with AI",
+  applicationName: "ATNX",
+  appleWebApp: {
+    capable: true,
+    title: "ATNX",
+    statusBarStyle: "black-translucent",
+  },
+  icons: {
+    icon: "/app_icon.png",
+    apple: "/app_icon.png",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#0A0A0A",
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
@@ -29,9 +48,11 @@ export default function RootLayout({
             <DemoProvider>
               {children}
               <LoginModal />
+              <InstallPrompt />
             </DemoProvider>
           </AuthProvider>
         </ThemeProvider>
+        <PWARegister />
       </body>
     </html>
   );

@@ -1,6 +1,5 @@
-import { addCapture, getCaptures, type Capture } from '@/lib/store';
-import { normalizeSearchTerm } from '@/lib/trends';
-import { composeVi } from '@/lib/signals';
+import { getCaptures } from '@/lib/store';
+import { processCapture, toMediaType } from '@/lib/capture';
 import { createClient } from '@/lib/supabase/server';
 
 // CORS with credentials requires echoing the caller's Origin (not `*`) so the
@@ -31,31 +30,56 @@ export async function POST(request: Request) {
     );
   }
 
-  const data = await request.json();
+  let form: FormData;
+  try {
+    form = await request.formData();
+  } catch {
+    return Response.json(
+      { success: false, error: 'Expected multipart/form-data' },
+      { status: 400, headers }
+    );
+  }
 
-  const searchTerm = normalizeSearchTerm(data.analysis);
-  const signal = await composeVi({ term: searchTerm, analysis: data.analysis });
+  const image = form.get('image');
+  if (!(image instanceof File) || image.size === 0) {
+    return Response.json(
+      { success: false, error: 'image field is required (File)' },
+      { status: 400, headers }
+    );
+  }
 
-  const input: Capture = {
-    id: data.id || Date.now().toString(),
-    marketId: null,
-    timestamp: data.timestamp || new Date().toISOString(),
-    pageUrl: data.pageUrl,
-    pageTitle: data.pageTitle,
-    screenshot: data.screenshot,
-    analysis: data.analysis,
-    trends: signal.trends,
-    viralityScore: signal.score,
-  };
+  const sourceUrl = (form.get('sourceUrl') as string | null) ?? undefined;
+  const pageTitle = (form.get('pageTitle') as string | null) ?? undefined;
+  const pageContext = (form.get('pageContext') as string | null) ?? undefined;
+
+  const mediaType = toMediaType(image.type);
+  const buffer = Buffer.from(await image.arrayBuffer());
+  const imageBase64 = buffer.toString('base64');
 
   try {
-    const saved = await addCapture(input, supabase, user.id);
+    const result = await processCapture({
+      imageBase64,
+      mediaType,
+      sourceUrl,
+      pageTitle,
+      pageContext,
+      supabase,
+      userId: user.id,
+    });
+
     return Response.json(
-      { success: true, id: saved.id, viralityScore: saved.viralityScore },
+      {
+        success: true,
+        marketId: result.marketId,
+        entityName: result.entityName,
+        isNew: result.isNew,
+        vi: result.vi,
+        source: result.source,
+      },
       { headers }
     );
   } catch (err) {
-    console.error('[captures POST] failed to persist', err);
+    console.error('[captures POST] failed', err);
     return Response.json(
       { success: false, error: (err as Error).message },
       { status: 500, headers }

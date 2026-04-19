@@ -210,11 +210,16 @@ async function buildTrendsView(
   };
 }
 
+export interface AddCaptureResult {
+  capture: Capture;
+  isNew: boolean;
+}
+
 export async function addCapture(
   input: Capture,
   sessionClient: DbClient,
   userId: string
-): Promise<Capture> {
+): Promise<AddCaptureResult> {
   const admin = createAdminClient();
 
   const entityName = input.analysis?.name || normalizeSearchTerm(input.analysis) || 'Unknown';
@@ -224,12 +229,12 @@ export async function addCapture(
   // then resolve/create the shared market row via admin (bypasses RLS).
   const image_url = await uploadScreenshot(sessionClient, input.screenshot, userId);
   const { market, similarity } = await resolveOrCreateMarket(entityName, entityType);
+  const isNew = similarity === null;
 
-  // similarity === null means we created a brand-new market — the match was
-  // the right call, so we mark it resolved. Otherwise route anything under
-  // HIGH_CONFIDENCE to the admin review queue.
+  // Brand-new markets (isNew) are resolved by definition; otherwise route
+  // anything under HIGH_CONFIDENCE to the admin review queue.
   const resolutionStatus: 'resolved' | 'review' =
-    similarity === null || similarity >= HIGH_CONFIDENCE ? 'resolved' : 'review';
+    isNew || similarity! >= HIGH_CONFIDENCE ? 'resolved' : 'review';
 
   const rawAiResponse: Record<string, unknown> = {
     ...input.analysis,
@@ -267,12 +272,15 @@ export async function addCapture(
     .eq('id', market.id);
 
   return {
-    ...input,
-    id: captureRow.id as string,
-    marketId: market.id,
-    timestamp: captureRow.created_at as string,
-    screenshot: image_url,
-    viralityScore: vi,
+    capture: {
+      ...input,
+      id: captureRow.id as string,
+      marketId: market.id,
+      timestamp: captureRow.created_at as string,
+      screenshot: image_url,
+      viralityScore: vi,
+    },
+    isNew,
   };
 }
 
