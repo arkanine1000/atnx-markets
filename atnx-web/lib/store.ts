@@ -316,9 +316,10 @@ export async function getCaptures(limit = 50): Promise<Capture[]> {
   const { data, error } = await supabase
     .from('captures')
     .select(
-      'id, created_at, image_url, source_url, ocr_text, raw_ai_response, market_id, market:markets(id, entity_name, entity_type, current_vi, vi_last_updated, total_captures)'
+      'id, created_at, image_url, source_url, ocr_text, raw_ai_response, market_id, market:markets!inner(id, entity_name, entity_type, current_vi, vi_last_updated, total_captures)'
     )
     .is('deleted_at', null)
+    .is('market.deleted_at', null)
     .order('created_at', { ascending: false })
     .limit(limit)
     .returns<CaptureRowWithMarket[]>();
