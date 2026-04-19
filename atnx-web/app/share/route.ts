@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { processCapture, toMediaType } from '@/lib/capture';
-import { fetchImageFromUrl } from '@/lib/og';
+import { fetchImageFromUrl, OgFetchError } from '@/lib/og';
 import { createClient } from '@/lib/supabase/server';
 import type { VisionMediaType } from '@/lib/claude-vision';
 
@@ -58,6 +58,16 @@ export async function POST(request: Request) {
   // (e.g. when apps use ACTION_SEND with text/plain). Fall back to scanning.
   const linkUrl = rawUrl || firstUrl(rawText) || firstUrl(rawTitle);
 
+  console.log('[share] received', {
+    hasImage: image instanceof File && image.size > 0,
+    imageType: image instanceof File ? image.type : null,
+    imageSize: image instanceof File ? image.size : null,
+    rawTitle,
+    rawText,
+    rawUrl,
+    linkUrl,
+  });
+
   let imageBase64: string | undefined;
   let mediaType: VisionMediaType | undefined;
   let sourceUrl = rawUrl || linkUrl;
@@ -69,20 +79,23 @@ export async function POST(request: Request) {
     const buffer = Buffer.from(await image.arrayBuffer());
     imageBase64 = buffer.toString('base64');
   } else if (linkUrl) {
-    const fetched = await fetchImageFromUrl(linkUrl);
-    if (!fetched) {
-      return errorRedirect(
-        request,
-        "Couldn't find an image for that link — try sharing a screenshot instead."
-      );
+    try {
+      const fetched = await fetchImageFromUrl(linkUrl);
+      imageBase64 = fetched.imageBase64;
+      mediaType = fetched.mediaType;
+      sourceUrl = linkUrl;
+      // Prefer OG-derived title/description; fall back to whatever the share
+      // sheet supplied (often just the URL).
+      pageTitle = fetched.pageTitle ?? pageTitle;
+      pageContext = fetched.pageContext ?? pageContext;
+    } catch (err) {
+      const reason =
+        err instanceof OgFetchError
+          ? err.reason
+          : (err as Error).message || 'Unknown fetch error';
+      console.error('[share] og fetch failed', { linkUrl, reason });
+      return errorRedirect(request, `Couldn't grab image: ${reason}`);
     }
-    imageBase64 = fetched.imageBase64;
-    mediaType = fetched.mediaType;
-    sourceUrl = linkUrl;
-    // Prefer OG-derived title/description; fall back to whatever the share
-    // sheet supplied (often just the URL).
-    pageTitle = fetched.pageTitle ?? pageTitle;
-    pageContext = fetched.pageContext ?? pageContext;
   } else {
     return errorRedirect(request, 'No image or link in shared content');
   }

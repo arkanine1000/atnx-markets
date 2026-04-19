@@ -1,10 +1,31 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, Suspense } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Nav } from "@/components/Nav";
 import { TrendSparkline } from "@/components/Trading";
 import { mock24hChange } from "@/lib/capture-view";
+
+function ShareErrorBanner() {
+  const searchParams = useSearchParams();
+  const shareError = searchParams.get("shareError");
+  const [dismissed, setDismissed] = useState(false);
+  if (!shareError || dismissed) return null;
+  return (
+    <div className="mb-4 flex items-start gap-3 rounded border border-atnx-magenta/40 bg-atnx-magenta/10 px-3 py-2 text-xs text-atnx-magenta">
+      <span className="font-bold shrink-0">SHARE FAILED:</span>
+      <span className="flex-1 break-words">{shareError}</span>
+      <button
+        onClick={() => setDismissed(true)}
+        className="text-atnx-magenta/70 hover:text-atnx-magenta shrink-0 cursor-pointer"
+        aria-label="Dismiss"
+      >
+        {"\u2715"}
+      </button>
+    </div>
+  );
+}
 
 interface TrendsData {
   term: string;
@@ -217,6 +238,10 @@ export default function Home() {
   return (
     <div className="max-w-4xl mx-auto px-4 py-8 w-full">
       <Nav />
+
+      <Suspense fallback={null}>
+        <ShareErrorBanner />
+      </Suspense>
 
       {/* Sort controls — magenta active state */}
       {captures.length > 0 && (
