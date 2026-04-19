@@ -12,19 +12,22 @@ import {
 import { useDemoContext } from "@/context/DemoContext";
 import { useAuth } from "@/context/AuthContext";
 import { mock24hChange, sentimentColor, timeAgo } from "@/lib/capture-view";
-import type { Capture, MarketRow } from "@/lib/store";
+import type { Capture, MarketRow, TradeLogEvent } from "@/lib/store";
 import type { TrendsResult } from "@/lib/trends";
+import { TradeLog } from "@/components/TradeLog";
 
 interface Props {
   market: MarketRow;
   captures: Capture[];
   trends: TrendsResult | null;
+  initialTradeLog: TradeLogEvent[];
 }
 
 export function MarketDetailClient({
   market,
   captures,
   trends,
+  initialTradeLog,
 }: Props) {
   const { positions } = useDemoContext();
   const { user, openLoginModal } = useAuth();
@@ -259,6 +262,8 @@ export function MarketDetailClient({
               )}
             </div>
           </div>
+
+          <TradeLog marketId={market.id} initialEvents={initialTradeLog} />
 
           {captures.length > 1 && (
             <div className="pt-4 border-t border-surface">
