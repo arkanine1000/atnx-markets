@@ -31,7 +31,7 @@ export function Nav({ captureCount }: { captureCount: number }) {
           <Link
             href="/app"
             className={`px-3 py-1.5 rounded border transition-colors ${
-              pathname === "/app"
+              pathname === "/app" || pathname.startsWith("/app/markets")
                 ? "bg-atnx-magenta text-black border-atnx-magenta font-bold"
                 : "bg-surface text-secondary border-surface hover:border-atnx-cyan/50"
             }`}

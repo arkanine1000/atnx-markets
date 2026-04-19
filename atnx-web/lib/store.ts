@@ -32,7 +32,7 @@ export interface Capture {
   viralityScore: number;
 }
 
-type MarketRow = {
+export type MarketRow = {
   id: string;
   entity_name: string;
   entity_type: string | null;
@@ -276,6 +276,32 @@ export async function addCapture(
   };
 }
 
+function rowToCapture(
+  row: CaptureRowWithMarket,
+  trends: TrendsResult | null
+): Capture {
+  const analysis = (row.raw_ai_response ?? {}) as Capture['analysis'] & {
+    _meta?: { page_title?: string; captured_at?: string };
+  };
+  const meta = analysis._meta;
+  const market = row.market;
+
+  const cleanedAnalysis: Capture['analysis'] = { ...analysis };
+  delete (cleanedAnalysis as Record<string, unknown>)._meta;
+
+  return {
+    id: row.id,
+    marketId: row.market_id,
+    timestamp: meta?.captured_at ?? row.created_at,
+    pageUrl: row.source_url ?? '',
+    pageTitle: meta?.page_title ?? '',
+    screenshot: row.image_url ?? '',
+    analysis: cleanedAnalysis,
+    trends,
+    viralityScore: Math.round(market?.current_vi ?? 0),
+  };
+}
+
 export async function getCaptures(limit = 50): Promise<Capture[]> {
   const supabase = createAdminClient();
 
@@ -291,31 +317,59 @@ export async function getCaptures(limit = 50): Promise<Capture[]> {
   if (error) throw error;
   if (!data) return [];
 
-  const results = await Promise.all(
+  return Promise.all(
     data.map(async (row) => {
-      const analysis = (row.raw_ai_response ?? {}) as Capture['analysis'] & {
-        _meta?: { page_title?: string; captured_at?: string };
-      };
-      const meta = analysis._meta;
       const market = row.market;
-      const trends = market ? await buildTrendsView(market.id, market.entity_name) : null;
-
-      const cleanedAnalysis: Capture['analysis'] = { ...analysis };
-      delete (cleanedAnalysis as Record<string, unknown>)._meta;
-
-      return {
-        id: row.id,
-        marketId: row.market_id,
-        timestamp: meta?.captured_at ?? row.created_at,
-        pageUrl: row.source_url ?? '',
-        pageTitle: meta?.page_title ?? '',
-        screenshot: row.image_url ?? '',
-        analysis: cleanedAnalysis,
-        trends,
-        viralityScore: Math.round(market?.current_vi ?? 0),
-      } satisfies Capture;
+      const trends = market
+        ? await buildTrendsView(market.id, market.entity_name)
+        : null;
+      return rowToCapture(row, trends);
     })
   );
+}
 
-  return results;
+export interface MarketDetail {
+  market: MarketRow;
+  latest: Capture;
+  captures: Capture[];
+  trends: TrendsResult | null;
+}
+
+export async function getMarketDetail(
+  marketId: string
+): Promise<MarketDetail | null> {
+  const supabase = createAdminClient();
+
+  const { data: market, error: marketErr } = await supabase
+    .from('markets')
+    .select(
+      'id, entity_name, entity_type, current_vi, vi_last_updated, total_captures'
+    )
+    .eq('id', marketId)
+    .is('deleted_at', null)
+    .maybeSingle();
+  if (marketErr) throw marketErr;
+  if (!market) return null;
+
+  const { data: captureRows, error: captureErr } = await supabase
+    .from('captures')
+    .select(
+      'id, created_at, image_url, source_url, ocr_text, raw_ai_response, market_id, market:markets(id, entity_name, entity_type, current_vi, vi_last_updated, total_captures)'
+    )
+    .eq('market_id', marketId)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false })
+    .returns<CaptureRowWithMarket[]>();
+  if (captureErr) throw captureErr;
+  if (!captureRows || captureRows.length === 0) return null;
+
+  const trends = await buildTrendsView(market.id, market.entity_name);
+  const captures = captureRows.map((row) => rowToCapture(row, trends));
+
+  return {
+    market: market as MarketRow,
+    latest: captures[0],
+    captures,
+    trends,
+  };
 }
