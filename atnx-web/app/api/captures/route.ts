@@ -1,8 +1,6 @@
-import { addCapture, getCaptures, type Capture } from '@/lib/store';
-import { normalizeSearchTerm } from '@/lib/trends';
-import { composeVi } from '@/lib/signals';
+import { getCaptures } from '@/lib/store';
+import { processCapture, toMediaType } from '@/lib/capture';
 import { createClient } from '@/lib/supabase/server';
-import { analyzeScreenshot, type VisionMediaType } from '@/lib/claude-vision';
 
 // CORS with credentials requires echoing the caller's Origin (not `*`) so the
 // Chrome extension's auth cookie is accepted on cross-origin requests.
@@ -15,18 +13,6 @@ function corsHeaders(request: Request): Record<string, string> {
     'Access-Control-Allow-Headers': 'Content-Type',
     Vary: 'Origin',
   };
-}
-
-const SUPPORTED_MEDIA: VisionMediaType[] = [
-  'image/png',
-  'image/jpeg',
-  'image/webp',
-  'image/gif',
-];
-
-function toMediaType(mime: string): VisionMediaType {
-  const normalized = (mime || '').toLowerCase() as VisionMediaType;
-  return SUPPORTED_MEDIA.includes(normalized) ? normalized : 'image/png';
 }
 
 export async function POST(request: Request) {
@@ -71,39 +57,24 @@ export async function POST(request: Request) {
   const imageBase64 = buffer.toString('base64');
 
   try {
-    const analysis = await analyzeScreenshot({
+    const result = await processCapture({
       imageBase64,
       mediaType,
       sourceUrl,
       pageTitle,
       pageContext,
+      supabase,
+      userId: user.id,
     });
-
-    const searchTerm = normalizeSearchTerm(analysis);
-    const signal = await composeVi({ term: searchTerm, analysis });
-
-    const input: Capture = {
-      id: crypto.randomUUID(),
-      marketId: null,
-      timestamp: new Date().toISOString(),
-      pageUrl: sourceUrl ?? '',
-      pageTitle: pageTitle ?? '',
-      screenshot: imageBase64,
-      analysis,
-      trends: signal.trends,
-      viralityScore: signal.score,
-    };
-
-    const { capture, isNew } = await addCapture(input, supabase, user.id);
 
     return Response.json(
       {
         success: true,
-        marketId: capture.marketId,
-        entityName: analysis.name ?? null,
-        isNew,
-        vi: signal.score,
-        source: signal.source,
+        marketId: result.marketId,
+        entityName: result.entityName,
+        isNew: result.isNew,
+        vi: result.vi,
+        source: result.source,
       },
       { headers }
     );

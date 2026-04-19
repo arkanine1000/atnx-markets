@@ -34,5 +34,27 @@ export default function manifest(): MetadataRoute.Manifest {
         purpose: 'maskable',
       },
     ],
+    // Android share target: tapping "Share" on an image in any app and
+    // picking ATNX POSTs the image + optional text to /share, which runs
+    // the same pipeline as /api/captures and redirects to the new market.
+    // Next's MetadataRoute.Manifest types `files` as File[] (incorrect —
+    // the spec expects {name, accept} entries), so we cast.
+    share_target: {
+      action: '/share',
+      method: 'POST',
+      enctype: 'multipart/form-data',
+      params: {
+        title: 'title',
+        text: 'text',
+        url: 'url',
+        files: [
+          {
+            name: 'image',
+            accept: ['image/png', 'image/jpeg', 'image/webp', 'image/gif'],
+          },
+        ],
+      },
+    } as MetadataRoute.Manifest['share_target'],
   };
 }
+
