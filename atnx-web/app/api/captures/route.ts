@@ -2,6 +2,7 @@ import { addCapture, getCaptures, type Capture } from '@/lib/store';
 import { normalizeSearchTerm } from '@/lib/trends';
 import { composeVi } from '@/lib/signals';
 import { createClient } from '@/lib/supabase/server';
+import { analyzeScreenshot, type VisionMediaType } from '@/lib/claude-vision';
 
 // CORS with credentials requires echoing the caller's Origin (not `*`) so the
 // Chrome extension's auth cookie is accepted on cross-origin requests.
@@ -14,6 +15,18 @@ function corsHeaders(request: Request): Record<string, string> {
     'Access-Control-Allow-Headers': 'Content-Type',
     Vary: 'Origin',
   };
+}
+
+const SUPPORTED_MEDIA: VisionMediaType[] = [
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+  'image/gif',
+];
+
+function toMediaType(mime: string): VisionMediaType {
+  const normalized = (mime || '').toLowerCase() as VisionMediaType;
+  return SUPPORTED_MEDIA.includes(normalized) ? normalized : 'image/png';
 }
 
 export async function POST(request: Request) {
@@ -31,31 +44,70 @@ export async function POST(request: Request) {
     );
   }
 
-  const data = await request.json();
+  let form: FormData;
+  try {
+    form = await request.formData();
+  } catch {
+    return Response.json(
+      { success: false, error: 'Expected multipart/form-data' },
+      { status: 400, headers }
+    );
+  }
 
-  const searchTerm = normalizeSearchTerm(data.analysis);
-  const signal = await composeVi({ term: searchTerm, analysis: data.analysis });
+  const image = form.get('image');
+  if (!(image instanceof File) || image.size === 0) {
+    return Response.json(
+      { success: false, error: 'image field is required (File)' },
+      { status: 400, headers }
+    );
+  }
 
-  const input: Capture = {
-    id: data.id || Date.now().toString(),
-    marketId: null,
-    timestamp: data.timestamp || new Date().toISOString(),
-    pageUrl: data.pageUrl,
-    pageTitle: data.pageTitle,
-    screenshot: data.screenshot,
-    analysis: data.analysis,
-    trends: signal.trends,
-    viralityScore: signal.score,
-  };
+  const sourceUrl = (form.get('sourceUrl') as string | null) ?? undefined;
+  const pageTitle = (form.get('pageTitle') as string | null) ?? undefined;
+  const pageContext = (form.get('pageContext') as string | null) ?? undefined;
+
+  const mediaType = toMediaType(image.type);
+  const buffer = Buffer.from(await image.arrayBuffer());
+  const imageBase64 = buffer.toString('base64');
 
   try {
-    const saved = await addCapture(input, supabase, user.id);
+    const analysis = await analyzeScreenshot({
+      imageBase64,
+      mediaType,
+      sourceUrl,
+      pageTitle,
+      pageContext,
+    });
+
+    const searchTerm = normalizeSearchTerm(analysis);
+    const signal = await composeVi({ term: searchTerm, analysis });
+
+    const input: Capture = {
+      id: crypto.randomUUID(),
+      marketId: null,
+      timestamp: new Date().toISOString(),
+      pageUrl: sourceUrl ?? '',
+      pageTitle: pageTitle ?? '',
+      screenshot: imageBase64,
+      analysis,
+      trends: signal.trends,
+      viralityScore: signal.score,
+    };
+
+    const { capture, isNew } = await addCapture(input, supabase, user.id);
+
     return Response.json(
-      { success: true, id: saved.id, viralityScore: saved.viralityScore },
+      {
+        success: true,
+        marketId: capture.marketId,
+        isNew,
+        vi: signal.score,
+        source: signal.source,
+      },
       { headers }
     );
   } catch (err) {
-    console.error('[captures POST] failed to persist', err);
+    console.error('[captures POST] failed', err);
     return Response.json(
       { success: false, error: (err as Error).message },
       { status: 500, headers }
