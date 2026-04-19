@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { getMarketDetail } from "@/lib/store";
+import { getMarketDetail, getMarketTradeLog } from "@/lib/store";
 import { MarketDetailClient } from "./market-detail";
 
 export const dynamic = "force-dynamic";
@@ -10,7 +10,10 @@ export default async function MarketPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const detail = await getMarketDetail(id);
+  const [detail, tradeLog] = await Promise.all([
+    getMarketDetail(id),
+    getMarketTradeLog(id),
+  ]);
   if (!detail) notFound();
 
   return (
@@ -18,6 +21,7 @@ export default async function MarketPage({
       market={detail.market}
       captures={detail.captures}
       trends={detail.trends}
+      initialTradeLog={tradeLog}
     />
   );
 }
