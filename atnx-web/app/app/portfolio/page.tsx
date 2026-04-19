@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import Link from "next/link";
 import { useDemoContext, calculatePnL, type Position } from "@/context/DemoContext";
 import { useAuth } from "@/context/AuthContext";
@@ -112,20 +112,12 @@ export default function PortfolioPage() {
   const { positions, balance } = useDemoContext();
   const { closePosition } = useDemoContext();
   const { user, loading: authLoading, openLoginModal } = useAuth();
-  const [captureCount, setCaptureCount] = useState(0);
   const [closingPosition, setClosingPosition] = useState<Position | null>(null);
   const [toast, setToast] = useState<{
     message: string;
     detail: string;
     type: "long" | "short" | "close-profit" | "close-loss";
   } | null>(null);
-
-  useEffect(() => {
-    fetch("/api/captures")
-      .then((r) => r.json())
-      .then((d) => setCaptureCount(d.captures?.length ?? 0))
-      .catch(() => {});
-  }, []);
 
   const handleClose = useCallback(
     async (pos: Position) => {
@@ -161,7 +153,7 @@ export default function PortfolioPage() {
   if (!authLoading && !user) {
     return (
       <div className="max-w-4xl mx-auto px-4 py-8 w-full">
-        <Nav captureCount={captureCount} />
+        <Nav />
         <div className="bg-surface border border-surface rounded-lg p-8 text-center mt-6">
           <p className="text-primary text-sm mb-1">
             Sign in to view your portfolio.
@@ -182,7 +174,7 @@ export default function PortfolioPage() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8 w-full">
-      <Nav captureCount={captureCount} />
+      <Nav />
 
       {/* Portfolio summary */}
       <div className="bg-surface border border-surface rounded-lg p-4 sm:p-5 mb-6 grid grid-cols-3 gap-2 sm:gap-4">

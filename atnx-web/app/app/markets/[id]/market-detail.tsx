@@ -19,14 +19,12 @@ interface Props {
   market: MarketRow;
   captures: Capture[];
   trends: TrendsResult | null;
-  captureCount: number;
 }
 
 export function MarketDetailClient({
   market,
   captures,
   trends,
-  captureCount,
 }: Props) {
   const { positions } = useDemoContext();
   const { user, openLoginModal } = useAuth();
@@ -77,7 +75,7 @@ export function MarketDetailClient({
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8 w-full">
-      <Nav captureCount={captureCount} />
+      <Nav />
 
       <Link
         href="/app"
