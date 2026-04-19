@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useDemoContext, calculatePnL, type Position } from "@/context/DemoContext";
+import { useAuth } from "@/context/AuthContext";
 import { Nav } from "@/components/Nav";
 import { ClosePositionModal, DemoToast } from "@/components/Trading";
 import { timeAgo } from "@/lib/capture-view";
@@ -110,6 +111,7 @@ function PositionCard({
 export default function PortfolioPage() {
   const { positions, balance } = useDemoContext();
   const { closePosition } = useDemoContext();
+  const { user, loading: authLoading, openLoginModal } = useAuth();
   const [captureCount, setCaptureCount] = useState(0);
   const [closingPosition, setClosingPosition] = useState<Position | null>(null);
   const [toast, setToast] = useState<{
@@ -155,6 +157,28 @@ export default function PortfolioPage() {
   const totalPnLPercent = totalSize > 0 ? (totalPnL / totalSize) * 100 : 0;
   const totalDirColor = totalPnL >= 0 ? "#00D4FF" : "#FF00E5";
   const totalDirArrow = totalPnL >= 0 ? "\u25B2" : "\u25BC";
+
+  if (!authLoading && !user) {
+    return (
+      <div className="max-w-4xl mx-auto px-4 py-8 w-full">
+        <Nav captureCount={captureCount} />
+        <div className="bg-surface border border-surface rounded-lg p-8 text-center mt-6">
+          <p className="text-primary text-sm mb-1">
+            Sign in to view your portfolio.
+          </p>
+          <p className="text-tertiary text-xs mb-5">
+            Balance, open positions, and PnL are tied to your account.
+          </p>
+          <button
+            onClick={openLoginModal}
+            className="text-xs px-5 py-2.5 rounded border border-atnx-magenta text-atnx-magenta hover:bg-atnx-magenta hover:text-black cursor-pointer transition-colors font-bold"
+          >
+            Login
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8 w-full">

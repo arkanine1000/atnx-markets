@@ -4,42 +4,37 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { signOut } from "@/app/actions/auth";
+import { useAuth } from "@/context/AuthContext";
 
 export function UserMenu() {
+  const { user, loading, openLoginModal } = useAuth();
   const [handle, setHandle] = useState<string | null>(null);
   const [role, setRole] = useState<"user" | "admin" | "moderator" | null>(null);
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
+  // Load profile when a user is present. When the user becomes null we render
+  // the Login button branch below, so stale handle/role state is never shown.
   useEffect(() => {
+    if (!user) return;
     let cancelled = false;
-    async function load() {
+    async function load(userId: string) {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) {
-        if (!cancelled) {
-          setHandle(null);
-          setRole(null);
-        }
-        return;
-      }
       const { data: profile } = await supabase
         .from("user_profiles")
         .select("handle, role")
-        .eq("id", user.id)
+        .eq("id", userId)
         .maybeSingle();
       if (!cancelled) {
         setHandle(profile?.handle ?? null);
         setRole(profile?.role ?? null);
       }
     }
-    load();
+    load(user.id);
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     if (!open) return;
@@ -50,6 +45,20 @@ export function UserMenu() {
     return () => document.removeEventListener("mousedown", onClick);
   }, [open]);
 
+  if (loading) return null;
+
+  if (!user) {
+    return (
+      <button
+        onClick={openLoginModal}
+        className="text-xs px-3 py-1.5 rounded border border-atnx-magenta bg-atnx-magenta/10 text-atnx-magenta hover:bg-atnx-magenta hover:text-black cursor-pointer transition-colors font-mono font-bold whitespace-nowrap"
+      >
+        Login
+      </button>
+    );
+  }
+
+  // Authenticated but profile still loading — keep the slot stable.
   if (!handle) return null;
 
   return (
