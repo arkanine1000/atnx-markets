@@ -4,6 +4,9 @@ const DEFAULT_WEB_APP_URL = 'https://atnx.app';
 // blew the 10 MB chrome.storage.local quota. Web dashboard is now the source
 // of truth, so drop the key on every service-worker wake.
 chrome.storage.local.remove('captures').catch(() => {});
+// Claude vision moved server-side in v1.2 — the extension no longer needs
+// an Anthropic API key. Clear any stored value on every wake.
+chrome.storage.local.remove('apiKey').catch(() => {});
 
 async function getWebAppUrl() {
   const { webAppUrl } = await chrome.storage.local.get('webAppUrl');
@@ -73,6 +76,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 });
 
+function base64ToBlob(base64, mediaType) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type: mediaType });
+}
+
 async function handleCapture(msg, tab) {
   try {
     updateStatus('capturing');
@@ -87,51 +97,45 @@ async function handleCapture(msg, tab) {
     updateStatus('analyzing');
     notifyTab(tab, 'analyzing');
 
-    // 3. Send to AI
-    const analysis = await analyzeWithAI(croppedBase64, msg.pageUrl, msg.pageTitle);
-
-    // 4. Build result
-    const result = {
-      id: Date.now().toString(),
-      timestamp: new Date().toISOString(),
-      screenshot: croppedBase64,
-      pageUrl: msg.pageUrl,
-      pageTitle: msg.pageTitle,
-      analysis: analysis
-    };
-
-    // 5. Bump the popup counter (web app holds the durable history).
+    // 3. Bump the popup counter (web app holds the durable history).
     const { captureCount = 0 } = await chrome.storage.local.get('captureCount');
     await chrome.storage.local.set({ captureCount: captureCount + 1 });
 
-    // 6. POST to web app. `credentials: 'include'` attaches the Supabase auth
-    // cookie so the route handler can attribute the capture to the signed-in
-    // user. If the user isn't signed in, the server returns 401.
+    // 4. POST the raw image to the web app. The server runs Claude vision and
+    // persists the capture. `credentials: 'include'` attaches the Supabase
+    // auth cookie so the handler can attribute the capture to the user.
     const webAppUrl = await getWebAppUrl();
+    const form = new FormData();
+    form.append('image', base64ToBlob(croppedBase64, 'image/png'), 'capture.png');
+    form.append('sourceUrl', msg.pageUrl || '');
+    form.append('pageTitle', msg.pageTitle || '');
+
     let persistFailed = null;
+    let serverPayload = null;
     try {
       const res = await fetch(`${webAppUrl}/api/captures`, {
         method: 'POST',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(result)
+        body: form
       });
       if (res.status === 401) {
         persistFailed = `Sign in at ${hostOf(webAppUrl)} first`;
       } else if (!res.ok) {
         persistFailed = `Save failed (${res.status})`;
+      } else {
+        serverPayload = await res.json().catch(() => null);
       }
     } catch (e) {
       console.warn('Could not send to web app:', e.message);
       persistFailed = 'Web app unreachable — check URL in popup';
     }
 
-    const name = analysis.name || 'Content';
     if (persistFailed) {
       updateStatus('error');
       notifyTab(tab, 'error', persistFailed);
       setTimeout(() => updateStatus('ready'), 5000);
     } else {
+      const name = serverPayload?.entityName || 'Content';
       updateStatus('done');
       notifyTab(tab, 'done', `Identified: ${name}`);
       setTimeout(() => updateStatus('ready'), 3000);
@@ -174,74 +178,6 @@ async function cropImageOffscreen(dataUrl, rect) {
   });
 
   return response.base64;
-}
-
-async function analyzeWithAI(base64Image, pageUrl, pageTitle) {
-  const { apiKey } = await chrome.storage.local.get('apiKey');
-
-  if (!apiKey) {
-    return { error: 'No API key configured. Open the extension popup to set your Anthropic API key.' };
-  }
-
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true'
-    },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 1024,
-      messages: [{
-        role: 'user',
-        content: [
-          {
-            type: 'image',
-            source: {
-              type: 'base64',
-              media_type: 'image/png',
-              data: base64Image
-            }
-          },
-          {
-            type: 'text',
-            text: `Analyze this screenshot captured from ${pageUrl} (${pageTitle}).
-
-Identify the main subject/content and extract the following information. Respond ONLY in valid JSON with these fields:
-
-{
-  "type": "meme" | "trend" | "person" | "brand" | "event" | "other",
-  "name": "The primary name/identifier of the subject",
-  "description": "Brief 1-2 sentence description of what this is",
-  "category": "e.g. crypto, politics, entertainment, tech, sports, culture",
-  "platforms_detected": ["list of any social platforms visible in the screenshot"],
-  "metrics_detected": {
-    "any visible numbers like views, likes, followers, subscribers etc"
-  },
-  "sentiment": "positive" | "negative" | "neutral" | "mixed",
-  "virality_signals": "Brief assessment of any virality indicators visible",
-  "raw_text": "Any readable text extracted from the image"
-}`
-          }
-        ]
-      }]
-    })
-  });
-
-  const data = await response.json();
-
-  if (data.error) {
-    return { error: data.error.message || 'API error', raw_response: JSON.stringify(data.error) };
-  }
-
-  const textContent = data.content.find(c => c.type === 'text')?.text;
-  try {
-    return JSON.parse(textContent.replace(/```json|```/g, '').trim());
-  } catch {
-    return { raw_response: textContent, parse_error: true };
-  }
 }
 
 function updateStatus(status) {

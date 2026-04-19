@@ -100,6 +100,7 @@ export async function POST(request: Request) {
       {
         success: true,
         marketId: capture.marketId,
+        entityName: analysis.name ?? null,
         isNew,
         vi: signal.score,
         source: signal.source,
