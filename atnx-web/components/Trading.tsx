@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   LineChart,
   Line,
@@ -31,6 +31,27 @@ export function TrendSparkline({
   const liveData = useFakeTicker(dataPoints, isLiveMode);
   const displayData = isLiveMode ? liveData : dataPoints;
 
+  // Skip rendering the ResponsiveContainer until the wrapper has a real width.
+  // Parents with max-w-* only or `display: none` at breakpoints otherwise make
+  // recharts log a width(-1)/height(-1) warning on first measurement.
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const [hasSize, setHasSize] = useState(false);
+  useEffect(() => {
+    const el = wrapperRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      for (const e of entries) {
+        if (e.contentRect.width > 0 && e.contentRect.height > 0) {
+          setHasSize(true);
+          return;
+        }
+      }
+      setHasSize(false);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   if (!displayData || displayData.length === 0) {
     return (
       <div
@@ -59,37 +80,39 @@ export function TrendSparkline({
   const entryY = entryIndex !== undefined ? entryIndex / 10 : undefined;
 
   return (
-    <div style={{ height }} className="w-full">
-      <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={displayData}>
-          <YAxis domain={[0, 100]} hide />
-          <Line
-            type="monotone"
-            dataKey="value"
-            stroke={color}
-            strokeWidth={1.5}
-            dot={false}
-            isAnimationActive={false}
-          />
-          {entryY !== undefined && (
-            <ReferenceLine
-              y={entryY}
-              stroke={entryColor}
-              strokeDasharray="3 3"
-              strokeOpacity={0.5}
+    <div ref={wrapperRef} style={{ height }} className="w-full">
+      {hasSize && (
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={displayData}>
+            <YAxis domain={[0, 100]} hide />
+            <Line
+              type="monotone"
+              dataKey="value"
+              stroke={color}
+              strokeWidth={1.5}
+              dot={false}
+              isAnimationActive={false}
             />
-          )}
-          {entryPointIdx !== undefined && entryY !== undefined && (
-            <ReferenceDot
-              x={entryPointIdx}
-              y={displayData[entryPointIdx]?.value ?? entryY}
-              r={4}
-              fill={entryColor}
-              stroke="none"
-            />
-          )}
-        </LineChart>
-      </ResponsiveContainer>
+            {entryY !== undefined && (
+              <ReferenceLine
+                y={entryY}
+                stroke={entryColor}
+                strokeDasharray="3 3"
+                strokeOpacity={0.5}
+              />
+            )}
+            {entryPointIdx !== undefined && entryY !== undefined && (
+              <ReferenceDot
+                x={entryPointIdx}
+                y={displayData[entryPointIdx]?.value ?? entryY}
+                r={4}
+                fill={entryColor}
+                stroke="none"
+              />
+            )}
+          </LineChart>
+        </ResponsiveContainer>
+      )}
     </div>
   );
 }
