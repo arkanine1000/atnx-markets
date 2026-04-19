@@ -309,7 +309,40 @@ export type Database = {
       };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      find_similar_market: {
+        Args: { query_name: string; threshold?: number };
+        Returns: { id: string; entity_name: string; similarity: number }[];
+      };
+      is_admin: {
+        Args: Record<string, never>;
+        Returns: boolean;
+      };
+      admin_soft_delete_market: {
+        Args: { market_id: string; reason?: string | null };
+        Returns: null;
+      };
+      admin_restore_market: {
+        Args: { market_id: string; reason?: string | null };
+        Returns: null;
+      };
+      admin_edit_market_name: {
+        Args: { market_id: string; new_name: string; reason?: string | null };
+        Returns: null;
+      };
+      admin_soft_delete_capture: {
+        Args: { capture_id: string; reason?: string | null };
+        Returns: null;
+      };
+      admin_reassign_capture: {
+        Args: {
+          capture_id: string;
+          new_market_id: string;
+          reason?: string | null;
+        };
+        Returns: null;
+      };
+    };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
   };

@@ -79,21 +79,42 @@ async function uploadScreenshot(
   return data.publicUrl;
 }
 
+// Trigram similarity threshold: anything above is considered the same entity.
+// Above HIGH_CONFIDENCE we auto-resolve; in between the capture is flagged for
+// admin review but still attached to the matched market.
+const TRIGRAM_THRESHOLD = 0.85;
+const HIGH_CONFIDENCE = 0.95;
+
+interface MarketResolution {
+  market: MarketRow;
+  similarity: number | null; // null when a brand-new market was created
+}
+
 async function resolveOrCreateMarket(
   entityName: string,
   entityType: string | null
-): Promise<MarketRow> {
+): Promise<MarketResolution> {
   const supabase = createAdminClient();
   const normalized = entityName.toLowerCase().trim();
 
-  const { data: existing, error: findErr } = await supabase
-    .from('markets')
-    .select('id, entity_name, entity_type, current_vi, vi_last_updated, total_captures')
-    .eq('entity_name_normalized', normalized)
-    .is('deleted_at', null)
-    .maybeSingle();
-  if (findErr) throw findErr;
-  if (existing) return existing as MarketRow;
+  const { data: matches, error: matchErr } = await supabase.rpc(
+    'find_similar_market',
+    { query_name: normalized, threshold: TRIGRAM_THRESHOLD }
+  );
+  if (matchErr) throw matchErr;
+
+  const top = matches?.[0];
+  if (top) {
+    const { data: existing, error: fetchErr } = await supabase
+      .from('markets')
+      .select('id, entity_name, entity_type, current_vi, vi_last_updated, total_captures')
+      .eq('id', top.id)
+      .maybeSingle();
+    if (fetchErr) throw fetchErr;
+    if (existing) {
+      return { market: existing as MarketRow, similarity: top.similarity };
+    }
+  }
 
   const { data: created, error: insertErr } = await supabase
     .from('markets')
@@ -105,7 +126,7 @@ async function resolveOrCreateMarket(
     .select('id, entity_name, entity_type, current_vi, vi_last_updated, total_captures')
     .single();
   if (insertErr) throw insertErr;
-  return created as MarketRow;
+  return { market: created as MarketRow, similarity: null };
 }
 
 async function recordVi(marketId: string, vi: number, dataPoints: TrendsResult['dataPoints']) {
@@ -202,7 +223,13 @@ export async function addCapture(
   // Upload under the user's folder so storage RLS ({user_id}/*.png) passes,
   // then resolve/create the shared market row via admin (bypasses RLS).
   const image_url = await uploadScreenshot(sessionClient, input.screenshot, userId);
-  const market = await resolveOrCreateMarket(entityName, entityType);
+  const { market, similarity } = await resolveOrCreateMarket(entityName, entityType);
+
+  // similarity === null means we created a brand-new market — the match was
+  // the right call, so we mark it resolved. Otherwise route anything under
+  // HIGH_CONFIDENCE to the admin review queue.
+  const resolutionStatus: 'resolved' | 'review' =
+    similarity === null || similarity >= HIGH_CONFIDENCE ? 'resolved' : 'review';
 
   const rawAiResponse: Record<string, unknown> = {
     ...input.analysis,
@@ -223,7 +250,8 @@ export async function addCapture(
       source_url: input.pageUrl,
       ocr_text: input.analysis?.raw_text ?? null,
       raw_ai_response: rawAiResponse,
-      resolution_status: 'resolved',
+      confidence_score: similarity,
+      resolution_status: resolutionStatus,
     })
     .select('id, created_at')
     .single();

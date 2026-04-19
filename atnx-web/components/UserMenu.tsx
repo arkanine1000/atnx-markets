@@ -7,6 +7,7 @@ import { signOut } from "@/app/actions/auth";
 
 export function UserMenu() {
   const [handle, setHandle] = useState<string | null>(null);
+  const [role, setRole] = useState<"user" | "admin" | "moderator" | null>(null);
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -18,15 +19,21 @@ export function UserMenu() {
         data: { user },
       } = await supabase.auth.getUser();
       if (!user) {
-        if (!cancelled) setHandle(null);
+        if (!cancelled) {
+          setHandle(null);
+          setRole(null);
+        }
         return;
       }
       const { data: profile } = await supabase
         .from("user_profiles")
-        .select("handle")
+        .select("handle, role")
         .eq("id", user.id)
         .maybeSingle();
-      if (!cancelled) setHandle(profile?.handle ?? null);
+      if (!cancelled) {
+        setHandle(profile?.handle ?? null);
+        setRole(profile?.role ?? null);
+      }
     }
     load();
     return () => {
@@ -66,6 +73,15 @@ export function UserMenu() {
           >
             Settings
           </Link>
+          {(role === "admin" || role === "moderator") && (
+            <Link
+              href="/admin"
+              onClick={() => setOpen(false)}
+              className="block px-3 py-2 text-xs text-atnx-yellow hover:bg-surface transition-colors"
+            >
+              Admin
+            </Link>
+          )}
           <form action={signOut}>
             <button
               type="submit"
