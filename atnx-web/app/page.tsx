@@ -1,15 +1,8 @@
 import { DotMatrixLogo } from "@/components/DotMatrixLogo";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { LaunchAppButton } from "@/components/LaunchAppButton";
-import { createClient } from "@/lib/supabase/server";
 
-export default async function LandingPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  const signedIn = !!user;
-
+export default function LandingPage() {
   return (
     <main className="h-screen w-screen flex flex-col items-center justify-center overflow-hidden relative">
       {/* Theme toggle — fixed top right */}
@@ -37,7 +30,7 @@ export default async function LandingPage() {
         >
           Join Waitlist
         </button>
-        <LaunchAppButton signedIn={signedIn} />
+        <LaunchAppButton />
       </div>
     </main>
   );

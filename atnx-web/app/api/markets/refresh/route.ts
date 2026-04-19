@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { fetchTrendsData } from '@/lib/trends';
+import { composeVi } from '@/lib/signals';
 import { recordVi } from '@/lib/store';
 
 // Vercel cron calls this endpoint every 5 minutes (see vercel.json). It
@@ -49,14 +49,14 @@ export async function GET(request: Request) {
     const results = await Promise.all(
       batch.map(async (market) => {
         try {
-          const trends = await fetchTrendsData(market.entity_name);
-          // viralityScore === 0 means Google Trends gave us nothing useful
-          // (rate-limited, unknown term, etc.). Skip rather than tank the
-          // market's VI to zero.
-          if (!trends || trends.viralityScore === 0) {
+          const signal = await composeVi({ term: market.entity_name });
+          // score === 0 means every source we tried (Google Trends,
+          // Wikipedia) gave us nothing. Skip rather than tank the market's
+          // VI to zero — the last known value stays.
+          if (signal.score === 0) {
             return false;
           }
-          const nextVi = applyJitter(trends.viralityScore);
+          const nextVi = applyJitter(signal.score);
           // Pass [] so recordVi doesn't re-seed vi_history — we only want
           // the fresh point appended.
           await recordVi(market.id, nextVi, []);

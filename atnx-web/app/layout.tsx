@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { ThemeProvider } from "next-themes";
+import { AuthProvider } from "@/context/AuthContext";
 import { DemoProvider } from "@/context/DemoContext";
+import { LoginModal } from "@/components/LoginModal";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -23,7 +25,12 @@ export default function RootLayout({
       </head>
       <body className="min-h-full flex flex-col font-mono">
         <ThemeProvider attribute="class" defaultTheme="dark" themes={["dark", "light"]}>
-          <DemoProvider>{children}</DemoProvider>
+          <AuthProvider>
+            <DemoProvider>
+              {children}
+              <LoginModal />
+            </DemoProvider>
+          </AuthProvider>
         </ThemeProvider>
       </body>
     </html>

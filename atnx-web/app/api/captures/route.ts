@@ -1,5 +1,6 @@
 import { addCapture, getCaptures, type Capture } from '@/lib/store';
-import { fetchTrendsData, normalizeSearchTerm } from '@/lib/trends';
+import { normalizeSearchTerm } from '@/lib/trends';
+import { composeVi } from '@/lib/signals';
 import { createClient } from '@/lib/supabase/server';
 
 // CORS with credentials requires echoing the caller's Origin (not `*`) so the
@@ -33,11 +34,7 @@ export async function POST(request: Request) {
   const data = await request.json();
 
   const searchTerm = normalizeSearchTerm(data.analysis);
-
-  let trendsData = null;
-  if (searchTerm.length > 1) {
-    trendsData = await fetchTrendsData(searchTerm);
-  }
+  const signal = await composeVi({ term: searchTerm, analysis: data.analysis });
 
   const input: Capture = {
     id: data.id || Date.now().toString(),
@@ -47,8 +44,8 @@ export async function POST(request: Request) {
     pageTitle: data.pageTitle,
     screenshot: data.screenshot,
     analysis: data.analysis,
-    trends: trendsData,
-    viralityScore: trendsData?.viralityScore ?? 0,
+    trends: signal.trends,
+    viralityScore: signal.score,
   };
 
   try {

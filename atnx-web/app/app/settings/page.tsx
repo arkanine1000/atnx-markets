@@ -19,7 +19,7 @@ export default async function SettingsPage() {
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-8 w-full">
-      <Nav captureCount={0} />
+      <Nav />
 
       <h1 className="text-xl font-bold text-primary mb-6">Settings</h1>
 

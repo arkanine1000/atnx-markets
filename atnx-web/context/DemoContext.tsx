@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/context/AuthContext";
 import {
   openPosition as serverOpenPosition,
   closePosition as serverClosePosition,
@@ -100,6 +101,7 @@ function mapRow(row: PositionRow): Position {
 }
 
 export function DemoProvider({ children }: { children: ReactNode }) {
+  const { user, loading: authLoading } = useAuth();
   const [positions, setPositions] = useState<Position[]>([]);
   const [balance, setBalance] = useState<number>(INITIAL_BALANCE);
   const [isLiveMode, setIsLiveMode] = useState(false);
@@ -139,9 +141,11 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     setLoading(false);
   }, []);
 
+  // Re-run refresh whenever the auth state settles or flips between users.
   useEffect(() => {
+    if (authLoading) return;
     refresh();
-  }, [refresh]);
+  }, [user?.id, authLoading, refresh]);
 
   // Check URL param for demo (live) mode — purely a UI ticker toggle.
   useEffect(() => {

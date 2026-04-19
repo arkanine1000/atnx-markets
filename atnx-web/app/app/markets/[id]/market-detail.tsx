@@ -10,6 +10,7 @@ import {
   DemoToast,
 } from "@/components/Trading";
 import { useDemoContext } from "@/context/DemoContext";
+import { useAuth } from "@/context/AuthContext";
 import { mock24hChange, sentimentColor, timeAgo } from "@/lib/capture-view";
 import type { Capture, MarketRow } from "@/lib/store";
 import type { TrendsResult } from "@/lib/trends";
@@ -18,16 +19,15 @@ interface Props {
   market: MarketRow;
   captures: Capture[];
   trends: TrendsResult | null;
-  captureCount: number;
 }
 
 export function MarketDetailClient({
   market,
   captures,
   trends,
-  captureCount,
 }: Props) {
   const { positions } = useDemoContext();
+  const { user, openLoginModal } = useAuth();
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [showMetrics, setShowMetrics] = useState(false);
   const [showRaw, setShowRaw] = useState(false);
@@ -75,7 +75,7 @@ export function MarketDetailClient({
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8 w-full">
-      <Nav captureCount={captureCount} />
+      <Nav />
 
       <Link
         href="/app"
@@ -203,12 +203,22 @@ export function MarketDetailClient({
                   </span>
                 </div>
 
-                <button
-                  onClick={() => setTradingCapture(selected)}
-                  className="text-xs px-4 py-2 rounded border border-atnx-magenta text-atnx-magenta hover:bg-atnx-magenta hover:text-black cursor-pointer transition-colors font-bold w-full sm:w-auto shrink-0"
-                >
-                  Trade This
-                </button>
+                {user ? (
+                  <button
+                    onClick={() => setTradingCapture(selected)}
+                    className="text-xs px-4 py-2 rounded border border-atnx-magenta text-atnx-magenta hover:bg-atnx-magenta hover:text-black cursor-pointer transition-colors font-bold w-full sm:w-auto shrink-0"
+                  >
+                    Trade This
+                  </button>
+                ) : (
+                  <button
+                    onClick={openLoginModal}
+                    className="text-xs px-4 py-2 rounded border border-atnx-magenta text-atnx-magenta hover:bg-atnx-magenta hover:text-black cursor-pointer transition-colors font-bold w-full sm:w-auto shrink-0"
+                    title="Sign in to trade"
+                  >
+                    Login to Trade
+                  </button>
+                )}
               </div>
 
               <div className="flex gap-3 text-xs pt-1">

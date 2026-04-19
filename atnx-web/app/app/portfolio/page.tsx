@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import Link from "next/link";
 import { useDemoContext, calculatePnL, type Position } from "@/context/DemoContext";
+import { useAuth } from "@/context/AuthContext";
 import { Nav } from "@/components/Nav";
 import { ClosePositionModal, DemoToast } from "@/components/Trading";
 import { timeAgo } from "@/lib/capture-view";
@@ -110,20 +111,13 @@ function PositionCard({
 export default function PortfolioPage() {
   const { positions, balance } = useDemoContext();
   const { closePosition } = useDemoContext();
-  const [captureCount, setCaptureCount] = useState(0);
+  const { user, loading: authLoading, openLoginModal } = useAuth();
   const [closingPosition, setClosingPosition] = useState<Position | null>(null);
   const [toast, setToast] = useState<{
     message: string;
     detail: string;
     type: "long" | "short" | "close-profit" | "close-loss";
   } | null>(null);
-
-  useEffect(() => {
-    fetch("/api/captures")
-      .then((r) => r.json())
-      .then((d) => setCaptureCount(d.captures?.length ?? 0))
-      .catch(() => {});
-  }, []);
 
   const handleClose = useCallback(
     async (pos: Position) => {
@@ -156,9 +150,31 @@ export default function PortfolioPage() {
   const totalDirColor = totalPnL >= 0 ? "#00D4FF" : "#FF00E5";
   const totalDirArrow = totalPnL >= 0 ? "\u25B2" : "\u25BC";
 
+  if (!authLoading && !user) {
+    return (
+      <div className="max-w-4xl mx-auto px-4 py-8 w-full">
+        <Nav />
+        <div className="bg-surface border border-surface rounded-lg p-8 text-center mt-6">
+          <p className="text-primary text-sm mb-1">
+            Sign in to view your portfolio.
+          </p>
+          <p className="text-tertiary text-xs mb-5">
+            Balance, open positions, and PnL are tied to your account.
+          </p>
+          <button
+            onClick={openLoginModal}
+            className="text-xs px-5 py-2.5 rounded border border-atnx-magenta text-atnx-magenta hover:bg-atnx-magenta hover:text-black cursor-pointer transition-colors font-bold"
+          >
+            Login
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-4xl mx-auto px-4 py-8 w-full">
-      <Nav captureCount={captureCount} />
+      <Nav />
 
       {/* Portfolio summary */}
       <div className="bg-surface border border-surface rounded-lg p-4 sm:p-5 mb-6 grid grid-cols-3 gap-2 sm:gap-4">

@@ -35,7 +35,12 @@ export async function proxy(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const path = request.nextUrl.pathname;
-  const isProtected = path.startsWith('/app') || path.startsWith('/admin');
+  // Guests can browse the dashboard, market detail, and portfolio (the
+  // portfolio page renders its own login prompt). Only explicit user-specific
+  // routes need a server-side redirect here — trading server actions and the
+  // settings page enforce auth on their own.
+  const isProtected =
+    path.startsWith('/admin') || path.startsWith('/app/settings');
   const isAuthCallback = path.startsWith('/auth/callback');
 
   if (isProtected && !user && !isAuthCallback) {

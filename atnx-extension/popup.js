@@ -1,3 +1,8 @@
+const DEFAULT_WEB_APP_URL = 'https://atnx.app';
+
+const webAppUrlInput = document.getElementById('webAppUrl');
+const saveUrlBtn = document.getElementById('saveUrl');
+const urlStatus = document.getElementById('urlStatus');
 const apiKeyInput = document.getElementById('apiKey');
 const saveKeyBtn = document.getElementById('saveKey');
 const keyStatus = document.getElementById('keyStatus');
@@ -7,6 +12,42 @@ const statusDot = document.getElementById('statusDot');
 const statusLabel = document.getElementById('statusLabel');
 const captureCount = document.getElementById('captureCount');
 const openDashboard = document.getElementById('openDashboard');
+
+function normalizeWebAppUrl(value) {
+  const trimmed = (value || '').trim().replace(/\/+$/, '');
+  if (!trimmed) return null;
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+    return trimmed;
+  } catch {
+    return null;
+  }
+}
+
+// Load saved Web App URL (default shown as placeholder; stored value wins).
+chrome.storage.local.get('webAppUrl', (data) => {
+  if (data.webAppUrl) {
+    webAppUrlInput.value = data.webAppUrl;
+    urlStatus.textContent = 'URL saved';
+    urlStatus.className = 'status-text saved';
+  }
+});
+
+// Save Web App URL
+saveUrlBtn.addEventListener('click', () => {
+  const normalized = normalizeWebAppUrl(webAppUrlInput.value);
+  if (!normalized) {
+    urlStatus.textContent = 'Enter a valid http(s) URL';
+    urlStatus.className = 'status-text error';
+    return;
+  }
+  chrome.storage.local.set({ webAppUrl: normalized }, () => {
+    webAppUrlInput.value = normalized;
+    urlStatus.textContent = 'URL saved';
+    urlStatus.className = 'status-text saved';
+  });
+});
 
 // Load saved API key
 chrome.storage.local.get('apiKey', (data) => {
@@ -40,7 +81,10 @@ captureBtn.addEventListener('click', () => {
 // Open dashboard
 openDashboard.addEventListener('click', (e) => {
   e.preventDefault();
-  chrome.tabs.create({ url: 'http://localhost:3000' });
+  chrome.storage.local.get('webAppUrl', (data) => {
+    const url = normalizeWebAppUrl(data.webAppUrl) || DEFAULT_WEB_APP_URL;
+    chrome.tabs.create({ url });
+  });
 });
 
 // Poll status

@@ -153,17 +153,30 @@ function determineTrend(dataPoints: TrendsDataPoint[]): 'rising' | 'falling' | '
   return 'stable';
 }
 
-export function normalizeSearchTerm(analysis: any): string {
+export function normalizeSearchTerm(analysis: { name?: string } | null | undefined): string {
   let term = analysis?.name || '';
 
-  // Remove quotes
-  term = term.replace(/["""'']/g, '');
+  // Drop smart quotes/apostrophes.
+  term = term.replace(/["\u201C\u201D'\u2018\u2019]/g, '');
 
-  // If name is too long, shorten to first 3 meaningful words
-  if (term.split(' ').length > 4) {
-    const stopWords = ['the', 'a', 'an', 'of', 'and', 'in', 'on', 'at', 'for', 'to', 'is', 'was'];
-    const words = term.split(' ').filter((w: string) => !stopWords.includes(w.toLowerCase()));
-    term = words.slice(0, 3).join(' ');
+  // Title separators leak into Google Trends queries verbatim and nuke the
+  // result set (e.g. "Incidental 49A / Real Estate Fish Stan Edits"). Flatten
+  // anything that's punctuation between words into a single space.
+  term = term.replace(/[\/|:;,\-\u2013\u2014\u2022\u00B7_]+/g, ' ');
+
+  // Collapse whitespace.
+  term = term.replace(/\s+/g, ' ').trim();
+
+  // If the title is long, drop stopwords and keep the first three
+  // descriptive words. Preserves short phrases as-is.
+  const words = term.split(' ').filter(Boolean);
+  if (words.length > 4) {
+    const stopWords = new Set([
+      'the', 'a', 'an', 'of', 'and', 'in', 'on', 'at', 'for', 'to', 'is',
+      'was', 'by', 'with', 'as', 'that', 'this', 'from',
+    ]);
+    const kept = words.filter((w) => !stopWords.has(w.toLowerCase()));
+    term = (kept.length > 0 ? kept : words).slice(0, 3).join(' ');
   }
 
   return term.trim();
