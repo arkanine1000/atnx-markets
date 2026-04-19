@@ -8,70 +8,55 @@ import {
   useCallback,
   type ReactNode,
 } from "react";
+import { createClient } from "@/lib/supabase/client";
+import {
+  openPosition as serverOpenPosition,
+  closePosition as serverClosePosition,
+  type OpenPositionInput,
+} from "@/app/app/actions/trading";
 
 export interface Position {
   id: string;
+  marketId: string;
   type: "long" | "short";
   name: string;
   category: string;
   entryIndex: number;
   currentIndex: number;
   size: number;
+  leverage: number;
   openedAt: string;
   captureId: string;
 }
 
-interface DemoState {
+interface DemoContextType {
   positions: Position[];
   balance: number;
   isLiveMode: boolean;
-}
-
-interface DemoContextType extends DemoState {
-  openPosition: (pos: Omit<Position, "id">) => void;
-  closePosition: (id: string) => Position | null;
+  loading: boolean;
+  openPosition: (input: OpenPositionArgs) => Promise<OpenPositionOutcome>;
+  closePosition: (id: string) => Promise<Position | null>;
   updateCurrentIndex: (name: string, newIndex: number) => void;
   setLiveMode: (enabled: boolean) => void;
+  refresh: () => Promise<void>;
 }
 
-const DEMO_POSITIONS: Position[] = [
-  {
-    id: "demo-1",
-    type: "long",
-    name: "Chainsaw Man",
-    category: "entertainment",
-    entryIndex: 310,
-    currentIndex: 426,
-    size: 500,
-    openedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-    captureId: "",
-  },
-  {
-    id: "demo-2",
-    type: "short",
-    name: "Say Wallahi",
-    category: "entertainment",
-    entryIndex: 460,
-    currentIndex: 424,
-    size: 200,
-    openedAt: new Date(Date.now() - 45 * 60 * 1000).toISOString(),
-    captureId: "",
-  },
-  {
-    id: "demo-3",
-    type: "long",
-    name: "Leon Kennedy One Liners",
-    category: "entertainment",
-    entryIndex: 590,
-    currentIndex: 585,
-    size: 100,
-    openedAt: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
-    captureId: "",
-  },
-];
+export interface OpenPositionArgs {
+  marketId: string;
+  type: "long" | "short";
+  name: string;
+  category: string;
+  size: number;
+  entryIndex: number;
+  captureId: string;
+  leverage?: number;
+}
+
+export type OpenPositionOutcome =
+  | { ok: true }
+  | { ok: false; error: string };
 
 const INITIAL_BALANCE = 10000;
-const STORAGE_KEY = "atnx-demo-state";
 
 const DemoContext = createContext<DemoContextType | null>(null);
 
@@ -81,98 +66,159 @@ export function useDemoContext() {
   return ctx;
 }
 
-function loadState(): DemoState {
-  if (typeof window === "undefined") {
-    return {
-      positions: DEMO_POSITIONS,
-      balance: INITIAL_BALANCE,
-      isLiveMode: false,
-    };
-  }
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) return JSON.parse(saved);
-  } catch {}
+type PositionRow = {
+  id: string;
+  market_id: string;
+  direction: "long" | "short";
+  size_usd: number;
+  entry_vi: number;
+  leverage: number;
+  opened_at: string;
+  market: {
+    id: string;
+    entity_name: string;
+    entity_type: string | null;
+    current_vi: number;
+  } | null;
+};
+
+function mapRow(row: PositionRow): Position {
+  const currentVi = row.market?.current_vi ?? row.entry_vi;
   return {
-    positions: DEMO_POSITIONS,
-    balance: INITIAL_BALANCE,
-    isLiveMode: false,
+    id: row.id,
+    marketId: row.market_id,
+    type: row.direction,
+    name: row.market?.entity_name ?? "Unknown",
+    category: row.market?.entity_type ?? "other",
+    entryIndex: Math.round(row.entry_vi),
+    currentIndex: Math.round(currentVi),
+    size: row.size_usd,
+    leverage: row.leverage,
+    openedAt: row.opened_at,
+    captureId: "",
   };
 }
 
-function saveState(state: DemoState) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  } catch {}
-}
-
 export function DemoProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<DemoState>(loadState);
+  const [positions, setPositions] = useState<Position[]>([]);
+  const [balance, setBalance] = useState<number>(INITIAL_BALANCE);
+  const [isLiveMode, setIsLiveMode] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  const refresh = useCallback(async () => {
+    const supabase = createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      setPositions([]);
+      setBalance(INITIAL_BALANCE);
+      setLoading(false);
+      return;
+    }
+
+    const [{ data: bal }, { data: pos }] = await Promise.all([
+      supabase
+        .from("sim_balances")
+        .select("balance_usd")
+        .eq("user_id", user.id)
+        .maybeSingle(),
+      supabase
+        .from("positions")
+        .select(
+          "id, market_id, direction, size_usd, entry_vi, leverage, opened_at, market:markets(id, entity_name, entity_type, current_vi)"
+        )
+        .eq("user_id", user.id)
+        .eq("status", "open")
+        .order("opened_at", { ascending: false })
+        .returns<PositionRow[]>(),
+    ]);
+
+    if (bal) setBalance(bal.balance_usd);
+    setPositions((pos ?? []).map(mapRow));
+    setLoading(false);
+  }, []);
 
   useEffect(() => {
-    saveState(state);
-  }, [state]);
+    refresh();
+  }, [refresh]);
 
-  // Check URL param for demo mode
+  // Check URL param for demo (live) mode — purely a UI ticker toggle.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get("demo") === "true") {
-      setState((s) => ({ ...s, isLiveMode: true }));
-    }
+    if (params.get("demo") === "true") setIsLiveMode(true);
   }, []);
 
   const openPosition = useCallback(
-    (pos: Omit<Position, "id">) => {
-      const newPos: Position = { ...pos, id: `pos-${Date.now()}` };
-      setState((s) => ({
-        ...s,
-        positions: [...s.positions, newPos],
-        balance: s.balance - pos.size,
-      }));
+    async (input: OpenPositionArgs): Promise<OpenPositionOutcome> => {
+      const payload: OpenPositionInput = {
+        marketId: input.marketId,
+        direction: input.type,
+        sizeUsd: input.size,
+        leverage: input.leverage,
+      };
+      const res = await serverOpenPosition(payload);
+      if (!res.success) return { ok: false, error: res.error ?? "Unknown error" };
+      await refresh();
+      return { ok: true };
     },
-    []
+    [refresh]
   );
 
-  const closePosition = useCallback((id: string): Position | null => {
-    let closed: Position | null = null;
-    setState((s) => {
-      const pos = s.positions.find((p) => p.id === id);
-      if (!pos) return s;
-      closed = pos;
-      const pnl = calculatePnL(pos);
-      return {
-        ...s,
-        positions: s.positions.filter((p) => p.id !== id),
-        balance: s.balance + parseFloat(pnl.currentValue),
-      };
-    });
-    return closed;
-  }, []);
+  const closePosition = useCallback(
+    async (id: string): Promise<Position | null> => {
+      // Snapshot the position view model BEFORE the server mutates it so the
+      // close modal can show the user the entry/exit numbers immediately.
+      const snapshot = positions.find((p) => p.id === id) ?? null;
 
+      const res = await serverClosePosition(id);
+      if (!res.success) {
+        console.error("closePosition failed:", res.error);
+        return null;
+      }
+
+      // Overwrite currentIndex with the actual exit VI returned by the server
+      // so calculatePnL() lines up with realizedPnl.
+      const closed =
+        snapshot && res.exitVi !== undefined
+          ? { ...snapshot, currentIndex: Math.round(res.exitVi) }
+          : snapshot;
+
+      await refresh();
+      return closed;
+    },
+    [positions, refresh]
+  );
+
+  // Live mode: in-memory-only shimmer of currentIndex for flair. Does NOT
+  // persist — it just drives the sparkline animation.
   const updateCurrentIndex = useCallback(
     (name: string, newIndex: number) => {
-      setState((s) => ({
-        ...s,
-        positions: s.positions.map((p) =>
+      setPositions((prev) =>
+        prev.map((p) =>
           p.name === name ? { ...p, currentIndex: newIndex } : p
-        ),
-      }));
+        )
+      );
     },
     []
   );
 
   const setLiveMode = useCallback((enabled: boolean) => {
-    setState((s) => ({ ...s, isLiveMode: enabled }));
+    setIsLiveMode(enabled);
   }, []);
 
   return (
     <DemoContext.Provider
       value={{
-        ...state,
+        positions,
+        balance,
+        isLiveMode,
+        loading,
         openPosition,
         closePosition,
         updateCurrentIndex,
         setLiveMode,
+        refresh,
       }}
     >
       {children}
@@ -181,11 +227,12 @@ export function DemoProvider({ children }: { children: ReactNode }) {
 }
 
 export function calculatePnL(position: Position) {
-  const indexChange = position.currentIndex - position.entryIndex;
-  const changePercent = (indexChange / position.entryIndex) * 100;
-  const direction = position.type === "long" ? 1 : -1;
-  const pnlPercent = changePercent * direction;
-  const pnlAmount = position.size * (pnlPercent / 100);
+  // Linear VI-based PnL that matches the server's close math.
+  const entry = position.entryIndex || 1;
+  const ratio = position.currentIndex / entry;
+  const directional = position.type === "long" ? ratio - 1 : 1 - ratio;
+  const pnlAmount = position.size * directional * position.leverage;
+  const pnlPercent = directional * position.leverage * 100;
   const currentValue = position.size + pnlAmount;
 
   return {

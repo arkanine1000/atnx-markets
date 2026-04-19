@@ -38,15 +38,21 @@ const FRICTION = 0.85;
 
 function getGap(): number {
   if (typeof window === "undefined") return 4;
-  if (window.innerWidth < 768) return 6;
+  if (window.innerWidth < 480) return 4;
+  if (window.innerWidth < 768) return 5;
   if (window.innerWidth < 1024) return 5;
   return 4;
 }
 
 function getCanvasDims() {
   if (typeof window === "undefined") return { w: 800, h: 240 };
-  const w = Math.min(window.innerWidth * 0.85, 1200);
-  const h = w * 0.3;
+  const vw = window.innerWidth;
+  // On narrow viewports use more width and a taller aspect ratio so letters
+  // read as a hero, not a thin smear.
+  const widthPct = vw < 640 ? 0.92 : 0.85;
+  const aspect = vw < 480 ? 0.55 : vw < 768 ? 0.42 : 0.3;
+  const w = Math.min(vw * widthPct, 1200);
+  const h = w * aspect;
   return { w, h };
 }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   LineChart,
   Line,
@@ -31,6 +31,27 @@ export function TrendSparkline({
   const liveData = useFakeTicker(dataPoints, isLiveMode);
   const displayData = isLiveMode ? liveData : dataPoints;
 
+  // Skip rendering the ResponsiveContainer until the wrapper has a real width.
+  // Parents with max-w-* only or `display: none` at breakpoints otherwise make
+  // recharts log a width(-1)/height(-1) warning on first measurement.
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const [hasSize, setHasSize] = useState(false);
+  useEffect(() => {
+    const el = wrapperRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      for (const e of entries) {
+        if (e.contentRect.width > 0 && e.contentRect.height > 0) {
+          setHasSize(true);
+          return;
+        }
+      }
+      setHasSize(false);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   if (!displayData || displayData.length === 0) {
     return (
       <div
@@ -59,37 +80,39 @@ export function TrendSparkline({
   const entryY = entryIndex !== undefined ? entryIndex / 10 : undefined;
 
   return (
-    <div style={{ height }} className="w-full">
-      <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={displayData}>
-          <YAxis domain={[0, 100]} hide />
-          <Line
-            type="monotone"
-            dataKey="value"
-            stroke={color}
-            strokeWidth={1.5}
-            dot={false}
-            isAnimationActive={false}
-          />
-          {entryY !== undefined && (
-            <ReferenceLine
-              y={entryY}
-              stroke={entryColor}
-              strokeDasharray="3 3"
-              strokeOpacity={0.5}
+    <div ref={wrapperRef} style={{ height }} className="w-full">
+      {hasSize && (
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={displayData}>
+            <YAxis domain={[0, 100]} hide />
+            <Line
+              type="monotone"
+              dataKey="value"
+              stroke={color}
+              strokeWidth={1.5}
+              dot={false}
+              isAnimationActive={false}
             />
-          )}
-          {entryPointIdx !== undefined && entryY !== undefined && (
-            <ReferenceDot
-              x={entryPointIdx}
-              y={displayData[entryPointIdx]?.value ?? entryY}
-              r={4}
-              fill={entryColor}
-              stroke="none"
-            />
-          )}
-        </LineChart>
-      </ResponsiveContainer>
+            {entryY !== undefined && (
+              <ReferenceLine
+                y={entryY}
+                stroke={entryColor}
+                strokeDasharray="3 3"
+                strokeOpacity={0.5}
+              />
+            )}
+            {entryPointIdx !== undefined && entryY !== undefined && (
+              <ReferenceDot
+                x={entryPointIdx}
+                y={displayData[entryPointIdx]?.value ?? entryY}
+                r={4}
+                fill={entryColor}
+                stroke="none"
+              />
+            )}
+          </LineChart>
+        </ResponsiveContainer>
+      )}
     </div>
   );
 }
@@ -123,17 +146,20 @@ export function getTrendIndicator(trend?: string): {
 interface TradeModalProps {
   capture: {
     id: string;
+    marketId: string | null;
     analysis: { name?: string; category?: string };
     viralityScore: number;
     trends: { trend: string } | null;
   };
-  onClose: () => void;
+  onClose: (outcome: "opened" | "cancelled") => void;
 }
 
 export function TradeModal({ capture, onClose }: TradeModalProps) {
   const { openPosition } = useDemoContext();
   const [posType, setPosType] = useState<"long" | "short">("long");
   const [amount, setAmount] = useState("100");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const amountNum = parseFloat(amount) || 0;
   const fee = amountNum * 0.005;
@@ -141,19 +167,29 @@ export function TradeModal({ capture, onClose }: TradeModalProps) {
   const score = capture.viralityScore;
   const trendInfo = getTrendIndicator(capture.trends?.trend);
 
-  function handleSubmit() {
-    if (amountNum <= 0) return;
-    openPosition({
+  async function handleSubmit() {
+    if (amountNum <= 0 || busy) return;
+    if (!capture.marketId) {
+      setError("Market not ready yet — try again in a moment.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    const outcome = await openPosition({
+      marketId: capture.marketId,
       type: posType,
       name,
       category: capture.analysis.category || "other",
       entryIndex: score,
-      currentIndex: score,
       size: amountNum,
-      openedAt: new Date().toISOString(),
       captureId: capture.id,
     });
-    onClose();
+    setBusy(false);
+    if (!outcome.ok) {
+      setError(outcome.error);
+      return;
+    }
+    onClose("opened");
   }
 
   return (
@@ -163,7 +199,7 @@ export function TradeModal({ capture, onClose }: TradeModalProps) {
     >
       <div className="bg-elevated border border-surface rounded-xl p-6 w-full max-w-md mx-4 relative">
         <button
-          onClick={onClose}
+          onClick={() => onClose("cancelled")}
           className="absolute top-4 right-4 text-secondary hover:text-primary text-lg cursor-pointer"
         >
           ✕
@@ -254,17 +290,25 @@ export function TradeModal({ capture, onClose }: TradeModalProps) {
           </div>
         </div>
 
+        {error && (
+          <div className="mb-3 text-xs text-atnx-magenta border border-atnx-magenta/40 bg-atnx-magenta/10 rounded px-3 py-2">
+            {error}
+          </div>
+        )}
+
         {/* Submit */}
         <button
           onClick={handleSubmit}
-          disabled={amountNum <= 0}
+          disabled={amountNum <= 0 || busy}
           className={`w-full py-3 rounded font-bold text-sm cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
             posType === "long"
               ? "bg-atnx-cyan hover:bg-atnx-cyan-dim text-black"
               : "bg-atnx-magenta hover:bg-atnx-magenta-dim text-black"
           }`}
         >
-          OPEN {posType.toUpperCase()} POSITION &mdash; ${amountNum.toFixed(2)}
+          {busy
+            ? "OPENING\u2026"
+            : `OPEN ${posType.toUpperCase()} POSITION — $${amountNum.toFixed(2)}`}
         </button>
       </div>
     </div>
