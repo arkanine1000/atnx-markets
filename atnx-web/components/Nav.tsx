@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useTheme } from "next-themes";
 import { useDemoContext } from "@/context/DemoContext";
 import { useEffect, useState } from "react";
+import { UserMenu } from "@/components/UserMenu";
 
 export function Nav({ captureCount }: { captureCount: number }) {
   const pathname = usePathname();
@@ -74,6 +75,8 @@ export function Nav({ captureCount }: { captureCount: number }) {
         <div className="text-xs text-atnx-magenta bg-surface px-3 py-1.5 rounded border border-atnx-magenta/30 font-bold whitespace-nowrap">
           {captureCount} Capture{captureCount !== 1 ? "s" : ""}
         </div>
+
+        <UserMenu />
       </div>
     </header>
   );

@@ -1,5 +1,9 @@
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { createAdminClient } from './supabase/admin';
 import { normalizeSearchTerm, type TrendsResult } from './trends';
+import type { Database } from './supabase/database';
+
+type DbClient = SupabaseClient<Database>;
 
 // Legacy capture shape consumed by the dashboard. Post-Chunk 1 this is a view
 // model assembled from the underlying Supabase rows.
@@ -48,7 +52,6 @@ type CaptureRowWithMarket = {
 };
 
 const STORAGE_BUCKET = 'captures';
-const ANON_PREFIX = 'anonymous';
 
 function base64ToBuffer(screenshot: string): Buffer {
   // Strip a data URL prefix if present (the extension currently sends raw base64)
@@ -59,19 +62,19 @@ function base64ToBuffer(screenshot: string): Buffer {
 }
 
 async function uploadScreenshot(
+  client: DbClient,
   screenshot: string,
-  folder = ANON_PREFIX
+  folder: string
 ): Promise<string> {
-  const supabase = createAdminClient();
   const fileName = `${folder}/${crypto.randomUUID()}.png`;
   const buffer = base64ToBuffer(screenshot);
 
-  const { error } = await supabase.storage
+  const { error } = await client.storage
     .from(STORAGE_BUCKET)
     .upload(fileName, buffer, { contentType: 'image/png', upsert: false });
   if (error) throw error;
 
-  const { data } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(fileName);
+  const { data } = client.storage.from(STORAGE_BUCKET).getPublicUrl(fileName);
   return data.publicUrl;
 }
 
@@ -185,13 +188,19 @@ async function buildTrendsView(
   };
 }
 
-export async function addCapture(input: Capture): Promise<Capture> {
-  const supabase = createAdminClient();
+export async function addCapture(
+  input: Capture,
+  sessionClient: DbClient,
+  userId: string
+): Promise<Capture> {
+  const admin = createAdminClient();
 
   const entityName = input.analysis?.name || normalizeSearchTerm(input.analysis) || 'Unknown';
   const entityType = input.analysis?.type ?? null;
 
-  const image_url = await uploadScreenshot(input.screenshot);
+  // Upload under the user's folder so storage RLS ({user_id}/*.png) passes,
+  // then resolve/create the shared market row via admin (bypasses RLS).
+  const image_url = await uploadScreenshot(sessionClient, input.screenshot, userId);
   const market = await resolveOrCreateMarket(entityName, entityType);
 
   const rawAiResponse: Record<string, unknown> = {
@@ -203,9 +212,11 @@ export async function addCapture(input: Capture): Promise<Capture> {
     },
   };
 
-  const { data: captureRow, error } = await supabase
+  // Session client so RLS enforces user_id = auth.uid() on captures.
+  const { data: captureRow, error } = await sessionClient
     .from('captures')
     .insert({
+      user_id: userId,
       market_id: market.id,
       image_url,
       source_url: input.pageUrl,
@@ -221,7 +232,7 @@ export async function addCapture(input: Capture): Promise<Capture> {
   const seedPoints = input.trends?.dataPoints ?? [];
   await recordVi(market.id, vi, seedPoints);
 
-  await supabase
+  await admin
     .from('markets')
     .update({ total_captures: (market.total_captures ?? 0) + 1 })
     .eq('id', market.id);

@@ -1,13 +1,35 @@
 import { addCapture, getCaptures, type Capture } from '@/lib/store';
 import { fetchTrendsData, normalizeSearchTerm } from '@/lib/trends';
+import { createClient } from '@/lib/supabase/server';
 
-const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
-};
+// CORS with credentials requires echoing the caller's Origin (not `*`) so the
+// Chrome extension's auth cookie is accepted on cross-origin requests.
+function corsHeaders(request: Request): Record<string, string> {
+  const origin = request.headers.get('origin') ?? '';
+  return {
+    'Access-Control-Allow-Origin': origin,
+    'Access-Control-Allow-Credentials': 'true',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    Vary: 'Origin',
+  };
+}
 
 export async function POST(request: Request) {
+  const headers = corsHeaders(request);
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return Response.json(
+      { success: false, error: 'Not signed in' },
+      { status: 401, headers }
+    );
+  }
+
   const data = await request.json();
 
   const searchTerm = normalizeSearchTerm(data.analysis);
@@ -29,33 +51,34 @@ export async function POST(request: Request) {
   };
 
   try {
-    const saved = await addCapture(input);
+    const saved = await addCapture(input, supabase, user.id);
     return Response.json(
       { success: true, id: saved.id, viralityScore: saved.viralityScore },
-      { headers: CORS_HEADERS }
+      { headers }
     );
   } catch (err) {
     console.error('[captures POST] failed to persist', err);
     return Response.json(
       { success: false, error: (err as Error).message },
-      { status: 500, headers: CORS_HEADERS }
+      { status: 500, headers }
     );
   }
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  const headers = corsHeaders(request);
   try {
     const captures = await getCaptures();
-    return Response.json({ captures }, { headers: CORS_HEADERS });
+    return Response.json({ captures }, { headers });
   } catch (err) {
     console.error('[captures GET] failed to load', err);
     return Response.json(
       { captures: [], error: (err as Error).message },
-      { status: 500, headers: CORS_HEADERS }
+      { status: 500, headers }
     );
   }
 }
 
-export async function OPTIONS() {
-  return new Response(null, { status: 204, headers: CORS_HEADERS });
+export async function OPTIONS(request: Request) {
+  return new Response(null, { status: 204, headers: corsHeaders(request) });
 }

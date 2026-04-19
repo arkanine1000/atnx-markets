@@ -90,21 +90,37 @@ async function handleCapture(msg, tab) {
     const { captureCount = 0 } = await chrome.storage.local.get('captureCount');
     await chrome.storage.local.set({ captureCount: captureCount + 1 });
 
-    // 6. POST to web app
+    // 6. POST to web app. `credentials: 'include'` attaches the Supabase auth
+    // cookie so the route handler can attribute the capture to the signed-in
+    // user. If the user isn't signed in, the server returns 401.
+    let persistFailed = null;
     try {
-      await fetch(`${WEB_APP_URL}/api/captures`, {
+      const res = await fetch(`${WEB_APP_URL}/api/captures`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(result)
       });
+      if (res.status === 401) {
+        persistFailed = 'Sign in at the ATNX web app first';
+      } else if (!res.ok) {
+        persistFailed = `Save failed (${res.status})`;
+      }
     } catch (e) {
       console.warn('Could not send to web app:', e.message);
+      persistFailed = 'Web app unreachable';
     }
 
     const name = analysis.name || 'Content';
-    updateStatus('done');
-    notifyTab(tab, 'done', `Identified: ${name}`);
-    setTimeout(() => updateStatus('ready'), 3000);
+    if (persistFailed) {
+      updateStatus('error');
+      notifyTab(tab, 'error', persistFailed);
+      setTimeout(() => updateStatus('ready'), 5000);
+    } else {
+      updateStatus('done');
+      notifyTab(tab, 'done', `Identified: ${name}`);
+      setTimeout(() => updateStatus('ready'), 3000);
+    }
   } catch (err) {
     console.error('Capture error:', err);
     updateStatus('error');
