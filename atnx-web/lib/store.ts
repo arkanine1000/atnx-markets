@@ -9,6 +9,7 @@ type DbClient = SupabaseClient<Database>;
 // model assembled from the underlying Supabase rows.
 export interface Capture {
   id: string;
+  marketId: string | null;
   timestamp: string;
   pageUrl: string;
   pageTitle: string;
@@ -240,6 +241,7 @@ export async function addCapture(
   return {
     ...input,
     id: captureRow.id as string,
+    marketId: market.id,
     timestamp: captureRow.created_at as string,
     screenshot: image_url,
     viralityScore: vi,
@@ -275,6 +277,7 @@ export async function getCaptures(limit = 50): Promise<Capture[]> {
 
       return {
         id: row.id,
+        marketId: row.market_id,
         timestamp: meta?.captured_at ?? row.created_at,
         pageUrl: row.source_url ?? '',
         pageTitle: meta?.page_title ?? '',

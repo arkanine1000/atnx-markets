@@ -41,6 +41,7 @@ export async function POST(request: Request) {
 
   const input: Capture = {
     id: data.id || Date.now().toString(),
+    marketId: null,
     timestamp: data.timestamp || new Date().toISOString(),
     pageUrl: data.pageUrl,
     pageTitle: data.pageTitle,

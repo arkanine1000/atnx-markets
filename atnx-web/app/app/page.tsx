@@ -22,6 +22,7 @@ interface TrendsData {
 
 interface Capture {
   id: string;
+  marketId: string | null;
   timestamp: string;
   pageUrl: string;
   pageTitle: string;
@@ -398,16 +399,19 @@ export default function Home() {
     return () => clearInterval(interval);
   }, []);
 
-  const handleTradeClose = useCallback(() => {
-    if (tradingCapture) {
-      setToast({
-        message: "Position Opened",
-        detail: `${tradingCapture.analysis.name} @ ${tradingCapture.viralityScore}`,
-        type: "long",
-      });
-    }
-    setTradingCapture(null);
-  }, [tradingCapture]);
+  const handleTradeClose = useCallback(
+    (outcome: "opened" | "cancelled") => {
+      if (outcome === "opened" && tradingCapture) {
+        setToast({
+          message: "Position Opened",
+          detail: `${tradingCapture.analysis.name} @ ${tradingCapture.viralityScore}`,
+          type: "long",
+        });
+      }
+      setTradingCapture(null);
+    },
+    [tradingCapture]
+  );
 
   const sorted = sortCaptures(captures, sortMode);
 

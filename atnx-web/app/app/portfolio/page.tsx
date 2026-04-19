@@ -129,8 +129,8 @@ export default function PortfolioPage() {
   }, []);
 
   const handleClose = useCallback(
-    (pos: Position) => {
-      const closed = closePosition(pos.id);
+    async (pos: Position) => {
+      const closed = await closePosition(pos.id);
       if (closed) {
         setClosingPosition(closed);
       }

@@ -146,17 +146,20 @@ export function getTrendIndicator(trend?: string): {
 interface TradeModalProps {
   capture: {
     id: string;
+    marketId: string | null;
     analysis: { name?: string; category?: string };
     viralityScore: number;
     trends: { trend: string } | null;
   };
-  onClose: () => void;
+  onClose: (outcome: "opened" | "cancelled") => void;
 }
 
 export function TradeModal({ capture, onClose }: TradeModalProps) {
   const { openPosition } = useDemoContext();
   const [posType, setPosType] = useState<"long" | "short">("long");
   const [amount, setAmount] = useState("100");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const amountNum = parseFloat(amount) || 0;
   const fee = amountNum * 0.005;
@@ -164,19 +167,29 @@ export function TradeModal({ capture, onClose }: TradeModalProps) {
   const score = capture.viralityScore;
   const trendInfo = getTrendIndicator(capture.trends?.trend);
 
-  function handleSubmit() {
-    if (amountNum <= 0) return;
-    openPosition({
+  async function handleSubmit() {
+    if (amountNum <= 0 || busy) return;
+    if (!capture.marketId) {
+      setError("Market not ready yet — try again in a moment.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    const outcome = await openPosition({
+      marketId: capture.marketId,
       type: posType,
       name,
       category: capture.analysis.category || "other",
       entryIndex: score,
-      currentIndex: score,
       size: amountNum,
-      openedAt: new Date().toISOString(),
       captureId: capture.id,
     });
-    onClose();
+    setBusy(false);
+    if (!outcome.ok) {
+      setError(outcome.error);
+      return;
+    }
+    onClose("opened");
   }
 
   return (
@@ -186,7 +199,7 @@ export function TradeModal({ capture, onClose }: TradeModalProps) {
     >
       <div className="bg-elevated border border-surface rounded-xl p-6 w-full max-w-md mx-4 relative">
         <button
-          onClick={onClose}
+          onClick={() => onClose("cancelled")}
           className="absolute top-4 right-4 text-secondary hover:text-primary text-lg cursor-pointer"
         >
           ✕
@@ -277,17 +290,25 @@ export function TradeModal({ capture, onClose }: TradeModalProps) {
           </div>
         </div>
 
+        {error && (
+          <div className="mb-3 text-xs text-atnx-magenta border border-atnx-magenta/40 bg-atnx-magenta/10 rounded px-3 py-2">
+            {error}
+          </div>
+        )}
+
         {/* Submit */}
         <button
           onClick={handleSubmit}
-          disabled={amountNum <= 0}
+          disabled={amountNum <= 0 || busy}
           className={`w-full py-3 rounded font-bold text-sm cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
             posType === "long"
               ? "bg-atnx-cyan hover:bg-atnx-cyan-dim text-black"
               : "bg-atnx-magenta hover:bg-atnx-magenta-dim text-black"
           }`}
         >
-          OPEN {posType.toUpperCase()} POSITION &mdash; ${amountNum.toFixed(2)}
+          {busy
+            ? "OPENING\u2026"
+            : `OPEN ${posType.toUpperCase()} POSITION — $${amountNum.toFixed(2)}`}
         </button>
       </div>
     </div>
