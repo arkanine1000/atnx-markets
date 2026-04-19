@@ -228,7 +228,7 @@ export default function Home() {
               onClick={() => setSortMode(mode)}
               className={`px-3 py-1.5 rounded border cursor-pointer transition-colors ${
                 sortMode === mode
-                  ? "bg-atnx-magenta text-black border-atnx-magenta font-bold"
+                  ? "bg-atnx-magenta text-white border-atnx-magenta font-bold"
                   : "bg-surface text-secondary border-surface hover:border-atnx-magenta/50"
               }`}
             >

@@ -99,7 +99,7 @@ export function SettingsForm({
       <button
         type="submit"
         disabled={busy || !dirty}
-        className="px-6 py-2.5 rounded bg-atnx-magenta text-black font-mono font-bold text-sm hover:bg-atnx-magenta-dim disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
+        className="px-6 py-2.5 rounded bg-atnx-magenta text-white font-mono font-bold text-sm hover:bg-atnx-magenta-dim disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
       >
         {busy ? "Saving\u2026" : "Save"}
       </button>

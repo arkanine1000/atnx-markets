@@ -303,7 +303,7 @@ export function TradeModal({ capture, onClose }: TradeModalProps) {
           className={`w-full py-3 rounded font-bold text-sm cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
             posType === "long"
               ? "bg-atnx-cyan hover:bg-atnx-cyan-dim text-black"
-              : "bg-atnx-magenta hover:bg-atnx-magenta-dim text-black"
+              : "bg-atnx-magenta hover:bg-atnx-magenta-dim text-white"
           }`}
         >
           {busy
