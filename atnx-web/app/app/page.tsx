@@ -85,12 +85,14 @@ function mock24hChange(id: string, score: number): number {
 
 function CaptureCard({
   capture,
+  captureCount,
   rank,
   isExpanded,
   onToggle,
   onTrade,
 }: {
   capture: Capture;
+  captureCount: number;
   rank: number;
   isExpanded: boolean;
   onToggle: () => void;
@@ -134,8 +136,13 @@ function CaptureCard({
 
         {/* Name */}
         <div className="min-w-0 flex-1">
-          <div className="text-sm font-bold text-primary truncate">
-            {analysis.name || "Untitled"}
+          <div className="text-sm font-bold text-primary truncate flex items-center gap-2">
+            <span className="truncate">{analysis.name || "Untitled"}</span>
+            {captureCount > 1 && (
+              <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider bg-atnx-magenta/15 text-atnx-magenta border border-atnx-magenta/30 px-1.5 py-0.5 rounded">
+                {captureCount} captures
+              </span>
+            )}
           </div>
           <div className="text-xs text-tertiary truncate">
             {analysis.category || "\u2014"}
@@ -352,22 +359,48 @@ function CaptureCard({
   );
 }
 
-function sortCaptures(captures: Capture[], mode: SortMode): Capture[] {
-  const sorted = [...captures];
+interface MarketGroup {
+  key: string; // marketId, or capture.id for orphan captures without a market yet
+  latest: Capture;
+  count: number;
+}
+
+// Collapse captures to one entry per market. The API returns captures in
+// created_at DESC order, so the first time we see a marketId is the latest
+// capture for that market.
+function groupByMarket(captures: Capture[]): MarketGroup[] {
+  const groups = new Map<string, MarketGroup>();
+  for (const capture of captures) {
+    const key = capture.marketId ?? capture.id;
+    const existing = groups.get(key);
+    if (existing) {
+      existing.count += 1;
+    } else {
+      groups.set(key, { key, latest: capture, count: 1 });
+    }
+  }
+  return Array.from(groups.values());
+}
+
+function sortMarkets(groups: MarketGroup[], mode: SortMode): MarketGroup[] {
+  const sorted = [...groups];
   switch (mode) {
     case "virality":
-      return sorted.sort((a, b) => b.viralityScore - a.viralityScore);
+      return sorted.sort(
+        (a, b) => b.latest.viralityScore - a.latest.viralityScore
+      );
     case "newest":
       return sorted.sort(
         (a, b) =>
-          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+          new Date(b.latest.timestamp).getTime() -
+          new Date(a.latest.timestamp).getTime()
       );
     case "category":
       return sorted.sort((a, b) => {
-        const catA = a.analysis.category || "zzz";
-        const catB = b.analysis.category || "zzz";
+        const catA = a.latest.analysis.category || "zzz";
+        const catB = b.latest.analysis.category || "zzz";
         if (catA !== catB) return catA.localeCompare(catB);
-        return b.viralityScore - a.viralityScore;
+        return b.latest.viralityScore - a.latest.viralityScore;
       });
   }
 }
@@ -413,7 +446,11 @@ export default function Home() {
     [tradingCapture]
   );
 
-  const sorted = sortCaptures(captures, sortMode);
+  const groups = useMemo(() => groupByMarket(captures), [captures]);
+  const sorted = useMemo(
+    () => sortMarkets(groups, sortMode),
+    [groups, sortMode]
+  );
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8 w-full">
@@ -469,14 +506,15 @@ export default function Home() {
         </div>
       ) : (
         <div className="space-y-1">
-          {sorted.map((capture, i) => (
+          {sorted.map((group, i) => (
             <CaptureCard
-              key={capture.id}
-              capture={capture}
+              key={group.key}
+              capture={group.latest}
+              captureCount={group.count}
               rank={i + 1}
-              isExpanded={expandedId === capture.id}
+              isExpanded={expandedId === group.key}
               onToggle={() =>
-                setExpandedId(expandedId === capture.id ? null : capture.id)
+                setExpandedId(expandedId === group.key ? null : group.key)
               }
               onTrade={setTradingCapture}
             />
