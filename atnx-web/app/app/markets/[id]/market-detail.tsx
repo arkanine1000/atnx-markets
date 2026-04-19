@@ -16,7 +16,6 @@ import type { TrendsResult } from "@/lib/trends";
 
 interface Props {
   market: MarketRow;
-  latest: Capture;
   captures: Capture[];
   trends: TrendsResult | null;
   captureCount: number;
@@ -24,11 +23,12 @@ interface Props {
 
 export function MarketDetailClient({
   market,
-  latest,
+  captures,
   trends,
   captureCount,
 }: Props) {
   const { positions } = useDemoContext();
+  const [selectedIdx, setSelectedIdx] = useState(0);
   const [showMetrics, setShowMetrics] = useState(false);
   const [showRaw, setShowRaw] = useState(false);
   const [tradingCapture, setTradingCapture] = useState<Capture | null>(null);
@@ -38,7 +38,9 @@ export function MarketDetailClient({
     type: "long" | "short";
   } | null>(null);
 
-  const { analysis, viralityScore } = latest;
+  // captures is DESC by created_at — index 0 is the most recent.
+  const selected = captures[selectedIdx] ?? captures[0];
+  const { analysis, viralityScore } = selected;
   const trendInfo = getTrendIndicator(trends?.trend);
   const change24h = useMemo(
     () => mock24hChange(market.id, viralityScore),
@@ -65,9 +67,9 @@ export function MarketDetailClient({
 
   const sourceHost = (() => {
     try {
-      return new URL(latest.pageUrl).hostname;
+      return new URL(selected.pageUrl).hostname;
     } catch {
-      return latest.pageUrl || "\u2014";
+      return selected.pageUrl || "\u2014";
     }
   })();
 
@@ -87,7 +89,7 @@ export function MarketDetailClient({
           <div className="flex flex-col sm:flex-row gap-4">
             <div className="shrink-0">
               <img
-                src={latest.screenshot}
+                src={selected.screenshot}
                 alt="Capture"
                 className="w-full sm:w-56 h-52 sm:h-40 object-cover rounded border border-surface"
               />
@@ -197,12 +199,12 @@ export function MarketDetailClient({
                 <div className="flex gap-3 sm:gap-4 text-xs text-tertiary flex-wrap min-w-0">
                   <span className="truncate">SOURCE: {sourceHost}</span>
                   <span className="whitespace-nowrap">
-                    CAPTURED: {timeAgo(latest.timestamp)}
+                    CAPTURED: {timeAgo(selected.timestamp)}
                   </span>
                 </div>
 
                 <button
-                  onClick={() => setTradingCapture(latest)}
+                  onClick={() => setTradingCapture(selected)}
                   className="text-xs px-4 py-2 rounded border border-atnx-magenta text-atnx-magenta hover:bg-atnx-magenta hover:text-black cursor-pointer transition-colors font-bold w-full sm:w-auto shrink-0"
                 >
                   Trade This
@@ -247,6 +249,37 @@ export function MarketDetailClient({
               )}
             </div>
           </div>
+
+          {captures.length > 1 && (
+            <div className="pt-4 border-t border-surface">
+              <div className="text-[11px] uppercase tracking-wider text-tertiary mb-2">
+                Evidence ({captures.length} captures)
+              </div>
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {captures.map((c, i) => {
+                  const active = i === selectedIdx;
+                  return (
+                    <button
+                      key={c.id}
+                      onClick={() => setSelectedIdx(i)}
+                      title={timeAgo(c.timestamp)}
+                      className={`shrink-0 rounded border-2 transition-colors cursor-pointer overflow-hidden ${
+                        active
+                          ? "border-atnx-cyan"
+                          : "border-surface hover:border-atnx-cyan/50"
+                      }`}
+                    >
+                      <img
+                        src={c.screenshot}
+                        alt=""
+                        className="w-16 h-16 object-cover block"
+                      />
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

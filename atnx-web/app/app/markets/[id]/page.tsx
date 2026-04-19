@@ -23,7 +23,6 @@ export default async function MarketPage({
   return (
     <MarketDetailClient
       market={detail.market}
-      latest={detail.latest}
       captures={detail.captures}
       trends={detail.trends}
       captureCount={count ?? 0}

@@ -1,21 +1,11 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import { useDemoContext, calculatePnL, type Position } from "@/context/DemoContext";
 import { Nav } from "@/components/Nav";
 import { ClosePositionModal, DemoToast } from "@/components/Trading";
-
-function timeAgo(timestamp: string): string {
-  const seconds = Math.floor(
-    (Date.now() - new Date(timestamp).getTime()) / 1000
-  );
-  if (seconds < 60) return `${seconds}s ago`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
-}
+import { timeAgo } from "@/lib/capture-view";
 
 function PositionCard({
   position,
@@ -31,7 +21,10 @@ function PositionCard({
   const directionArrow = pnl.isProfit ? "\u25B2" : "\u25BC";
 
   return (
-    <div className="bg-surface border border-surface rounded-lg p-4 space-y-3 transition-opacity duration-300 hover:border-atnx-cyan/30">
+    <Link
+      href={`/app/markets/${position.marketId}`}
+      className="block bg-surface border border-surface rounded-lg p-4 space-y-3 transition-colors hover:border-atnx-cyan/30"
+    >
       {/* Header */}
       <div className="space-y-1.5">
         <div className="flex items-center justify-between gap-2">
@@ -100,13 +93,17 @@ function PositionCard({
       {/* Close button — magenta */}
       <div className="flex justify-stretch sm:justify-end">
         <button
-          onClick={() => onClose(position)}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onClose(position);
+          }}
           className="text-xs px-4 py-2 sm:py-1.5 rounded border border-surface text-secondary hover:border-atnx-magenta/50 hover:text-atnx-magenta cursor-pointer transition-colors w-full sm:w-auto"
         >
           Close Position
         </button>
       </div>
-    </div>
+    </Link>
   );
 }
 
