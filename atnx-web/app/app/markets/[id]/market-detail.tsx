@@ -1,20 +1,22 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, useCallback } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Nav } from "@/components/Nav";
+import { DemoToast, getTrendIndicator } from "@/components/Trading";
 import {
-  TrendSparkline,
-  getTrendIndicator,
-  TradeModal,
-  DemoToast,
-} from "@/components/Trading";
+  ViChart,
+  RANGES,
+  sliceRange,
+  type Range,
+} from "@/components/charts/ViArea";
+import { TradePanel } from "@/components/TradePanel";
+import { TradeLog } from "@/components/TradeLog";
+import { Card, Chip, DeltaChip, Segmented, hostOf } from "@/components/ui";
 import { useDemoContext } from "@/context/DemoContext";
-import { useAuth } from "@/context/AuthContext";
 import { mock24hChange, sentimentColor, timeAgo } from "@/lib/capture-view";
 import type { Capture, MarketRow, TradeLogEvent } from "@/lib/store";
 import type { TrendsResult } from "@/lib/trends";
-import { TradeLog } from "@/components/TradeLog";
 
 interface Props {
   market: MarketRow;
@@ -23,6 +25,8 @@ interface Props {
   initialTradeLog: TradeLogEvent[];
 }
 
+type Tab = "pulse" | "activity" | "overview";
+
 export function MarketDetailClient({
   market,
   captures,
@@ -30,277 +34,410 @@ export function MarketDetailClient({
   initialTradeLog,
 }: Props) {
   const { positions } = useDemoContext();
-  const { user, openLoginModal } = useAuth();
   const [selectedIdx, setSelectedIdx] = useState(0);
-  const [showMetrics, setShowMetrics] = useState(false);
+  const [range, setRange] = useState<Range>("ALL");
+  const [tab, setTab] = useState<Tab>("pulse");
   const [showRaw, setShowRaw] = useState(false);
-  const [tradingCapture, setTradingCapture] = useState<Capture | null>(null);
   const [toast, setToast] = useState<{
     message: string;
     detail: string;
     type: "long" | "short";
   } | null>(null);
 
-  // captures is DESC by created_at — index 0 is the most recent.
+  // captures is DESC by created_at: index 0 is the most recent.
   const selected = captures[selectedIdx] ?? captures[0];
+  const latest = captures[0];
   const { analysis, viralityScore } = selected;
+  const name = latest.analysis.name || market.entity_name;
+  const points = useMemo(() => trends?.dataPoints ?? [], [trends]);
   const trendInfo = getTrendIndicator(trends?.trend);
   const change24h = useMemo(
     () => mock24hChange(market.id, viralityScore),
-    [market.id, viralityScore]
+    [market.id, viralityScore],
   );
-  const changeArrow = change24h >= 0 ? "\u25B2" : "\u25BC";
-  const changeArrowColor = change24h >= 0 ? "#00D4FF" : "#FF00E5";
-
   const openPos = positions.find((p) => p.marketId === market.id);
 
-  const handleTradeClose = useCallback(
-    (outcome: "opened" | "cancelled") => {
-      if (outcome === "opened" && tradingCapture) {
-        setToast({
-          message: "Position Opened",
-          detail: `${tradingCapture.analysis.name} @ ${tradingCapture.viralityScore}`,
-          type: "long",
-        });
-      }
-      setTradingCapture(null);
-    },
-    [tradingCapture]
+  // A range tab is only offered when it has something to draw.
+  const rangeOptions = useMemo(
+    () =>
+      RANGES.map((r) => ({
+        value: r,
+        label: r === "ALL" ? "All" : r,
+        disabled: sliceRange(points, r).length < 2,
+      })),
+    [points],
   );
 
-  const sourceHost = (() => {
-    try {
-      return new URL(selected.pageUrl).hostname;
-    } catch {
-      return selected.pageUrl || "\u2014";
-    }
-  })();
+  const handleOpened = useCallback(
+    (side: "long" | "short", size: number) => {
+      setToast({
+        message: `${side === "long" ? "Long" : "Short"} opened`,
+        detail: `${name} · $${size.toFixed(2)} @ VI ${viralityScore}`,
+        type: side,
+      });
+    },
+    [name, viralityScore],
+  );
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8 w-full">
+    <div className="max-w-6xl mx-auto px-4 pb-12 w-full">
       <Nav />
 
       <Link
         href="/app"
-        className="inline-flex items-center gap-1 text-xs text-secondary hover:text-atnx-cyan transition-colors mb-4"
+        className="inline-flex items-center gap-1.5 text-xs text-secondary hover:text-atnx-cyan transition-colors mb-4"
       >
-        <span>{"\u2190"}</span> Back to dashboard
+        <span aria-hidden="true">{"←"}</span> Markets
       </Link>
 
-      <div className="bg-surface border border-surface rounded-lg overflow-hidden">
-        <div className="px-3 sm:px-5 py-5 space-y-4">
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="shrink-0">
-              <img
-                src={selected.screenshot}
-                alt="Capture"
-                className="w-full sm:w-56 h-52 sm:h-40 object-cover rounded border border-surface"
-              />
-            </div>
-
-            <div className="flex-1 min-w-0 space-y-3">
-              <div className="flex items-start justify-between gap-3 flex-wrap">
-                <div className="flex items-center gap-2 flex-wrap">
-                  {analysis.type && (
-                    <span className="text-xs uppercase tracking-wider bg-atnx-cyan/10 px-2 py-0.5 rounded text-atnx-cyan border border-atnx-cyan/30">
-                      {analysis.type}
-                    </span>
-                  )}
-                  <h1 className="font-bold text-atnx-cyan text-lg sm:text-xl break-words">
-                    {analysis.name || market.entity_name}
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_340px] gap-4 lg:gap-6 items-start">
+        {/* ------------------------------------------------ main column */}
+        <div className="space-y-4 min-w-0">
+          <Card className="overflow-hidden">
+            {/* Header */}
+            <div className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-start gap-4">
+              <div className="flex items-start gap-3 min-w-0 flex-1">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={selected.screenshot}
+                  alt=""
+                  className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl object-cover border border-surface bg-black shrink-0"
+                />
+                <div className="min-w-0">
+                  <h1 className="text-xl sm:text-2xl font-bold text-primary leading-tight break-words">
+                    {name}
                   </h1>
+                  <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
+                    {analysis.type && <Chip tone="cyan">{analysis.type}</Chip>}
+                    {analysis.category && <Chip>{analysis.category}</Chip>}
+                    <span className="text-[11px] text-tertiary">
+                      {market.total_captures || captures.length} capture
+                      {(market.total_captures || captures.length) === 1
+                        ? ""
+                        : "s"}
+                    </span>
+                  </div>
                 </div>
-                <div className="flex items-center gap-3 shrink-0">
-                  <span className="text-xl font-bold font-mono tabular-nums text-atnx-yellow bg-atnx-yellow/10 border border-atnx-yellow/25 px-2 py-0.5 rounded">
+              </div>
+
+              <div className="sm:text-right shrink-0">
+                <div className="text-[10px] uppercase tracking-[0.15em] text-tertiary mb-1">
+                  Virality Index
+                </div>
+                <div className="flex sm:justify-end items-baseline gap-2">
+                  <span className="text-4xl font-bold text-atnx-yellow light:text-atnx-yellow-light leading-none">
                     {viralityScore}
                   </span>
+                </div>
+                <div className="flex sm:justify-end items-center gap-2 mt-2">
+                  <DeltaChip value={change24h} size="md" />
                   <span
-                    className="text-xs font-bold"
-                    style={{ color: trendInfo.color }}
+                    className={`text-[11px] font-bold ${trendInfo.className}`}
                   >
                     {trendInfo.icon} {trendInfo.label}
                   </span>
-                  <span className="text-xs font-mono font-bold flex items-center gap-1">
-                    <span style={{ color: changeArrowColor }}>
-                      {changeArrow}
-                    </span>
-                    <span className="text-atnx-yellow">
-                      {Math.abs(change24h)}%
-                    </span>
-                  </span>
                 </div>
               </div>
-
-              <div className="max-w-lg">
-                <TrendSparkline
-                  dataPoints={trends?.dataPoints ?? []}
-                  color="#00D4FF"
-                  height={80}
-                  entryIndex={openPos?.entryIndex}
-                  positionType={openPos?.type}
-                />
-              </div>
-
-              {analysis.error ? (
-                <div className="text-atnx-magenta text-sm">
-                  Error: {analysis.error}
-                </div>
-              ) : (
-                <>
-                  <div className="flex gap-4 text-xs text-secondary flex-wrap">
-                    {analysis.category && (
-                      <span>CATEGORY: {analysis.category}</span>
-                    )}
-                    {analysis.sentiment && (
-                      <span className={sentimentColor(analysis.sentiment)}>
-                        SENTIMENT: {analysis.sentiment}
-                      </span>
-                    )}
-                    {trends && (
-                      <span>
-                        PEAK:{" "}
-                        <span className="text-atnx-cyan">
-                          {trends.peakValue}
-                        </span>{" "}
-                        | NOW:{" "}
-                        <span className="text-atnx-cyan">
-                          {trends.currentValue}
-                        </span>
-                      </span>
-                    )}
-                  </div>
-
-                  {analysis.description && (
-                    <p className="text-sm text-primary leading-relaxed font-sans italic">
-                      &ldquo;{analysis.description}&rdquo;
-                    </p>
-                  )}
-
-                  {analysis.virality_signals && (
-                    <p className="text-xs text-secondary">
-                      Virality: {analysis.virality_signals}
-                    </p>
-                  )}
-
-                  {analysis.platforms_detected &&
-                    analysis.platforms_detected.length > 0 && (
-                      <div className="flex gap-1.5 flex-wrap">
-                        {analysis.platforms_detected.map((p) => (
-                          <span
-                            key={p}
-                            className="text-xs bg-atnx-cyan/10 px-1.5 py-0.5 rounded text-atnx-cyan"
-                          >
-                            {p}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                </>
-              )}
-
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pt-1">
-                <div className="flex gap-3 sm:gap-4 text-xs text-tertiary flex-wrap min-w-0">
-                  <span className="truncate">SOURCE: {sourceHost}</span>
-                  <span className="whitespace-nowrap">
-                    CAPTURED: {timeAgo(selected.timestamp)}
-                  </span>
-                </div>
-
-                {user ? (
-                  <button
-                    onClick={() => setTradingCapture(selected)}
-                    className="text-xs px-4 py-2 rounded border border-atnx-magenta text-atnx-magenta hover:bg-atnx-magenta hover:text-black cursor-pointer transition-colors font-bold w-full sm:w-auto shrink-0"
-                  >
-                    Trade This
-                  </button>
-                ) : (
-                  <button
-                    onClick={openLoginModal}
-                    className="text-xs px-4 py-2 rounded border border-atnx-magenta text-atnx-magenta hover:bg-atnx-magenta hover:text-black cursor-pointer transition-colors font-bold w-full sm:w-auto shrink-0"
-                    title="Sign in to trade"
-                  >
-                    Login to Trade
-                  </button>
-                )}
-              </div>
-
-              <div className="flex gap-3 text-xs pt-1">
-                {analysis.metrics_detected &&
-                  Object.keys(analysis.metrics_detected).length > 0 && (
-                    <button
-                      onClick={() => setShowMetrics((v) => !v)}
-                      className="text-atnx-cyan hover:text-atnx-cyan-dim cursor-pointer"
-                    >
-                      {showMetrics ? "\u25BE" : "\u25B8"} Detected metrics
-                    </button>
-                  )}
-                {analysis.raw_text && (
-                  <button
-                    onClick={() => setShowRaw((v) => !v)}
-                    className="text-atnx-cyan hover:text-atnx-cyan-dim cursor-pointer"
-                  >
-                    {showRaw ? "\u25BE" : "\u25B8"} Raw text
-                  </button>
-                )}
-              </div>
-
-              {showMetrics && analysis.metrics_detected && (
-                <div className="bg-dark-primary rounded p-2 text-xs space-y-0.5">
-                  {Object.entries(analysis.metrics_detected).map(([k, v]) => (
-                    <div key={k}>
-                      <span className="text-secondary">{k}:</span>{" "}
-                      <span className="text-primary">{String(v)}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {showRaw && analysis.raw_text && (
-                <div className="bg-dark-primary rounded p-2 text-xs text-secondary whitespace-pre-wrap break-words max-h-48 overflow-auto">
-                  {analysis.raw_text}
-                </div>
-              )}
             </div>
+
+            {/* Chart */}
+            <div className="px-2 sm:px-3 pb-3">
+              <div className="flex items-center justify-between px-2 mb-1">
+                <Segmented
+                  ariaLabel="Chart range"
+                  value={range}
+                  onChange={setRange}
+                  options={rangeOptions}
+                />
+                {trends && (
+                  <div className="hidden sm:flex items-center gap-3 text-[11px] text-tertiary font-mono">
+                    <span>
+                      peak{" "}
+                      <span className="text-primary">
+                        {Math.round(trends.peakValue)}
+                      </span>
+                    </span>
+                    <span>
+                      now{" "}
+                      <span className="text-primary">
+                        {Math.round(trends.currentValue)}
+                      </span>
+                    </span>
+                  </div>
+                )}
+              </div>
+              <ViChart
+                dataPoints={points}
+                range={range}
+                height={280}
+                entryVi={openPos?.entryIndex}
+                entryType={openPos?.type}
+              />
+            </div>
+          </Card>
+
+          {/* Mobile: order ticket sits right under the chart */}
+          <div className="lg:hidden">
+            <TradePanel
+              marketId={market.id}
+              name={name}
+              category={analysis.category || market.entity_type || "other"}
+              captureId={selected.id}
+              score={viralityScore}
+              openPosition={openPos}
+              onOpened={handleOpened}
+            />
           </div>
 
-          <TradeLog marketId={market.id} initialEvents={initialTradeLog} />
-
-          {captures.length > 1 && (
-            <div className="pt-4 border-t border-surface">
-              <div className="text-[11px] uppercase tracking-wider text-tertiary mb-2">
-                Evidence ({captures.length} captures)
-              </div>
-              <div className="flex gap-2 overflow-x-auto pb-1">
-                {captures.map((c, i) => {
-                  const active = i === selectedIdx;
-                  return (
-                    <button
-                      key={c.id}
-                      onClick={() => setSelectedIdx(i)}
-                      title={timeAgo(c.timestamp)}
-                      className={`shrink-0 rounded border-2 transition-colors cursor-pointer overflow-hidden ${
-                        active
-                          ? "border-atnx-cyan"
-                          : "border-surface hover:border-atnx-cyan/50"
-                      }`}
-                    >
-                      <img
-                        src={c.screenshot}
-                        alt=""
-                        className="w-16 h-16 object-cover block"
-                      />
-                    </button>
-                  );
-                })}
-              </div>
+          {/* Tabs */}
+          <Card>
+            <div role="tablist" className="flex border-b border-surface px-2">
+              {(
+                [
+                  ["pulse", `Pulse (${captures.length})`],
+                  ["activity", "Activity"],
+                  ["overview", "Overview"],
+                ] as [Tab, string][]
+              ).map(([id, label]) => {
+                const active = tab === id;
+                return (
+                  <button
+                    key={id}
+                    role="tab"
+                    type="button"
+                    aria-selected={active}
+                    onClick={() => setTab(id)}
+                    className={`px-4 py-3 text-xs font-bold -mb-px border-b-2 transition-colors cursor-pointer ${
+                      active
+                        ? "border-atnx-cyan text-primary"
+                        : "border-transparent text-secondary hover:text-primary"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
             </div>
-          )}
-        </div>
-      </div>
 
-      {tradingCapture && (
-        <TradeModal capture={tradingCapture} onClose={handleTradeClose} />
-      )}
+            <div className="p-4 sm:p-5">
+              {tab === "pulse" && (
+                <ul className="space-y-2">
+                  {captures.map((c, i) => {
+                    const active = i === selectedIdx;
+                    return (
+                      <li key={c.id}>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedIdx(i)}
+                          className={`w-full text-left flex gap-3 p-2.5 rounded-xl border transition-colors cursor-pointer ${
+                            active
+                              ? "border-atnx-cyan/40 bg-atnx-cyan/5"
+                              : "border-surface hover:border-atnx-cyan/30"
+                          }`}
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={c.screenshot}
+                            alt=""
+                            loading="lazy"
+                            className="w-24 h-16 rounded-lg object-cover border border-surface bg-black shrink-0"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-xs font-bold text-primary truncate">
+                                {c.pageTitle ||
+                                  c.analysis.name ||
+                                  hostOf(c.pageUrl)}
+                              </span>
+                              <span className="text-[11px] text-tertiary shrink-0">
+                                {timeAgo(c.timestamp)}
+                              </span>
+                            </div>
+                            <div className="text-[11px] text-tertiary truncate mt-0.5">
+                              {hostOf(c.pageUrl)}
+                              {c.analysis.sentiment && (
+                                <>
+                                  {" · "}
+                                  <span
+                                    className={sentimentColor(
+                                      c.analysis.sentiment,
+                                    )}
+                                  >
+                                    {c.analysis.sentiment}
+                                  </span>
+                                </>
+                              )}
+                            </div>
+                            {c.analysis.description && (
+                              <p className="text-xs text-secondary mt-1 line-clamp-2 font-sans">
+                                {c.analysis.description}
+                              </p>
+                            )}
+                          </div>
+                        </button>
+                        {active && c.pageUrl && (
+                          <a
+                            href={c.pageUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1 mt-1 ml-1 text-[11px] text-secondary hover:text-atnx-cyan"
+                          >
+                            Open source {"↗"}
+                          </a>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+
+              {tab === "activity" && (
+                <TradeLog
+                  marketId={market.id}
+                  initialEvents={initialTradeLog}
+                />
+              )}
+
+              {tab === "overview" && (
+                <div className="space-y-4">
+                  {analysis.error ? (
+                    <div className="text-atnx-magenta text-sm">
+                      Error: {analysis.error}
+                    </div>
+                  ) : (
+                    <>
+                      {analysis.description && (
+                        <p className="text-sm text-primary leading-relaxed font-sans">
+                          {analysis.description}
+                        </p>
+                      )}
+                      {analysis.virality_signals && (
+                        <p className="text-xs text-secondary leading-relaxed font-sans">
+                          <span className="text-tertiary uppercase tracking-wider text-[10px] mr-2">
+                            Signals
+                          </span>
+                          {analysis.virality_signals}
+                        </p>
+                      )}
+
+                      <dl className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
+                        {[
+                          ["Category", analysis.category],
+                          ["Type", analysis.type],
+                          ["Sentiment", analysis.sentiment],
+                          [
+                            "Peak VI",
+                            trends ? Math.round(trends.peakValue) : undefined,
+                          ],
+                          [
+                            "Current VI",
+                            trends
+                              ? Math.round(trends.currentValue)
+                              : undefined,
+                          ],
+                          ["Source", hostOf(selected.pageUrl)],
+                        ]
+                          .filter(([, v]) => v !== undefined && v !== "")
+                          .map(([k, v]) => (
+                            <div
+                              key={String(k)}
+                              className="rounded-xl border border-surface bg-elevated p-3 min-w-0"
+                            >
+                              <dt className="text-[10px] uppercase tracking-wider text-tertiary">
+                                {k}
+                              </dt>
+                              <dd
+                                className={`mt-1 font-bold truncate ${
+                                  k === "Sentiment"
+                                    ? sentimentColor(String(v))
+                                    : "text-primary"
+                                }`}
+                              >
+                                {String(v)}
+                              </dd>
+                            </div>
+                          ))}
+                      </dl>
+
+                      {analysis.platforms_detected &&
+                        analysis.platforms_detected.length > 0 && (
+                          <div>
+                            <div className="text-[10px] uppercase tracking-wider text-tertiary mb-1.5">
+                              Platforms
+                            </div>
+                            <div className="flex gap-1.5 flex-wrap">
+                              {analysis.platforms_detected.map((p) => (
+                                <Chip key={p} tone="cyan">
+                                  {p}
+                                </Chip>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                      {analysis.metrics_detected &&
+                        Object.keys(analysis.metrics_detected).length > 0 && (
+                          <div>
+                            <div className="text-[10px] uppercase tracking-wider text-tertiary mb-1.5">
+                              Detected metrics
+                            </div>
+                            <dl className="rounded-xl border border-surface bg-elevated text-xs">
+                              {Object.entries(analysis.metrics_detected).map(
+                                ([k, v]) => (
+                                  <div
+                                    key={k}
+                                    className="flex justify-between gap-3 px-3 py-2 border-b border-surface last:border-b-0"
+                                  >
+                                    <dt className="text-secondary truncate">
+                                      {k}
+                                    </dt>
+                                    <dd className="text-primary font-mono tabular-nums shrink-0">
+                                      {String(v)}
+                                    </dd>
+                                  </div>
+                                ),
+                              )}
+                            </dl>
+                          </div>
+                        )}
+
+                      {analysis.raw_text && (
+                        <div>
+                          <button
+                            type="button"
+                            onClick={() => setShowRaw((v) => !v)}
+                            className="text-xs text-secondary hover:text-atnx-cyan cursor-pointer"
+                          >
+                            {showRaw ? "▾" : "▸"} Raw captured text
+                          </button>
+                          {showRaw && (
+                            <pre className="mt-2 rounded-xl border border-surface bg-elevated p-3 text-[11px] text-secondary whitespace-pre-wrap break-words max-h-56 overflow-auto font-sans">
+                              {analysis.raw_text}
+                            </pre>
+                          )}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          </Card>
+        </div>
+
+        {/* ------------------------------------------------ side column */}
+        <aside className="hidden lg:block lg:sticky lg:top-24">
+          <TradePanel
+            marketId={market.id}
+            name={name}
+            category={analysis.category || market.entity_type || "other"}
+            captureId={selected.id}
+            score={viralityScore}
+            openPosition={openPos}
+            onOpened={handleOpened}
+          />
+        </aside>
+      </div>
 
       {toast && (
         <DemoToast

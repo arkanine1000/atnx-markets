@@ -1,0 +1,175 @@
+"use client";
+
+import Link from "next/link";
+import { useMemo } from "react";
+import { ViSparkline, polarityColor } from "@/components/charts/ViArea";
+import { Chip, DeltaChip, ScoreBadge } from "@/components/ui";
+import { mock24hChange } from "@/lib/capture-view";
+import type { Capture } from "@/lib/store";
+
+interface Props {
+  capture: Capture;
+  captureCount: number;
+  rank: number;
+}
+
+// Grid tile: the capture image is the hero and the VI history is drawn
+// straight over its lower half, the way pump.fun overlays a chart on the coin
+// art. Name, category, score and 24h delta sit underneath.
+export function MarketCard({ capture, captureCount, rank }: Props) {
+  const { analysis, trends, viralityScore, marketId } = capture;
+  const points = trends?.dataPoints ?? [];
+  const change24h = useMemo(
+    () => mock24hChange(marketId ?? capture.id, viralityScore),
+    [marketId, capture.id, viralityScore],
+  );
+  const stroke = polarityColor(points);
+  const pending = !marketId;
+
+  const body = (
+    <>
+      <div className="relative aspect-[4/3] overflow-hidden rounded-t-2xl bg-black">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={capture.screenshot}
+          alt=""
+          loading="lazy"
+          className="absolute inset-0 w-full h-full object-cover"
+        />
+        <div
+          className="absolute inset-x-0 bottom-0 h-[62%]"
+          style={{
+            background:
+              "linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.45) 55%, rgba(0,0,0,0) 100%)",
+          }}
+        />
+        <div className="absolute inset-x-0 bottom-0 h-[46%] px-0">
+          <ViSparkline
+            dataPoints={points}
+            height="100%"
+            overlay
+            color={stroke}
+          />
+        </div>
+
+        <span className="absolute top-2 left-2 h-6 min-w-6 px-1.5 inline-flex items-center justify-center rounded-md bg-black/60 backdrop-blur text-white text-[11px] font-bold font-mono tabular-nums">
+          #{rank}
+        </span>
+        <div className="absolute top-2 right-2 flex items-center gap-1">
+          {captureCount > 1 && (
+            <Chip tone="magenta" className="backdrop-blur bg-black/50">
+              {captureCount} captures
+            </Chip>
+          )}
+          {pending && (
+            <Chip
+              tone="neutral"
+              className="backdrop-blur bg-black/50 text-white border-white/20"
+            >
+              processing
+            </Chip>
+          )}
+        </div>
+      </div>
+
+      <div className="p-3.5 flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-bold text-primary truncate">
+            {analysis.name || "Untitled"}
+          </div>
+          <div className="text-xs text-tertiary truncate mt-0.5">
+            {analysis.category || "—"}
+          </div>
+        </div>
+        <div className="flex flex-col items-end gap-1.5 shrink-0">
+          <ScoreBadge value={viralityScore} />
+          <DeltaChip value={change24h} />
+        </div>
+      </div>
+    </>
+  );
+
+  const shell =
+    "block bg-surface border border-surface rounded-2xl overflow-hidden";
+  if (pending) {
+    return (
+      <div className={`${shell} opacity-70`} aria-disabled="true">
+        {body}
+      </div>
+    );
+  }
+  return (
+    <Link href={`/app/markets/${marketId}`} className={`${shell} card-hover`}>
+      {body}
+    </Link>
+  );
+}
+
+// Compact row for the list view.
+export function MarketRow({ capture, captureCount, rank }: Props) {
+  const { analysis, trends, viralityScore, marketId } = capture;
+  const points = trends?.dataPoints ?? [];
+  const change24h = useMemo(
+    () => mock24hChange(marketId ?? capture.id, viralityScore),
+    [marketId, capture.id, viralityScore],
+  );
+  const pending = !marketId;
+
+  const body = (
+    <div className="flex items-center gap-3 px-3 py-2.5">
+      <span className="w-6 text-right text-xs text-tertiary font-mono tabular-nums shrink-0">
+        {rank}
+      </span>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={capture.screenshot}
+        alt=""
+        loading="lazy"
+        className="w-10 h-10 rounded-lg object-cover border border-surface shrink-0 bg-black"
+      />
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-bold text-primary truncate flex items-center gap-2">
+          <span className="truncate">{analysis.name || "Untitled"}</span>
+          {captureCount > 1 && (
+            <Chip tone="magenta">{captureCount} captures</Chip>
+          )}
+          {pending && <Chip>processing</Chip>}
+        </div>
+        <div className="text-xs text-tertiary truncate">
+          {analysis.category || "—"}
+        </div>
+      </div>
+      <div className="hidden sm:block w-28 shrink-0">
+        <ViSparkline dataPoints={points} height={36} />
+      </div>
+      <div className="hidden xs:block sm:w-20 shrink-0 text-right">
+        <DeltaChip value={change24h} />
+      </div>
+      <ScoreBadge value={viralityScore} className="w-14 sm:w-16" />
+      <span
+        className="text-tertiary text-sm w-3 text-center shrink-0"
+        aria-hidden="true"
+      >
+        {pending ? "" : "›"}
+      </span>
+    </div>
+  );
+
+  const shell =
+    "block bg-surface border border-surface rounded-xl overflow-hidden";
+  if (pending) {
+    return (
+      <div className={`${shell} opacity-70`} aria-disabled="true">
+        {body}
+      </div>
+    );
+  }
+  return (
+    <Link
+      href={`/app/markets/${marketId}`}
+      className={`${shell} transition-colors hover:border-atnx-cyan/35`}
+    >
+      {body}
+    </Link>
+  );
+}

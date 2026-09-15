@@ -44,72 +44,79 @@ export function TradeLog({ marketId, initialEvents }: Props) {
     };
   }, [marketId]);
 
-  return (
-    <div className="pt-4 border-t border-surface">
-      <div className="text-[11px] uppercase tracking-wider text-tertiary mb-2">
-        Trade log ({events.length})
+  if (events.length === 0) {
+    return (
+      <div className="py-8 text-center">
+        <p className="text-sm text-secondary">No trades yet.</p>
+        <p className="text-xs text-tertiary mt-1">
+          Be the first to take a side.
+        </p>
       </div>
-      {events.length === 0 ? (
-        <div className="text-xs text-secondary py-2">
-          No trades yet. Be the first.
-        </div>
-      ) : (
-        <div className="max-h-72 overflow-y-auto">
-          <ul className="space-y-1">
-            {events.map((e) => {
-              const isLong = e.direction === "long";
-              const isClose = e.kind === "close";
-              const actionLabel = isClose
-                ? "CLOSE"
-                : isLong
-                ? "BUY"
-                : "SELL";
-              const actionColor = isClose
-                ? "text-secondary"
-                : isLong
-                ? "text-atnx-cyan"
-                : "text-atnx-magenta";
-              const pnlColor =
-                e.pnl === null
-                  ? ""
-                  : e.pnl >= 0
-                  ? "text-atnx-cyan"
-                  : "text-atnx-magenta";
+    );
+  }
 
-              return (
-                <li
-                  key={e.id}
-                  className="flex items-center gap-2 text-xs font-mono tabular-nums py-1 border-b border-surface/50 last:border-b-0"
-                >
-                  <span className={`${actionColor} font-bold w-12 shrink-0`}>
-                    {actionLabel}
-                  </span>
-                  <span className="text-primary truncate min-w-0 flex-1">
-                    @{e.handle}
-                  </span>
-                  <span className="text-tertiary shrink-0">
-                    {formatUsd(e.sizeUsd)}
-                    <span className="text-secondary">×{e.leverage}</span>
-                  </span>
-                  <span className="text-atnx-yellow shrink-0 w-12 text-right">
-                    {e.vi}
-                  </span>
-                  {e.pnl !== null ? (
-                    <span className={`${pnlColor} shrink-0 w-16 text-right`}>
-                      {formatPnl(e.pnl)}
-                    </span>
-                  ) : (
-                    <span className="shrink-0 w-16" />
-                  )}
-                  <span className="text-tertiary shrink-0 w-16 text-right">
-                    {timeAgo(e.at)}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      )}
+  return (
+    <div className="max-h-96 overflow-y-auto -mx-1 px-1">
+      <div className="flex items-center gap-3 px-2 pb-2 text-[10px] uppercase tracking-wider text-tertiary">
+        <span className="w-12">Side</span>
+        <span className="flex-1">Trader</span>
+        <span className="w-16 text-right">Size</span>
+        <span className="w-12 text-right">VI</span>
+        <span className="w-16 text-right">PnL</span>
+        <span className="w-14 text-right">When</span>
+      </div>
+      <ul className="space-y-1">
+        {events.map((e) => {
+          const isLong = e.direction === "long";
+          const isClose = e.kind === "close";
+          const label = isClose ? "Close" : isLong ? "Long" : "Short";
+          const tone = isClose
+            ? "bg-elevated text-secondary border-surface"
+            : isLong
+              ? "bg-atnx-cyan/10 text-atnx-cyan light:text-atnx-cyan-light border-atnx-cyan/25"
+              : "bg-atnx-magenta/10 text-atnx-magenta light:text-atnx-magenta-light border-atnx-magenta/25";
+          const pnlColor =
+            e.pnl === null
+              ? ""
+              : e.pnl >= 0
+                ? "text-atnx-cyan light:text-atnx-cyan-light"
+                : "text-atnx-magenta light:text-atnx-magenta-light";
+
+          return (
+            <li
+              key={e.id}
+              className="flex items-center gap-3 px-2 py-2 rounded-lg text-xs font-mono tabular-nums hover:bg-elevated transition-colors"
+            >
+              <span
+                className={`w-12 shrink-0 inline-flex justify-center rounded-md border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${tone}`}
+              >
+                {label}
+              </span>
+              <span className="text-primary truncate min-w-0 flex-1">
+                @{e.handle}
+              </span>
+              <span className="w-16 text-right text-secondary shrink-0">
+                {formatUsd(e.sizeUsd)}
+                <span className="text-tertiary">
+                  {"×"}
+                  {e.leverage}
+                </span>
+              </span>
+              <span className="w-12 text-right text-atnx-yellow light:text-atnx-yellow-light shrink-0">
+                {e.vi}
+              </span>
+              <span
+                className={`w-16 text-right shrink-0 font-bold ${pnlColor}`}
+              >
+                {e.pnl !== null ? formatPnl(e.pnl) : "—"}
+              </span>
+              <span className="w-14 text-right text-tertiary shrink-0">
+                {timeAgo(e.at)}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }
