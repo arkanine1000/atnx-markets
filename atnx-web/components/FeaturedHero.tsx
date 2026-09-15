@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ViSparkline, polarityColor } from "@/components/charts/ViArea";
 import { Card, Chip, DeltaChip } from "@/components/ui";
+import { HowItWorksModal } from "@/components/HowItWorksModal";
 import { mock24hChange } from "@/lib/capture-view";
 import type { Capture } from "@/lib/store";
 
@@ -50,6 +51,7 @@ const STEPS = [
 ];
 
 function Intro() {
+  const [showHow, setShowHow] = useState(false);
   return (
     <Card className="relative overflow-hidden p-6 sm:p-8 flex flex-col justify-center min-h-[260px]">
       {/* brand wash */}
@@ -81,7 +83,18 @@ function Intro() {
             </li>
           ))}
         </ol>
+        <button
+          type="button"
+          onClick={() => setShowHow(true)}
+          className="mt-7 inline-flex items-center gap-1.5 rounded-full border border-surface bg-elevated px-4 py-2 text-xs font-bold text-primary hover:border-atnx-cyan/50 hover:text-atnx-cyan cursor-pointer transition-colors"
+        >
+          How?
+          <span aria-hidden="true" className="text-tertiary">
+            {"›"}
+          </span>
+        </button>
       </div>
+      <HowItWorksModal open={showHow} onClose={() => setShowHow(false)} />
     </Card>
   );
 }
