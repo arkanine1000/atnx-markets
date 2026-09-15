@@ -299,6 +299,7 @@ export function DotMatrixLogo() {
     let burstStart = -Infinity;
     let nextSwap = performance.now() + SWAP_MS;
     let swapTimer = 0; // reduced-motion fallback: no frame loop to poll from
+    let sparkleBudget = 0;
     let shape: "text" | "eye" = "text";
     let textTargets: Target[] = [];
     let eyeTargets: Target[] = [];
@@ -319,6 +320,16 @@ export function DotMatrixLogo() {
       const swayY = reducedMotion ? 0 : SWAY * 0.6 * Math.sin(t * 0.47 + 1.3);
       const shimmerPhase = t * SHIMMER_SPEED * Math.PI * 2;
       const shimmerK = (Math.PI * 2) / SHIMMER_LEN;
+      if (!reducedMotion) {
+        // Pick this frame's sparkles up front (expected count carried as a
+        // fractional budget) instead of rolling a random per dot per frame.
+        sparkleBudget += SPARKLE_RATE * dots.length;
+        while (sparkleBudget >= 1) {
+          sparkleBudget -= 1;
+          const d = dots[(Math.random() * dots.length) | 0];
+          if (d && d.s === 0) d.s = SPARKLE_FRAMES;
+        }
+      }
       for (const d of dots) {
         let x = d.x + swayX;
         let y = d.y + swayY;
@@ -349,8 +360,6 @@ export function DotMatrixLogo() {
             a += 0.6 * k;
             r *= 1 + 0.9 * Math.sin(k * Math.PI);
             d.s--;
-          } else if (Math.random() < SPARKLE_RATE) {
-            d.s = SPARKLE_FRAMES;
           }
         }
         ctx.globalAlpha = Math.min(1, a);
@@ -462,8 +471,14 @@ export function DotMatrixLogo() {
     }
 
     function frame(now: number) {
-      raf = 0;
-      if (cancelled || !visible) return;
+      // `raf` keeps the (already fired) handle until the end of the frame,
+      // so a wake() from inside the frame (the auto swap goes through
+      // burst → wake) is a no-op. Zeroing it here let each swap start an
+      // extra parallel loop, which is why the page slowed down over time.
+      if (cancelled || !visible) {
+        raf = 0;
+        return;
+      }
 
       const dotsMoving = stepDots(now);
       settled = !dotsMoving && !pointer.inside;
@@ -490,7 +505,7 @@ export function DotMatrixLogo() {
 
       // Reduced motion: draw once and stop. Otherwise keep the (throttled)
       // ambient loop going while we're on screen.
-      if (!reducedMotion) raf = requestAnimationFrame(frame);
+      raf = reducedMotion ? 0 : requestAnimationFrame(frame);
     }
 
     function wake() {
