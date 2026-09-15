@@ -8,8 +8,9 @@ import { useTheme } from "next-themes";
 // - Dots assemble from scattered positions on load, then rest.
 // - The pointer pushes dots away; they spring back.
 // - A click bursts the dots and they re-form as the other shape: the ATNX
-//   wordmark ⇄ the eye glyph from the app icon. One dot pool, two target
-//   sets, proportional index mapping so left-of-wordmark becomes
+//   wordmark ⇄ a large eye (the brand mark's lens, cyan | magenta, pupil as
+//   negative space) sized to the wordmark's footprint. One dot pool, two
+//   target sets, proportional index mapping so left-of-wordmark becomes
 //   left-of-eye and the morph reads as one motion.
 // - Rendering uses pre-rasterised sprites (one drawImage per dot) instead of
 //   a path fill per dot, and the loop sleeps when everything is at rest,
@@ -26,8 +27,8 @@ const BG_COLORS = {
 };
 
 const TEXT = "ATNX";
-const GLYPH_SRC = "/logo_glyph.png"; // eye mark, transparent background
-const GLYPH_HEIGHT = 0.8; // of the wordmark's box
+const EYE_PUPIL = 0.52; // pupil radius as a fraction of the eye's half-height
+const EYE_HEIGHT = 1.15; // eye height relative to the wordmark's cap height
 const MOUSE_RADIUS = 80;
 const SCATTER_FORCE = 8;
 const RETURN_SPEED = 0.08;
@@ -147,36 +148,53 @@ function sampleText(w: number, h: number, gap: number): Target[] {
   return targets;
 }
 
-// The eye mark, sampled the same way. Pixel colours are snapped to the four
-// brand sprites by hue; the near-black pupil is left as negative space.
-function sampleGlyph(img: HTMLImageElement, w: number, h: number, gap: number): Target[] {
-  const off = document.createElement("canvas");
-  off.width = w;
-  off.height = h;
-  const ctx = off.getContext("2d", { willReadFrequently: true })!;
-  const gh = (h / (1 + BURST_ROOM)) * GLYPH_HEIGHT;
-  const gw = gh * (img.naturalWidth / img.naturalHeight);
-  ctx.drawImage(img, (w - gw) / 2, (h - gh) / 2, gw, gh);
+// The eye: a lens (two circular arcs meeting at the corners) with a round
+// pupil cut out, left half cyan, right half magenta. Sized from the
+// wordmark's bounds so the two shapes share a footprint.
+function sampleEye(
+  bounds: { minX: number; maxX: number; minY: number; maxY: number },
+  gap: number
+): Target[] {
+  const cx = (bounds.minX + bounds.maxX) / 2;
+  const cy = (bounds.minY + bounds.maxY) / 2;
+  const hw = (bounds.maxX - bounds.minX) / 2;
+  const hh = ((bounds.maxY - bounds.minY) / 2) * EYE_HEIGHT;
+  // Arc radius so the lens is hh tall at the centre and 0 at ±hw.
+  const R = (hw * hw + hh * hh) / (2 * hh);
+  const d = R - hh;
+  const pupil = hh * EYE_PUPIL;
 
-  const { data } = ctx.getImageData(0, 0, w, h);
   const targets: Target[] = [];
-  for (let y = 0; y < h; y += gap) {
-    for (let x = 0; x < w; x += gap) {
-      const i = (y * w + x) * 4;
-      if (data[i + 3] <= 128) continue;
-      const r = data[i];
-      const g = data[i + 1];
-      const b = data[i + 2];
-      if (Math.max(r, g, b) < 60) continue; // pupil
-      let c: number;
-      if (b > r && g > r) c = 0; // cyan
-      else if (r > g && b > g) c = 1; // magenta
-      else if (r > b && g > b) c = 2; // yellow / gold beam
-      else c = 3;
-      targets.push({ x, y, c });
+  const y0 = Math.floor((cy - hh) / gap) * gap;
+  const y1 = Math.ceil((cy + hh) / gap) * gap;
+  const x0 = Math.floor((cx - hw) / gap) * gap;
+  const x1 = Math.ceil((cx + hw) / gap) * gap;
+  for (let y = y0; y <= y1; y += gap) {
+    for (let x = x0; x <= x1; x += gap) {
+      const dx = x - cx;
+      const dy = y - cy;
+      if (Math.abs(dx) > hw) continue;
+      const lensHalf = Math.sqrt(Math.max(0, R * R - dx * dx)) - d;
+      if (Math.abs(dy) > lensHalf) continue;
+      if (dx * dx + dy * dy < pupil * pupil) continue;
+      targets.push({ x, y, c: dx < 0 ? 0 : 1 });
     }
   }
   return targets;
+}
+
+function boundsOf(targets: Target[]) {
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (const t of targets) {
+    if (t.x < minX) minX = t.x;
+    if (t.x > maxX) maxX = t.x;
+    if (t.y < minY) minY = t.y;
+    if (t.y > maxY) maxY = t.y;
+  }
+  return { minX, maxX, minY, maxY };
 }
 
 // One pool of dots big enough for either shape. Each starts scattered so the
@@ -213,15 +231,6 @@ function applyShape(dots: Dot[], targets: Target[], gap: number) {
     dots[i].oy = t.y + (Math.random() - 0.5) * jitter;
     dots[i].c = t.c;
   }
-}
-
-function loadGlyph(): Promise<HTMLImageElement | null> {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = () => resolve(null);
-    img.src = GLYPH_SRC;
-  });
 }
 
 function makeBg(count: number, w: number, h: number): BgParticle[] {
@@ -382,21 +391,22 @@ export function DotMatrixLogo() {
 
       // Sample the wordmark only once the brand font is actually available,
       // otherwise the dots trace the fallback font's glyphs.
-      const [, glyph] = await Promise.all([
-        document.fonts.load(`bold ${Math.round(h * 0.7)}px "JetBrains Mono"`).catch(() => null),
-        loadGlyph(),
-      ]);
+      try {
+        await document.fonts.load(`bold ${Math.round(h * 0.7)}px "JetBrains Mono"`);
+      } catch {
+        /* fall back to whatever monospace is installed */
+      }
       if (cancelled) return;
 
       gapPx = gap;
       sprites = LETTER_COLORS[mode].map(makeSprite);
       bgSprites = BG_COLORS[mode].map(makeSprite);
       textTargets = sampleText(w, h, gap);
-      eyeTargets = glyph ? sampleGlyph(glyph, w, h, gap) : [];
+      eyeTargets = textTargets.length ? sampleEye(boundsOf(textTargets), gap) : [];
       if (!eyeTargets.length) shape = "text";
       dots = makeDots(Math.max(textTargets.length, eyeTargets.length), w, h);
       applyShape(dots, shape === "eye" ? eyeTargets : textTargets, gap);
-      el.setAttribute("aria-label", shape === "eye" ? "ATNX eye mark" : "ATNX");
+      el.setAttribute("aria-label", shape === "eye" ? "ATNX eye" : "ATNX");
       bg = makeBg(50, w, h);
       if (reducedMotion) {
         for (const d of dots) {
@@ -424,7 +434,7 @@ export function DotMatrixLogo() {
       if (!eyeTargets.length) return;
       shape = shape === "text" ? "eye" : "text";
       applyShape(dots, shape === "eye" ? eyeTargets : textTargets, gapPx);
-      el.setAttribute("aria-label", shape === "eye" ? "ATNX eye mark" : "ATNX");
+      el.setAttribute("aria-label", shape === "eye" ? "ATNX eye" : "ATNX");
     }
     function onPointerDown(e: PointerEvent) {
       toLocal(e);
