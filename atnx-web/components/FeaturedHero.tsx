@@ -39,12 +39,12 @@ const STEPS = [
   },
   {
     n: "2",
-    title: "Take a side",
+    title: "Long or Short",
     cls: "bg-atnx-magenta/10 text-atnx-magenta light:text-atnx-magenta-light border-atnx-magenta/25",
   },
   {
     n: "3",
-    title: "Watch the Virality Index",
+    title: "Profit for being right.",
     cls: "bg-atnx-yellow/10 text-atnx-yellow light:text-atnx-yellow-light border-atnx-yellow/25",
   },
 ];
