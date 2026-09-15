@@ -36,18 +36,13 @@ const TONE = {
     "bg-atnx-yellow/10 text-atnx-yellow light:text-atnx-yellow-light border-atnx-yellow/25",
 };
 
-export function HowItWorksModal({
-  open,
-  onClose,
-}: {
-  open: boolean;
-  onClose: () => void;
-}) {
+// Mounted only while open (the parent conditionally renders it), so every
+// opening starts fresh at step 1.
+export function HowItWorksModal({ onClose }: { onClose: () => void }) {
   const [step, setStep] = useState(0);
   const closeRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    if (!open) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     closeRef.current?.focus();
@@ -62,9 +57,8 @@ export function HowItWorksModal({
       document.body.style.overflow = prev;
       window.removeEventListener("keydown", onKey);
     };
-  }, [open, onClose]);
+  }, [onClose]);
 
-  if (!open) return null;
   const s = STEPS[step];
   const last = step === STEPS.length - 1;
 
@@ -197,16 +191,101 @@ function SceneCapture() {
         </linearGradient>
       </defs>
 
-      {/* shortcut hint */}
-      <g transform="translate(262,8)">
+      {/* shortcut hint, under the desktop window */}
+      <g transform="translate(16,186)">
         <rect width="86" height="18" rx="4" fill="#1e1e1e" stroke="#2a2a2a" />
         <text x="43" y="12.5" textAnchor="middle" fontSize="8.5" fill="#999">
           Ctrl+Shift+X
         </text>
       </g>
 
-      {/* browser */}
-      <g transform="translate(60,22)">
+      {/* phone: same feed, then the screenshot gesture (side button, flash,
+          screen shrinks into a thumbnail) */}
+      <g transform="translate(246,12)">
+        <rect x="-3" y="50" width="3" height="14" rx="1.5" fill="#3a3a3a" />
+        <rect x="-3" y="70" width="3" height="14" rx="1.5" fill="#3a3a3a" />
+        <g className="hiw-pbtn">
+          <rect x="92" y="58" width="3" height="26" rx="1.5" fill="#3a3a3a" />
+        </g>
+        <rect width="92" height="196" rx="16" fill="#1e1e1e" stroke="#2f2f2f" />
+        <rect x="5" y="5" width="82" height="186" rx="12" fill="#0f0f0f" />
+        <clipPath id="hiw-phone-clip">
+          <rect x="5" y="5" width="82" height="186" rx="12" />
+        </clipPath>
+        <g clipPath="url(#hiw-phone-clip)">
+          <g className="hiw-pshot">
+            <rect x="5" y="5" width="82" height="186" fill="#0f0f0f" />
+            {/* clipped again inside the scaled group so off-screen feed never
+                shows in the shrunken thumbnail */}
+            <g clipPath="url(#hiw-phone-clip)">
+              <g className="hiw-pfeed">
+                {[0, 1, 2, 3, 4].map((i) => (
+                  <g key={i} transform={`translate(11, ${30 + i * 70})`}>
+                    <rect
+                      width="70"
+                      height="60"
+                      rx="6"
+                      fill="#1c1c1c"
+                      stroke="#2a2a2a"
+                    />
+                    <circle cx="9" cy="10" r="5" fill="#333" />
+                    <rect
+                      x="17"
+                      y="7"
+                      width="30"
+                      height="4"
+                      rx="2"
+                      fill="#3a3a3a"
+                    />
+                    <rect
+                      x="17"
+                      y="13"
+                      width="20"
+                      height="3"
+                      rx="1.5"
+                      fill="#2c2c2c"
+                    />
+                    <rect
+                      x="6"
+                      y="22"
+                      width="58"
+                      height="30"
+                      rx="4"
+                      fill={i === 1 ? "url(#hiw-media)" : "#242424"}
+                    />
+                  </g>
+                ))}
+              </g>
+            </g>
+            <rect
+              className="hiw-pshot-frame"
+              x="5"
+              y="5"
+              width="82"
+              height="186"
+              rx="12"
+              fill="none"
+              stroke="#fff"
+              strokeWidth="2"
+              vectorEffect="non-scaling-stroke"
+            />
+          </g>
+        </g>
+        <rect x="32" y="10" width="28" height="7" rx="3.5" fill="#000" />
+        <rect x="31" y="184" width="30" height="3" rx="1.5" fill="#444" />
+        <rect
+          className="hiw-pflash"
+          x="5"
+          y="5"
+          width="82"
+          height="186"
+          rx="12"
+          fill="#fff"
+        />
+      </g>
+
+      {/* browser, scaled to leave room for the phone */}
+      <g transform="translate(16,26) scale(0.86)">
         <rect
           width="240"
           height="176"

@@ -94,7 +94,7 @@ function Intro() {
           </span>
         </button>
       </div>
-      <HowItWorksModal open={showHow} onClose={() => setShowHow(false)} />
+      {showHow && <HowItWorksModal onClose={() => setShowHow(false)} />}
     </Card>
   );
 }
