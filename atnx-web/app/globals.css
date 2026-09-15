@@ -30,6 +30,9 @@
   --font-sans: 'Inter', system-ui, sans-serif;
 }
 
+/* `light:` utility variant, keyed off the .light class the theme toggle sets */
+@custom-variant light (&:where(.light, .light *));
+
 /* Dark mode (default) */
 body {
   background: var(--color-dark-primary);
