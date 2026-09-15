@@ -7,6 +7,10 @@ import { useTheme } from "next-themes";
 //
 // - Dots assemble from scattered positions on load, then rest.
 // - The pointer pushes dots away; they spring back.
+// - A click bursts the dots and they re-form as the other shape: the ATNX
+//   wordmark ⇄ the eye glyph from the app icon. One dot pool, two target
+//   sets, proportional index mapping so left-of-wordmark becomes
+//   left-of-eye and the morph reads as one motion.
 // - Rendering uses pre-rasterised sprites (one drawImage per dot) instead of
 //   a path fill per dot, and the loop sleeps when everything is at rest,
 //   off-screen, or the tab is hidden. Reduced-motion users get a static
@@ -22,6 +26,8 @@ const BG_COLORS = {
 };
 
 const TEXT = "ATNX";
+const GLYPH_SRC = "/logo_glyph.png"; // eye mark, transparent background
+const GLYPH_HEIGHT = 0.8; // of the wordmark's box
 const MOUSE_RADIUS = 80;
 const SCATTER_FORCE = 8;
 const RETURN_SPEED = 0.08;
@@ -42,6 +48,12 @@ const REST_DIST = 0.15; // px from origin below which a dot snaps home
 const IDLE_FPS = 20; // background drift cadence while nothing else moves
 const SPRITE = 16; // sprite raster size (px); drawn scaled to each dot
 const MAX_DPR = 2;
+
+interface Target {
+  x: number;
+  y: number;
+  c: number;
+}
 
 interface Dot {
   ox: number;
@@ -93,7 +105,7 @@ function makeSprite(color: string): HTMLCanvasElement {
   return c;
 }
 
-function sampleText(w: number, h: number, gap: number): Dot[] {
+function sampleText(w: number, h: number, gap: number): Target[] {
   const off = document.createElement("canvas");
   off.width = w;
   off.height = h;
@@ -118,7 +130,7 @@ function sampleText(w: number, h: number, gap: number): Dot[] {
   });
 
   const { data } = ctx.getImageData(0, 0, w, h);
-  const dots: Dot[] = [];
+  const targets: Target[] = [];
   for (let y = 0; y < h; y += gap) {
     for (let x = 0; x < w; x += gap) {
       if (data[(y * w + x) * 4 + 3] <= 128) continue;
@@ -129,24 +141,87 @@ function sampleText(w: number, h: number, gap: number): Dot[] {
           break;
         }
       }
-      // Entrance: start scattered around the canvas and let the spring
-      // pull each dot home.
-      const angle = Math.random() * Math.PI * 2;
-      const dist = 60 + Math.random() * Math.max(w, h) * 0.5;
-      dots.push({
-        ox: x,
-        oy: y,
-        x: x + Math.cos(angle) * dist,
-        y: y + Math.sin(angle) * dist,
-        vx: 0,
-        vy: 0,
-        c,
-        r: 1.5 + Math.random() * 1.5,
-        a: 0.8 + Math.random() * 0.2,
-      });
+      targets.push({ x, y, c });
     }
   }
-  return dots;
+  return targets;
+}
+
+// The eye mark, sampled the same way. Pixel colours are snapped to the four
+// brand sprites by hue; the near-black pupil is left as negative space.
+function sampleGlyph(img: HTMLImageElement, w: number, h: number, gap: number): Target[] {
+  const off = document.createElement("canvas");
+  off.width = w;
+  off.height = h;
+  const ctx = off.getContext("2d", { willReadFrequently: true })!;
+  const gh = (h / (1 + BURST_ROOM)) * GLYPH_HEIGHT;
+  const gw = gh * (img.naturalWidth / img.naturalHeight);
+  ctx.drawImage(img, (w - gw) / 2, (h - gh) / 2, gw, gh);
+
+  const { data } = ctx.getImageData(0, 0, w, h);
+  const targets: Target[] = [];
+  for (let y = 0; y < h; y += gap) {
+    for (let x = 0; x < w; x += gap) {
+      const i = (y * w + x) * 4;
+      if (data[i + 3] <= 128) continue;
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+      if (Math.max(r, g, b) < 60) continue; // pupil
+      let c: number;
+      if (b > r && g > r) c = 0; // cyan
+      else if (r > g && b > g) c = 1; // magenta
+      else if (r > b && g > b) c = 2; // yellow / gold beam
+      else c = 3;
+      targets.push({ x, y, c });
+    }
+  }
+  return targets;
+}
+
+// One pool of dots big enough for either shape. Each starts scattered so the
+// first assignment doubles as the entrance animation.
+function makeDots(n: number, w: number, h: number): Dot[] {
+  return Array.from({ length: n }, () => {
+    const angle = Math.random() * Math.PI * 2;
+    const dist = 60 + Math.random() * Math.max(w, h) * 0.5;
+    return {
+      ox: w / 2,
+      oy: h / 2,
+      x: w / 2 + Math.cos(angle) * dist,
+      y: h / 2 + Math.sin(angle) * dist,
+      vx: 0,
+      vy: 0,
+      c: 0,
+      r: 1.5 + Math.random() * 1.5,
+      a: 0.8 + Math.random() * 0.2,
+    };
+  });
+}
+
+// Map dot i → target floor(i·m/n). Both lists are in scanline order, so the
+// correspondence is spatially coherent; when dots outnumber targets the
+// extras stack with a little jitter instead of piling on one pixel.
+function applyShape(dots: Dot[], targets: Target[], gap: number) {
+  const n = dots.length;
+  const m = targets.length;
+  if (!m) return;
+  for (let i = 0; i < n; i++) {
+    const t = targets[Math.floor((i * m) / n)];
+    const jitter = n > m ? gap * 0.5 : 0;
+    dots[i].ox = t.x + (Math.random() - 0.5) * jitter;
+    dots[i].oy = t.y + (Math.random() - 0.5) * jitter;
+    dots[i].c = t.c;
+  }
+}
+
+function loadGlyph(): Promise<HTMLImageElement | null> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = GLYPH_SRC;
+  });
 }
 
 function makeBg(count: number, w: number, h: number): BgParticle[] {
@@ -188,6 +263,10 @@ export function DotMatrixLogo() {
     let settled = false;
     let lastIdleFrame = 0;
     let burstStart = -Infinity;
+    let shape: "text" | "eye" = "text";
+    let textTargets: Target[] = [];
+    let eyeTargets: Target[] = [];
+    let gapPx = 4;
 
     const ctx = el.getContext("2d", { alpha: true, desynchronized: true })!;
 
@@ -303,16 +382,21 @@ export function DotMatrixLogo() {
 
       // Sample the wordmark only once the brand font is actually available,
       // otherwise the dots trace the fallback font's glyphs.
-      try {
-        await document.fonts.load(`bold ${Math.round(h * 0.7)}px "JetBrains Mono"`);
-      } catch {
-        /* fall back to whatever monospace is installed */
-      }
+      const [, glyph] = await Promise.all([
+        document.fonts.load(`bold ${Math.round(h * 0.7)}px "JetBrains Mono"`).catch(() => null),
+        loadGlyph(),
+      ]);
       if (cancelled) return;
 
+      gapPx = gap;
       sprites = LETTER_COLORS[mode].map(makeSprite);
       bgSprites = BG_COLORS[mode].map(makeSprite);
-      dots = sampleText(w, h, gap);
+      textTargets = sampleText(w, h, gap);
+      eyeTargets = glyph ? sampleGlyph(glyph, w, h, gap) : [];
+      if (!eyeTargets.length) shape = "text";
+      dots = makeDots(Math.max(textTargets.length, eyeTargets.length), w, h);
+      applyShape(dots, shape === "eye" ? eyeTargets : textTargets, gap);
+      el.setAttribute("aria-label", shape === "eye" ? "ATNX eye mark" : "ATNX");
       bg = makeBg(50, w, h);
       if (reducedMotion) {
         for (const d of dots) {
@@ -336,9 +420,23 @@ export function DotMatrixLogo() {
     }
     // Click / tap: blow the wordmark apart from the touch point and let it
     // reassemble. Cheap, and the one thing people remember.
+    function toggleShape() {
+      if (!eyeTargets.length) return;
+      shape = shape === "text" ? "eye" : "text";
+      applyShape(dots, shape === "eye" ? eyeTargets : textTargets, gapPx);
+      el.setAttribute("aria-label", shape === "eye" ? "ATNX eye mark" : "ATNX");
+    }
     function onPointerDown(e: PointerEvent) {
       toLocal(e);
-      if (reducedMotion) return;
+      toggleShape();
+      if (reducedMotion) {
+        for (const d of dots) {
+          d.x = d.ox;
+          d.y = d.oy;
+        }
+        wake();
+        return;
+      }
       burstStart = performance.now();
       const spin = Math.random() < 0.5 ? -1 : 1;
       for (const d of dots) {
@@ -400,7 +498,7 @@ export function DotMatrixLogo() {
       ref={canvasRef}
       aria-label="ATNX"
       role="img"
-      className="block mx-auto [touch-action:pan-y]"
+      className="block mx-auto cursor-pointer [touch-action:pan-y]"
     />
   );
 }
