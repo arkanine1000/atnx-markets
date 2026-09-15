@@ -81,42 +81,25 @@ button {
   flex-shrink: 0;
 }
 
-.brand > div {
-  white-space: nowrap;
-}
-
-.wordmark {
-  color: var(--cyan);
-  font-size: 18px;
+.handle {
+  font-size: 14px;
   font-weight: 700;
-  letter-spacing: 4px;
-  line-height: 1.1;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text);
 }
 
-.tagline {
+.handle.muted {
+  font-weight: 500;
   color: var(--muted);
-  font-size: 10px;
-  letter-spacing: 1px;
 }
 
 .topbar-actions {
   display: flex;
   align-items: center;
   gap: 6px;
-  min-width: 0;
-}
-
-.chip {
-  max-width: 110px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 11px;
-  color: var(--text);
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 3px 10px;
 }
 
 .icon-btn {
@@ -331,45 +314,9 @@ main {
   cursor: progress;
 }
 
-.status-bar {
+.shortcut-hint {
   display: flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 12px;
-  padding: 0 2px;
-  min-width: 0;
-}
-
-.status-bar > span:last-child {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.status-sep {
-  color: var(--line);
-}
-
-.status-dot {
-  flex-shrink: 0;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--cyan);
-}
-
-.status-dot.capturing {
-  background: var(--magenta);
-  animation: pulse 0.8s infinite;
-}
-
-.status-dot.analyzing {
-  background: var(--yellow);
-  animation: pulse 1s infinite;
-}
-
-.status-dot.error {
-  background: var(--magenta);
+  justify-content: center;
 }
 
 .note {
@@ -636,12 +583,72 @@ main {
 
 .footer {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-  padding: 14px 16px 16px;
+  justify-content: center;
+  padding: 14px 16px 18px;
   margin-top: 6px;
-  font-size: 11px;
+  font-size: 12px;
+}
+
+.footer a {
+  font-weight: 600;
+  padding: 8px 16px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.footer a:hover,
+.footer a:focus-visible {
+  text-decoration: none;
+  border-color: var(--cyan);
+  background: rgba(0, 212, 255, 0.08);
+}
+
+/* --- Top markets: the "hot" list gets a yellow frame and rank accents --- */
+
+.top {
+  border-color: rgba(255, 229, 0, 0.35);
+  box-shadow: 0 0 0 1px rgba(255, 229, 0, 0.08), 0 8px 28px rgba(255, 229, 0, 0.08);
+}
+
+.top > * + * {
+  border-top-color: rgba(255, 229, 0, 0.12);
+}
+
+.top .row {
+  position: relative;
+}
+
+/* Left rail brightens with rank: #1 solid yellow, then fading. */
+.top .row::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--yellow);
+  opacity: var(--rank-heat, 0.15);
+}
+
+.top .row .thumb {
+  border-color: rgba(255, 229, 0, 0.35);
+}
+
+.top .row .end .big {
+  color: var(--yellow);
+}
+
+.top .row:hover,
+.top .row:focus-visible {
+  background: rgba(255, 229, 0, 0.07);
+}
+
+.top .row:hover .thumb,
+.top .row:focus-visible .thumb {
+  border-color: var(--yellow);
+  box-shadow: 0 0 12px rgba(255, 229, 0, 0.35);
 }
 
 @keyframes pulse {
@@ -655,7 +662,6 @@ main {
 
 @media (prefers-reduced-motion: reduce) {
   .btn-capture.analyzing,
-  .status-dot,
   .icon-btn.spinning svg {
     animation: none;
   }

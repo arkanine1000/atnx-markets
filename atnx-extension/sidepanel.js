@@ -124,9 +124,7 @@ async function loadSettings() {
   const commands = await chrome.commands.getAll();
   const cmd = commands.find((c) => c.name === 'activate-capture');
   shortcutLink.textContent = cmd?.shortcut || 'Set shortcut';
-  $('statusHint').textContent = cmd?.shortcut
-    ? `${cmd.shortcut} on any page`
-    : 'Drag to select any part of the page';
+  $('statusHint').textContent = cmd?.shortcut || 'Drag to select';
 }
 
 urlForm.addEventListener('submit', async (e) => {
@@ -171,10 +169,7 @@ $('openDashboard').addEventListener('click', async (e) => {
 
 const captureBtn = $('captureBtn');
 const captureText = $('captureText');
-const statusDot = $('statusDot');
-const statusLabel = $('statusLabel');
 const captureNote = $('captureNote');
-const captureCount = $('captureCount');
 
 captureBtn.addEventListener('click', async () => {
   captureNote.hidden = true;
@@ -185,36 +180,26 @@ captureBtn.addEventListener('click', async () => {
   }
 });
 
-const LABELS = {
-  capturing: 'Capturing…',
-  analyzing: 'Analyzing with AI…',
-  done: 'Done',
-  error: 'Error',
-  ready: 'Ready'
-};
+// The button is the status: it reads CAPTURING… / ANALYZING… while the
+// pipeline runs. Errors surface as a toast on the page and on the badge.
+const BUSY = { capturing: 'CAPTURING…', analyzing: 'ANALYZING…' };
 
 let lastStatus = 'ready';
 
-function renderStatus({ captureStatus = 'ready', captureStatusAt = 0, captureCount: count = 0 }) {
+function renderStatus({ captureStatus = 'ready', captureStatusAt = 0 }) {
   let status = captureStatus;
   if ((status === 'done' || status === 'error') && Date.now() - captureStatusAt > STALE_STATUS_MS) {
     status = 'ready';
   }
 
-  captureCount.textContent = `${count} capture${count === 1 ? '' : 's'}`;
-  statusLabel.textContent = LABELS[status] || LABELS.ready;
-
-  statusDot.className = 'status-dot';
   captureBtn.className = 'btn-capture';
   captureText.textContent = 'CAPTURE';
   captureBtn.disabled = false;
 
-  if (status === 'capturing' || status === 'error') statusDot.classList.add(status);
-  if (status === 'analyzing') {
-    statusDot.classList.add('analyzing');
+  if (BUSY[status]) {
     captureBtn.classList.add('analyzing');
     captureBtn.disabled = true;
-    captureText.textContent = 'ANALYZING…';
+    captureText.textContent = BUSY[status];
   }
 
   // A finished capture changes the market list, so pull fresh data.
@@ -224,13 +209,13 @@ function renderStatus({ captureStatus = 'ready', captureStatusAt = 0, captureCou
 
 async function loadStatus() {
   renderStatus(
-    await chrome.storage.local.get(['captureStatus', 'captureStatusAt', 'captureCount'])
+    await chrome.storage.local.get(['captureStatus', 'captureStatusAt'])
   );
 }
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local') return;
-  if ('captureStatus' in changes || 'captureCount' in changes) loadStatus();
+  if ('captureStatus' in changes) loadStatus();
 });
 
 // --- Value tile: hero number + 7d delta + sparkline ---
@@ -423,6 +408,11 @@ const marketsMeta = $('marketsMeta');
 const handleChip = $('handleChip');
 const refreshBtn = $('refreshBtn');
 
+function setHandle(handle) {
+  handleChip.textContent = handle ? `@${handle}` : 'Not signed in';
+  handleChip.className = handle ? 'handle' : 'handle muted';
+}
+
 let portfolioOpen = false;
 chrome.storage.local.get('portfolioOpen').then(({ portfolioOpen: v }) => {
   portfolioOpen = Boolean(v);
@@ -501,7 +491,7 @@ async function loadPortfolio() {
   }
 
   if (res.status === 401) {
-    handleChip.hidden = true;
+    setHandle(null);
     valueTile.hidden = true;
     portfolioEl.replaceChildren(
       placeholder(`Sign in at ${hostOf(base)} to see your balance and positions`, {
@@ -526,12 +516,7 @@ async function loadPortfolio() {
     return;
   }
 
-  if (data.handle) {
-    handleChip.textContent = `@${data.handle}`;
-    handleChip.hidden = false;
-  } else {
-    handleChip.hidden = true;
-  }
+  setHandle(data.handle);
 
   renderTile(data);
 
@@ -626,13 +611,20 @@ async function loadMarkets() {
     return;
   }
   const top = topMarkets(data.captures);
-  marketsMeta.textContent = top.length ? 'VI' : '';
+  marketsMeta.textContent = top.length ? 'VI Score' : '';
 
   if (top.length === 0) {
     marketsEl.replaceChildren(placeholder('No markets yet — capture something to spawn one'));
     return;
   }
-  marketsEl.replaceChildren(...top.map((c) => marketRow(c, base)));
+  marketsEl.replaceChildren(
+    ...top.map((c, i) => {
+      const row = marketRow(c, base);
+      // 1 → 0.25 heat across the five rows.
+      row.style.setProperty('--rank-heat', String(1 - (i / Math.max(1, top.length - 1)) * 0.75));
+      return row;
+    })
+  );
 }
 
 let refreshing = false;
