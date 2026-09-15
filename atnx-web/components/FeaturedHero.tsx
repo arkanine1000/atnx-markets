@@ -23,16 +23,35 @@ export function FeaturedHero({ captures }: { captures: Capture[] }) {
   );
 
   return (
-    <section className="grid grid-cols-1 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] gap-4 mb-8">
+    // Fixed height on desktop so the row doesn't jump as slides change.
+    <section className="grid grid-cols-1 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:h-[400px] gap-4 mb-8">
       <Intro />
       {featured.length > 0 && <Showcase items={featured} />}
     </section>
   );
 }
 
+const STEPS = [
+  {
+    n: "1",
+    title: "Capture anything",
+    cls: "bg-atnx-cyan/10 text-atnx-cyan light:text-atnx-cyan-light border-atnx-cyan/25",
+  },
+  {
+    n: "2",
+    title: "Take a side",
+    cls: "bg-atnx-magenta/10 text-atnx-magenta light:text-atnx-magenta-light border-atnx-magenta/25",
+  },
+  {
+    n: "3",
+    title: "Watch the Virality Index",
+    cls: "bg-atnx-yellow/10 text-atnx-yellow light:text-atnx-yellow-light border-atnx-yellow/25",
+  },
+];
+
 function Intro() {
   return (
-    <Card className="relative overflow-hidden p-5 sm:p-6 flex flex-col justify-between min-h-[260px]">
+    <Card className="relative overflow-hidden p-6 sm:p-8 flex flex-col justify-center min-h-[260px]">
       {/* brand wash */}
       <div
         aria-hidden="true"
@@ -43,83 +62,46 @@ function Intro() {
         }}
       />
       <div className="relative">
-        <div className="text-[10px] uppercase tracking-[0.2em] text-tertiary mb-2">
-          Attention Exchange
-        </div>
-        <h2 className="text-2xl sm:text-3xl font-bold text-primary tracking-tight leading-tight">
+        <h2 className="text-3xl sm:text-4xl font-bold text-primary tracking-tight leading-tight">
           Trade attention,
           <br />
           not tokens.
         </h2>
-        <ol className="mt-5 space-y-3">
-          {[
-            {
-              n: "1",
-              tone: "cyan" as const,
-              title: "Capture anything",
-              body: (
-                <>
-                  Hit{" "}
-                  <kbd className="rounded border border-surface bg-elevated px-1 py-0.5 text-[10px] text-secondary font-mono">
-                    Ctrl+Shift+X
-                  </kbd>{" "}
-                  on any page. Claude identifies the meme, person or moment and
-                  spawns a market for it.
-                </>
-              ),
-            },
-            {
-              n: "2",
-              tone: "yellow" as const,
-              title: "Watch the Virality Index",
-              body: "A live 0 to 1000 score of how much attention something is getting, updated with every capture.",
-            },
-            {
-              n: "3",
-              tone: "magenta" as const,
-              title: "Take a side",
-              body: "Long if you think attention climbs, short if it fades. Simulated USDC, real bragging rights.",
-            },
-          ].map((s) => (
-            <li key={s.n} className="flex gap-3">
+        <ol className="mt-7 space-y-4">
+          {STEPS.map((s) => (
+            <li key={s.n} className="flex items-center gap-3.5">
               <span
-                className={`h-6 w-6 shrink-0 rounded-md inline-flex items-center justify-center text-[11px] font-bold font-mono border ${
-                  s.tone === "cyan"
-                    ? "bg-atnx-cyan/10 text-atnx-cyan light:text-atnx-cyan-light border-atnx-cyan/25"
-                    : s.tone === "yellow"
-                      ? "bg-atnx-yellow/10 text-atnx-yellow light:text-atnx-yellow-light border-atnx-yellow/25"
-                      : "bg-atnx-magenta/10 text-atnx-magenta light:text-atnx-magenta-light border-atnx-magenta/25"
-                }`}
+                className={`h-8 w-8 shrink-0 rounded-lg inline-flex items-center justify-center text-sm font-bold font-mono border ${s.cls}`}
               >
                 {s.n}
               </span>
-              <div className="min-w-0">
-                <div className="text-sm font-bold text-primary">{s.title}</div>
-                <p className="text-xs text-secondary leading-relaxed font-sans mt-0.5">
-                  {s.body}
-                </p>
-              </div>
+              <span className="text-base sm:text-lg font-bold text-primary">
+                {s.title}
+              </span>
             </li>
           ))}
         </ol>
-      </div>
-      <div className="relative mt-5 flex items-center gap-2 text-[11px] text-tertiary">
-        <a
-          href="#all-markets"
-          className="rounded-full border border-surface bg-elevated px-3 py-1.5 font-bold text-primary hover:border-atnx-cyan/50 transition-colors"
-        >
-          Browse all markets
-        </a>
-        <span>or pick one on the right.</span>
       </div>
     </Card>
   );
 }
 
+const Trophy = (
+  <svg
+    viewBox="0 0 24 24"
+    width="13"
+    height="13"
+    fill="currentColor"
+    aria-hidden="true"
+  >
+    <path d="M6 2h12v2h3v3a5 5 0 0 1-4.3 4.95A6.01 6.01 0 0 1 13 15.9V18h3v2H8v-2h3v-2.1a6.01 6.01 0 0 1-3.7-3.95A5 5 0 0 1 3 7V4h3V2zm0 4H5v1a3 3 0 0 0 2 2.83V6zm12 0v3.83A3 3 0 0 0 20 7V6h-2z" />
+  </svg>
+);
+
 function Showcase({ items }: { items: Capture[] }) {
   const [idx, setIdx] = useState(0);
   const [paused, setPaused] = useState(false);
-  const [tick, setTick] = useState(0); // restarts the progress bar animation
+  const [tick, setTick] = useState(0); // restarts the progress animation
 
   const count = items.length;
   const safeIdx = Math.min(idx, count - 1);
@@ -145,7 +127,7 @@ function Showcase({ items }: { items: Capture[] }) {
 
   return (
     <Card
-      className="relative overflow-hidden flex flex-col"
+      className="relative overflow-hidden flex flex-col lg:h-full"
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => {
         // The rotation timer restarts on resume, so restart the bar with it.
@@ -153,27 +135,36 @@ function Showcase({ items }: { items: Capture[] }) {
         setTick((t) => t + 1);
       }}
     >
-      <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] flex-1">
-        {/* image + overlaid history */}
+      <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,11fr)_minmax(0,10fr)] flex-1 min-h-0">
+        {/* image + overlaid history. The capture is shown whole (contain) on
+            a blurred copy of itself, so nothing gets cropped. */}
         <Link
           href={`/app/markets/${c.marketId}`}
-          className="relative block aspect-[4/3] sm:aspect-auto sm:min-h-[300px] bg-black overflow-hidden"
+          className="relative block aspect-[4/3] sm:aspect-auto sm:min-h-[320px] lg:min-h-0 bg-black overflow-hidden"
         >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            key={`bg-${c.id}`}
+            src={c.screenshot}
+            alt=""
+            aria-hidden="true"
+            className="absolute inset-0 w-full h-full object-cover scale-125 blur-2xl opacity-60"
+          />
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             key={c.id}
             src={c.screenshot}
             alt=""
-            className="absolute inset-0 w-full h-full object-cover"
+            className="absolute inset-0 w-full h-full object-contain p-3"
           />
           <div
-            className="absolute inset-x-0 bottom-0 h-[62%]"
+            className="absolute inset-x-0 bottom-0 h-[55%]"
             style={{
               background:
-                "linear-gradient(to top, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.45) 55%, rgba(0,0,0,0) 100%)",
+                "linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.4) 55%, rgba(0,0,0,0) 100%)",
             }}
           />
-          <div className="absolute inset-x-0 bottom-0 h-[48%]">
+          <div className="absolute inset-x-0 bottom-0 h-[42%]">
             <ViSparkline
               key={c.id}
               dataPoints={points}
@@ -183,12 +174,15 @@ function Showcase({ items }: { items: Capture[] }) {
             />
           </div>
           <span className="absolute top-3 left-3 inline-flex items-center gap-1.5 rounded-md bg-black/60 backdrop-blur px-2 py-1 text-[11px] font-bold text-white font-mono">
+            {safeIdx === 0 && (
+              <span className="text-atnx-yellow">{Trophy}</span>
+            )}
             <span className="text-atnx-yellow">#{safeIdx + 1}</span> most viral
           </span>
         </Link>
 
         {/* details */}
-        <div className="p-5 sm:p-6 flex flex-col min-w-0">
+        <div className="p-5 sm:p-6 flex flex-col min-w-0 min-h-0 overflow-hidden">
           <div className="flex items-center gap-1.5 flex-wrap">
             {c.analysis.type && <Chip tone="cyan">{c.analysis.type}</Chip>}
             {c.analysis.category && <Chip>{c.analysis.category}</Chip>}
@@ -247,11 +241,12 @@ function Showcase({ items }: { items: Capture[] }) {
         </div>
       </div>
 
-      {/* pager: one segment per featured market, the active one fills over ROTATE_MS */}
+      {/* pager: dots, with the active one stretched into a pill that fills
+          over ROTATE_MS */}
       <div
         role="tablist"
         aria-label="Featured markets"
-        className="flex gap-1.5 px-4 py-3 border-t border-surface"
+        className="flex items-center justify-center gap-2 py-3 border-t border-surface"
       >
         {items.map((it, i) => {
           const active = i === safeIdx;
@@ -263,7 +258,11 @@ function Showcase({ items }: { items: Capture[] }) {
               aria-selected={active}
               aria-label={`${i + 1}. ${it.analysis.name ?? "market"}`}
               onClick={() => go(i)}
-              className="relative h-1.5 flex-1 rounded-full bg-elevated overflow-hidden cursor-pointer"
+              className={`relative h-1.5 rounded-full overflow-hidden cursor-pointer transition-all duration-300 ${
+                active
+                  ? "w-8 bg-elevated"
+                  : "w-1.5 bg-elevated hover:bg-secondary/40"
+              }`}
             >
               {active && (
                 <span

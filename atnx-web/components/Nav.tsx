@@ -53,13 +53,8 @@ export function Nav() {
             height={32}
             className="w-8 h-8 rounded-md shrink-0 object-contain"
           />
-          <div className="leading-none">
-            <div className="text-lg font-bold text-primary tracking-[0.2em] group-hover:text-atnx-cyan transition-colors">
-              ATNX
-            </div>
-            <div className="hidden sm:block text-[10px] text-tertiary tracking-wider mt-1">
-              Attention Exchange
-            </div>
+          <div className="text-lg font-bold text-primary tracking-[0.2em] leading-none group-hover:text-atnx-cyan transition-colors">
+            ATNX
           </div>
         </Link>
 
