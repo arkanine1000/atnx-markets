@@ -12,6 +12,9 @@ import { useTheme } from "next-themes";
 //   negative space) sized to the wordmark's footprint. One dot pool, two
 //   target sets, proportional index mapping so left-of-wordmark becomes
 //   left-of-eye and the morph reads as one motion.
+// - At rest it still breathes: a soft per-dot twinkle, a sub-pixel drift,
+//   and every few seconds a horizontal band tears sideways and flashes for
+//   a few frames (a signal glitch) before springing back.
 // - Rendering uses pre-rasterised sprites (one drawImage per dot) instead of
 //   a path fill per dot, and the loop sleeps when everything is at rest,
 //   off-screen, or the tab is hidden. Reduced-motion users get a static
@@ -44,6 +47,13 @@ const BURST_FRICTION = 0.945;
 // Extra canvas height around the letters so a burst has somewhere to go
 // instead of being clipped at the edge.
 const BURST_ROOM = 0.45;
+// Ambient life while resting.
+const TWINKLE = 0.22; // alpha swing (fraction of base alpha)
+const DRIFT = 0.7; // px of slow sub-pixel wander
+const GLITCH_MIN_MS = 1800; // gap between glitches
+const GLITCH_MAX_MS = 4800;
+const GLITCH_KICK = 9; // px/frame horizontal tear
+const GLITCH_FRAMES = 7; // frames the torn band shows in the flash colour
 const REST_SPEED = 0.03; // px/frame below which a dot counts as settled
 const REST_DIST = 0.15; // px from origin below which a dot snaps home
 const IDLE_FPS = 20; // background drift cadence while nothing else moves
@@ -66,6 +76,8 @@ interface Dot {
   c: number; // colour index
   r: number;
   a: number; // base alpha
+  ph: number; // twinkle / drift phase
+  g: number; // frames left in glitch flash colour
 }
 
 interface BgParticle {
@@ -213,6 +225,8 @@ function makeDots(n: number, w: number, h: number): Dot[] {
       c: 0,
       r: 1.5 + Math.random() * 1.5,
       a: 0.8 + Math.random() * 0.2,
+      ph: Math.random() * Math.PI * 2,
+      g: 0,
     };
   });
 }
@@ -272,6 +286,7 @@ export function DotMatrixLogo() {
     let settled = false;
     let lastIdleFrame = 0;
     let burstStart = -Infinity;
+    let nextGlitch = performance.now() + 1200;
     let shape: "text" | "eye" = "text";
     let textTargets: Target[] = [];
     let eyeTargets: Target[] = [];
@@ -279,17 +294,51 @@ export function DotMatrixLogo() {
 
     const ctx = el.getContext("2d", { alpha: true, desynchronized: true })!;
 
-    function render() {
+    function render(now: number) {
       ctx.clearRect(0, 0, w, h);
       for (const p of bg) {
         ctx.globalAlpha = p.a;
         ctx.drawImage(bgSprites[p.c], p.x - p.r, p.y - p.r, p.r * 2, p.r * 2);
       }
+      const t = now * 0.001;
       for (const d of dots) {
-        ctx.globalAlpha = d.a;
-        ctx.drawImage(sprites[d.c], d.x - d.r, d.y - d.r, d.r * 2, d.r * 2);
+        let x = d.x;
+        let y = d.y;
+        let a = d.a;
+        if (!reducedMotion) {
+          // Twinkle and wander are purely visual: physics never sees them,
+          // so they cost nothing to the settle detection.
+          a *= 1 - TWINKLE * 0.5 + TWINKLE * 0.5 * Math.sin(t * 2.1 + d.ph);
+          x += DRIFT * Math.sin(t * 0.9 + d.ph);
+          y += DRIFT * Math.cos(t * 0.7 + d.ph * 1.7);
+        }
+        const sprite = d.g > 0 ? sprites[3] : sprites[d.c];
+        if (d.g > 0) d.g--;
+        ctx.globalAlpha = a;
+        ctx.drawImage(sprite, x - d.r, y - d.r, d.r * 2, d.r * 2);
       }
       ctx.globalAlpha = 1;
+    }
+
+    // Tear a horizontal band of the shape sideways. The spring brings it
+    // back; the band shows the flash colour for a few frames.
+    function glitch(now: number) {
+      nextGlitch = now + GLITCH_MIN_MS + Math.random() * (GLITCH_MAX_MS - GLITCH_MIN_MS);
+      if (!dots.length) return;
+      const b = boundsOf(shape === "eye" ? eyeTargets : textTargets);
+      const bandH = 6 + Math.random() * 22;
+      const bandY = b.minY + Math.random() * (b.maxY - b.minY - bandH);
+      const dir = Math.random() < 0.5 ? -1 : 1;
+      const kick = GLITCH_KICK * (0.6 + Math.random() * 0.8);
+      // Sometimes tear the whole band, sometimes only one side of centre.
+      const side = Math.random() < 0.4 ? (Math.random() < 0.5 ? -1 : 1) : 0;
+      const cx = (b.minX + b.maxX) / 2;
+      for (const d of dots) {
+        if (d.oy < bandY || d.oy > bandY + bandH) continue;
+        if (side && Math.sign(d.ox - cx) !== side) continue;
+        d.vx += dir * kick;
+        d.g = GLITCH_FRAMES;
+      }
     }
 
     // Physics step. Returns true if any text dot is still moving.
@@ -366,8 +415,15 @@ export function DotMatrixLogo() {
         lastIdleFrame = now;
       }
 
-      if (!reducedMotion) stepBg();
-      render();
+      if (!reducedMotion) {
+        stepBg();
+        // Only glitch when idle: never on top of a burst or a hover scatter.
+        if (settled && now >= nextGlitch) {
+          glitch(now);
+          settled = false;
+        }
+      }
+      render(now);
 
       // Reduced motion: draw once and stop. Otherwise keep the (throttled)
       // ambient loop going while we're on screen.
