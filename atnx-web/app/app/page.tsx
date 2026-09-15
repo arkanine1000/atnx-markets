@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { Nav } from "@/components/Nav";
 import { MarketCard, MarketRow } from "@/components/MarketCard";
+import { FeaturedHero } from "@/components/FeaturedHero";
 import { EmptyState, Segmented } from "@/components/ui";
 import type { Capture } from "@/lib/store";
 
@@ -157,10 +158,15 @@ export default function Home() {
         <ShareErrorBanner />
       </Suspense>
 
-      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-5">
+      <FeaturedHero captures={captures} />
+
+      <div
+        id="all-markets"
+        className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-4 scroll-mt-24"
+      >
         <div>
-          <h2 className="text-xl sm:text-2xl font-bold text-primary tracking-tight">
-            Markets
+          <h2 className="text-lg sm:text-xl font-bold text-primary tracking-tight">
+            All markets
           </h2>
           <p className="text-xs text-tertiary mt-1 flex items-center gap-2">
             <span className="relative inline-flex h-2 w-2">
@@ -210,13 +216,14 @@ export default function Home() {
           }
         />
       ) : view === "grid" ? (
-        <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
           {sorted.map((g, i) => (
             <MarketCard
               key={g.key}
               capture={g.latest}
               captureCount={g.count}
               rank={i + 1}
+              compact
             />
           ))}
         </div>

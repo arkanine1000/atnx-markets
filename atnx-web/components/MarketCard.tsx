@@ -11,12 +11,14 @@ interface Props {
   capture: Capture;
   captureCount: number;
   rank: number;
+  /** Denser tile for the grid under the featured row. */
+  compact?: boolean;
 }
 
 // Grid tile: the capture image is the hero and the VI history is drawn
 // straight over its lower half, the way pump.fun overlays a chart on the coin
 // art. Name, category, score and 24h delta sit underneath.
-export function MarketCard({ capture, captureCount, rank }: Props) {
+export function MarketCard({ capture, captureCount, rank, compact }: Props) {
   const { analysis, trends, viralityScore, marketId } = capture;
   const points = trends?.dataPoints ?? [];
   const change24h = useMemo(
@@ -28,7 +30,11 @@ export function MarketCard({ capture, captureCount, rank }: Props) {
 
   const body = (
     <>
-      <div className="relative aspect-[4/3] overflow-hidden rounded-t-2xl bg-black">
+      <div
+        className={`relative overflow-hidden rounded-t-2xl bg-black ${
+          compact ? "aspect-[16/11]" : "aspect-[4/3]"
+        }`}
+      >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={capture.screenshot}
@@ -72,16 +78,18 @@ export function MarketCard({ capture, captureCount, rank }: Props) {
         </div>
       </div>
 
-      <div className="p-3.5 flex items-start gap-3">
+      <div className={`flex items-start gap-3 ${compact ? "p-3" : "p-3.5"}`}>
         <div className="min-w-0 flex-1">
-          <div className="text-sm font-bold text-primary truncate">
+          <div
+            className={`font-bold text-primary truncate ${compact ? "text-[13px]" : "text-sm"}`}
+          >
             {analysis.name || "Untitled"}
           </div>
           <div className="text-xs text-tertiary truncate mt-0.5">
             {analysis.category || "—"}
           </div>
         </div>
-        <div className="flex flex-col items-end gap-1.5 shrink-0">
+        <div className="flex flex-col items-end gap-1 shrink-0">
           <ScoreBadge value={viralityScore} />
           <DeltaChip value={change24h} />
         </div>

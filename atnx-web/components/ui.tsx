@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import type { HTMLAttributes, ReactNode } from "react";
 
 // Small presentational primitives shared across the /app section.
 // Brand rule of thumb: cyan = up / long, magenta = down / short, yellow = the
@@ -150,13 +150,15 @@ export function Chip({
 export function Card({
   children,
   className = "",
+  ...rest
 }: {
   children: ReactNode;
   className?: string;
-}) {
+} & Omit<HTMLAttributes<HTMLDivElement>, "className" | "children">) {
   return (
     <div
       className={`bg-surface border border-surface rounded-2xl ${className}`}
+      {...rest}
     >
       {children}
     </div>

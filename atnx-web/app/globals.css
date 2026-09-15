@@ -152,6 +152,17 @@ body {
   animation: slide-in 0.3s ease-out;
 }
 
+/* Featured-market pager: the active segment fills over the rotation period */
+@keyframes hero-progress {
+  from { width: 0; }
+  to { width: 100%; }
+}
+/* Referenced from a class (not only inline style) so the build keeps the keyframes.
+   Duration and play-state are set inline by the component. */
+.animate-hero-progress {
+  animation: hero-progress 6s linear forwards;
+}
+
 /* Live pulse */
 @keyframes live-pulse {
   0%, 100% { opacity: 1; }
