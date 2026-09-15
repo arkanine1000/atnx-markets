@@ -275,6 +275,7 @@ function SceneCapture() {
         <rect x="31" y="184" width="30" height="3" rx="1.5" fill="#444" />
         <rect
           className="hiw-pflash"
+          opacity="0"
           x="5"
           y="5"
           width="82"
@@ -358,6 +359,7 @@ function SceneCapture() {
         </g>
         <rect
           className="hiw-flash"
+          opacity="0"
           y="22"
           width="240"
           height="154"
