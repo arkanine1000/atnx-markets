@@ -24,9 +24,16 @@ const BG_COLORS = {
 const TEXT = "ATNX";
 const MOUSE_RADIUS = 80;
 const SCATTER_FORCE = 8;
-const BURST_FORCE = 22; // click/tap explosion impulse (px/frame)
 const RETURN_SPEED = 0.08;
 const FRICTION = 0.85;
+// Click/tap burst: a hard outward kick with a little swirl, then the spring
+// is weakened and drag reduced for BURST_MS so the dots hang in the air and
+// drift home instead of snapping back. Eases back to normal physics.
+const BURST_FORCE = 34;
+const BURST_SWIRL = 10;
+const BURST_MS = 2600;
+const BURST_RETURN = 0.006;
+const BURST_FRICTION = 0.965;
 const REST_SPEED = 0.03; // px/frame below which a dot counts as settled
 const REST_DIST = 0.15; // px from origin below which a dot snaps home
 const IDLE_FPS = 20; // background drift cadence while nothing else moves
@@ -175,6 +182,7 @@ export function DotMatrixLogo() {
     let pointer = { x: -1e4, y: -1e4, inside: false };
     let settled = false;
     let lastIdleFrame = 0;
+    let burstStart = -Infinity;
 
     const ctx = el.getContext("2d", { alpha: true, desynchronized: true })!;
 
@@ -192,10 +200,17 @@ export function DotMatrixLogo() {
     }
 
     // Physics step. Returns true if any text dot is still moving.
-    function stepDots(): boolean {
+    function stepDots(now: number): boolean {
       let moving = false;
       const px = pointer.x;
       const py = pointer.y;
+
+      // 0 → 1 over the burst window, eased so the spring comes back gently.
+      const t = Math.min(1, Math.max(0, (now - burstStart) / BURST_MS));
+      const ease = t * t * (3 - 2 * t);
+      const returnSpeed = BURST_RETURN + (RETURN_SPEED - BURST_RETURN) * ease;
+      const friction = BURST_FRICTION + (FRICTION - BURST_FRICTION) * ease;
+
       for (const d of dots) {
         if (pointer.inside && !reducedMotion) {
           const dx = d.x - px;
@@ -209,10 +224,10 @@ export function DotMatrixLogo() {
         }
         d.x += d.vx;
         d.y += d.vy;
-        d.vx *= FRICTION;
-        d.vy *= FRICTION;
-        d.x += (d.ox - d.x) * RETURN_SPEED;
-        d.y += (d.oy - d.y) * RETURN_SPEED;
+        d.vx *= friction;
+        d.vy *= friction;
+        d.x += (d.ox - d.x) * returnSpeed;
+        d.y += (d.oy - d.y) * returnSpeed;
 
         if (
           Math.abs(d.vx) > REST_SPEED ||
@@ -246,7 +261,7 @@ export function DotMatrixLogo() {
       raf = 0;
       if (cancelled || !visible) return;
 
-      const dotsMoving = stepDots();
+      const dotsMoving = stepDots(now);
       settled = !dotsMoving && !pointer.inside;
 
       if (settled && !reducedMotion) {
@@ -319,13 +334,18 @@ export function DotMatrixLogo() {
     function onPointerDown(e: PointerEvent) {
       toLocal(e);
       if (reducedMotion) return;
+      burstStart = performance.now();
+      const spin = Math.random() < 0.5 ? -1 : 1;
       for (const d of dots) {
         const dx = d.x - pointer.x;
         const dy = d.y - pointer.y;
         const dist = Math.hypot(dx, dy) || 1;
-        const kick = BURST_FORCE * (0.6 + Math.random() * 0.8);
-        d.vx += (dx / dist) * kick;
-        d.vy += (dy / dist) * kick;
+        // Nearer dots fly harder; a tangential component makes it swirl.
+        const falloff = 0.5 + 0.5 * Math.min(1, 220 / dist);
+        const kick = BURST_FORCE * falloff * (0.6 + Math.random() * 0.8);
+        const swirl = BURST_SWIRL * falloff * spin * (0.5 + Math.random());
+        d.vx += (dx / dist) * kick + (-dy / dist) * swirl;
+        d.vy += (dy / dist) * kick + (dx / dist) * swirl;
       }
       wake();
     }
