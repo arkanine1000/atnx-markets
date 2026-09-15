@@ -314,11 +314,6 @@ main {
   cursor: progress;
 }
 
-.shortcut-hint {
-  display: flex;
-  justify-content: center;
-}
-
 .note {
   font-size: 11px;
   color: var(--yellow);

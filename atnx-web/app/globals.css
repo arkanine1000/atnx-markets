@@ -26,20 +26,58 @@
   --color-atnx-magenta-light: #D900C5;
   --color-atnx-yellow-light: #D4BE00;
 
+  --breakpoint-xs: 30rem;
+
   --font-mono: 'JetBrains Mono', 'Fira Code', 'Consolas', ui-monospace, monospace;
   --font-sans: 'Inter', system-ui, sans-serif;
 }
 
+/* `light:` utility variant, keyed off the .light class the theme toggle sets */
+@custom-variant light (&:where(.light, .light *));
+
 /* Dark mode (default) */
 body {
-  background: var(--color-dark-primary);
+  --page-bg: var(--color-dark-primary);
+  background: var(--page-bg);
   color: #F0F0F0;
   font-family: var(--font-mono);
 }
 
 .light body {
-  background: var(--color-light-primary);
+  --page-bg: var(--color-light-primary);
+  background: var(--page-bg);
   color: #0A0A0A;
+}
+
+/* Sticky app header: page colour at ~85% over a blur so content scrolls under it */
+.nav-blur {
+  background: color-mix(in srgb, var(--page-bg) 85%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+/* Interactive card: lift + cyan edge on hover */
+.card-hover {
+  transition: border-color 200ms ease, transform 200ms ease, box-shadow 200ms ease;
+}
+.card-hover:hover {
+  border-color: rgba(0, 212, 255, 0.35);
+  transform: translateY(-2px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+}
+.light .card-hover:hover {
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.08);
+}
+
+/* Hide number input spinners on the trade amount field */
+.no-spin::-webkit-outer-spin-button,
+.no-spin::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.no-spin {
+  -moz-appearance: textfield;
+  appearance: textfield;
 }
 
 /* Theme transition */
@@ -112,6 +150,26 @@ body {
 
 .animate-slide-in {
   animation: slide-in 0.3s ease-out;
+}
+
+/* Featured-market pager: the active segment fills over the rotation period */
+@keyframes hero-progress {
+  from { width: 0; }
+  to { width: 100%; }
+}
+/* Referenced from a class (not only inline style) so the build keeps the keyframes.
+   Duration and play-state are set inline by the component. */
+.animate-hero-progress {
+  animation: hero-progress 6s linear forwards;
+}
+
+/* Modal entrance */
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-slide-up {
+  animation: slide-up 0.25s ease-out;
 }
 
 /* Live pulse */

@@ -2,10 +2,15 @@
 
 import { useState, useCallback } from "react";
 import Link from "next/link";
-import { useDemoContext, calculatePnL, type Position } from "@/context/DemoContext";
+import {
+  useDemoContext,
+  calculatePnL,
+  type Position,
+} from "@/context/DemoContext";
 import { useAuth } from "@/context/AuthContext";
 import { Nav } from "@/components/Nav";
 import { ClosePositionModal, DemoToast } from "@/components/Trading";
+import { Card, Chip, DeltaChip, EmptyState, StatTile } from "@/components/ui";
 import { timeAgo } from "@/lib/capture-view";
 
 function PositionCard({
@@ -17,100 +22,92 @@ function PositionCard({
 }) {
   const pnl = calculatePnL(position);
   const isLong = position.type === "long";
-  // PnL arrow: cyan for profit, magenta for loss. Number always yellow.
-  const directionColor = pnl.isProfit ? "#00D4FF" : "#FF00E5";
-  const directionArrow = pnl.isProfit ? "\u25B2" : "\u25BC";
+  const pnlPct = parseFloat(pnl.pnlPercent);
+  const pnlTone = pnl.isProfit
+    ? "text-atnx-cyan light:text-atnx-cyan-light"
+    : "text-atnx-magenta light:text-atnx-magenta-light";
 
   return (
-    <Link
-      href={`/app/markets/${position.marketId}`}
-      className="block bg-surface border border-surface rounded-lg p-4 space-y-3 transition-colors hover:border-atnx-cyan/30"
-    >
-      {/* Header */}
-      <div className="space-y-1.5">
-        <div className="flex items-center justify-between gap-2">
-          <span
-            className={`text-xs font-bold px-2 py-0.5 rounded shrink-0 ${
-              isLong
-                ? "bg-atnx-cyan/15 text-atnx-cyan border border-atnx-cyan/30"
-                : "bg-atnx-magenta/15 text-atnx-magenta border border-atnx-magenta/30"
-            }`}
+    <Card className="p-4 sm:p-5 card-hover">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <Link
+            href={`/app/markets/${position.marketId}`}
+            className="font-bold text-primary text-sm hover:text-atnx-cyan transition-colors break-words"
           >
-            {isLong ? "LONG" : "SHORT"}
-          </span>
-          <div className="flex items-center gap-1 shrink-0">
-            <span style={{ color: directionColor }} className="text-sm">
-              {directionArrow}
-            </span>
-            <span className="text-lg font-bold font-mono tabular-nums text-atnx-yellow">
-              {pnl.isProfit ? "+" : ""}${pnl.pnlAmount}
+            {position.name}
+          </Link>
+          <div className="flex items-center gap-1.5 mt-1.5">
+            <Chip tone={isLong ? "cyan" : "magenta"}>
+              {isLong ? "Long" : "Short"} {position.leverage}&times;
+            </Chip>
+            <span className="text-[11px] text-tertiary">
+              {timeAgo(position.openedAt)}
             </span>
           </div>
         </div>
-        <div className="font-bold text-primary text-sm break-words">
-          {position.name}
+        <div className="text-right shrink-0">
+          <div
+            className={`text-xl font-semibold font-mono tabular-nums ${pnlTone}`}
+          >
+            {pnl.isProfit ? "+" : ""}${pnl.pnlAmount}
+          </div>
+          <DeltaChip value={pnlPct} className="mt-1" />
         </div>
       </div>
 
-      {/* Stats grid */}
-      <div className="grid grid-cols-3 gap-2 sm:gap-4 text-sm">
-        <div>
-          <div className="text-xs text-tertiary uppercase">Entry</div>
-          <div className="font-mono text-atnx-cyan">{position.entryIndex}</div>
-        </div>
-        <div>
-          <div className="text-xs text-tertiary uppercase">Current</div>
-          <div className="font-mono text-atnx-cyan">
-            {position.currentIndex}
+      <dl className="grid grid-cols-4 gap-2 mt-4 text-xs">
+        {[
+          [
+            "Entry",
+            position.entryIndex,
+            "text-atnx-yellow light:text-atnx-yellow-light",
+          ],
+          [
+            "Current",
+            position.currentIndex,
+            "text-atnx-yellow light:text-atnx-yellow-light",
+          ],
+          ["Size", `$${position.size.toFixed(0)}`, "text-primary"],
+          ["Value", `$${pnl.currentValue}`, "text-primary"],
+        ].map(([k, v, cls]) => (
+          <div
+            key={String(k)}
+            className="rounded-lg bg-elevated px-2.5 py-2 min-w-0"
+          >
+            <dt className="text-[10px] uppercase tracking-wider text-tertiary">
+              {k}
+            </dt>
+            <dd
+              className={`mt-0.5 text-sm font-mono font-normal tabular-nums truncate ${cls}`}
+            >
+              {v}
+            </dd>
           </div>
-        </div>
-        <div>
-          <div className="text-xs text-tertiary uppercase">Change</div>
-          <div className="font-mono font-bold flex items-center gap-1">
-            <span style={{ color: directionColor }}>{directionArrow}</span>
-            <span className="text-atnx-yellow">
-              {Math.abs(parseFloat(pnl.pnlPercent))}%
-            </span>
-          </div>
-        </div>
-        <div>
-          <div className="text-xs text-tertiary uppercase">Size</div>
-          <div className="font-mono text-secondary">
-            ${position.size.toFixed(2)}
-          </div>
-        </div>
-        <div>
-          <div className="text-xs text-tertiary uppercase">Value</div>
-          <div className="font-mono text-primary">${pnl.currentValue}</div>
-        </div>
-        <div>
-          <div className="text-xs text-tertiary uppercase">Opened</div>
-          <div className="text-tertiary">
-            {timeAgo(position.openedAt)}
-          </div>
-        </div>
-      </div>
+        ))}
+      </dl>
 
-      {/* Close button — magenta */}
-      <div className="flex justify-stretch sm:justify-end">
-        <button
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            onClose(position);
-          }}
-          className="text-xs px-4 py-2 sm:py-1.5 rounded border border-surface text-secondary hover:border-atnx-magenta/50 hover:text-atnx-magenta cursor-pointer transition-colors w-full sm:w-auto"
+      <div className="mt-3 pt-3 border-t border-surface flex items-center justify-between">
+        <Link
+          href={`/app/markets/${position.marketId}`}
+          className="text-[11px] text-tertiary hover:text-atnx-cyan transition-colors"
         >
-          Close Position
+          View market {"↗"}
+        </Link>
+        <button
+          type="button"
+          onClick={() => onClose(position)}
+          className="text-[11px] px-3 py-1.5 rounded-full border border-surface text-secondary hover:border-atnx-magenta/50 hover:text-atnx-magenta cursor-pointer transition-colors"
+        >
+          Close position
         </button>
       </div>
-    </Link>
+    </Card>
   );
 }
 
 export default function PortfolioPage() {
-  const { positions, balance } = useDemoContext();
-  const { closePosition } = useDemoContext();
+  const { positions, balance, closePosition } = useDemoContext();
   const { user, loading: authLoading, openLoginModal } = useAuth();
   const [closingPosition, setClosingPosition] = useState<Position | null>(null);
   const [toast, setToast] = useState<{
@@ -122,18 +119,16 @@ export default function PortfolioPage() {
   const handleClose = useCallback(
     async (pos: Position) => {
       const closed = await closePosition(pos.id);
-      if (closed) {
-        setClosingPosition(closed);
-      }
+      if (closed) setClosingPosition(closed);
     },
-    [closePosition]
+    [closePosition],
   );
 
   const handleCloseModalDismiss = useCallback(() => {
     if (closingPosition) {
       const pnl = calculatePnL(closingPosition);
       setToast({
-        message: `Closed ${closingPosition.type.toUpperCase()} ${closingPosition.name}`,
+        message: `Closed ${closingPosition.type} ${closingPosition.name}`,
         detail: `${pnl.isProfit ? "Profit" : "Loss"}: ${pnl.isProfit ? "+" : ""}$${pnl.pnlAmount}`,
         type: pnl.isProfit ? "close-profit" : "close-loss",
       });
@@ -141,92 +136,93 @@ export default function PortfolioPage() {
     setClosingPosition(null);
   }, [closingPosition]);
 
-  const totalPnL = positions.reduce((sum, pos) => {
-    const pnl = calculatePnL(pos);
-    return sum + parseFloat(pnl.pnlAmount);
-  }, 0);
+  const totalPnL = positions.reduce(
+    (sum, pos) => sum + parseFloat(calculatePnL(pos).pnlAmount),
+    0,
+  );
   const totalSize = positions.reduce((sum, pos) => sum + pos.size, 0);
   const totalPnLPercent = totalSize > 0 ? (totalPnL / totalSize) * 100 : 0;
-  const totalDirColor = totalPnL >= 0 ? "#00D4FF" : "#FF00E5";
-  const totalDirArrow = totalPnL >= 0 ? "\u25B2" : "\u25BC";
+  const equity = balance + totalSize + totalPnL;
+  const pnlTone =
+    totalPnL >= 0
+      ? "text-atnx-cyan light:text-atnx-cyan-light"
+      : "text-atnx-magenta light:text-atnx-magenta-light";
 
   if (!authLoading && !user) {
     return (
-      <div className="max-w-4xl mx-auto px-4 py-8 w-full">
+      <div className="max-w-6xl mx-auto px-4 pb-12 w-full">
         <Nav />
-        <div className="bg-surface border border-surface rounded-lg p-8 text-center mt-6">
-          <p className="text-primary text-sm mb-1">
-            Sign in to view your portfolio.
-          </p>
-          <p className="text-tertiary text-xs mb-5">
-            Balance, open positions, and PnL are tied to your account.
-          </p>
-          <button
-            onClick={openLoginModal}
-            className="text-xs px-5 py-2.5 rounded border border-atnx-magenta text-atnx-magenta hover:bg-atnx-magenta hover:text-black cursor-pointer transition-colors font-bold"
-          >
-            Login
-          </button>
-        </div>
+        <EmptyState
+          title="Sign in to view your portfolio"
+          body="Balance, open positions and PnL are tied to your account."
+          action={
+            <button
+              type="button"
+              onClick={openLoginModal}
+              className="text-xs px-5 py-2.5 rounded-full bg-atnx-magenta text-white font-bold hover:bg-atnx-magenta-dim cursor-pointer transition-colors"
+            >
+              Login
+            </button>
+          }
+        />
       </div>
     );
   }
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8 w-full">
+    <div className="max-w-6xl mx-auto px-4 pb-12 w-full">
       <Nav />
 
-      {/* Portfolio summary */}
-      <div className="bg-surface border border-surface rounded-lg p-4 sm:p-5 mb-6 grid grid-cols-3 gap-2 sm:gap-4">
-        <div className="min-w-0">
-          <div className="text-[10px] sm:text-xs text-tertiary uppercase tracking-wider mb-1">
-            Balance
-          </div>
-          <div className="text-base sm:text-xl font-bold font-mono text-atnx-yellow truncate">
-            ${balance.toFixed(2)}
-          </div>
-          <div className="text-[10px] sm:text-xs text-tertiary">USDC</div>
-        </div>
-        <div className="min-w-0">
-          <div className="text-[10px] sm:text-xs text-tertiary uppercase tracking-wider mb-1">
-            <span className="sm:hidden">Positions</span>
-            <span className="hidden sm:inline">Open Positions</span>
-          </div>
-          <div className="text-base sm:text-xl font-bold font-mono text-primary">
-            {positions.length}
-          </div>
-        </div>
-        <div className="min-w-0">
-          <div className="text-[10px] sm:text-xs text-tertiary uppercase tracking-wider mb-1">
-            Total PnL
-          </div>
-          <div className="text-base sm:text-xl font-bold font-mono flex items-center gap-1">
-            <span style={{ color: totalDirColor }}>{totalDirArrow}</span>
-            <span className="text-atnx-yellow truncate">
-              {totalPnL >= 0 ? "+" : ""}${totalPnL.toFixed(2)}
-            </span>
-          </div>
-          <div className="text-[10px] sm:text-xs font-mono flex items-center gap-1">
-            <span style={{ color: totalDirColor }}>{totalDirArrow}</span>
-            <span className="text-atnx-yellow truncate">
-              {totalPnLPercent >= 0 ? "+" : ""}
-              {totalPnLPercent.toFixed(2)}%
-            </span>
-          </div>
-        </div>
+      <div className="mb-5">
+        <h2 className="text-xl sm:text-2xl font-bold text-primary tracking-tight">
+          Portfolio
+        </h2>
+        <p className="text-xs text-tertiary mt-1">Simulated USDC account</p>
       </div>
 
-      {/* Positions list */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
+        <StatTile
+          label="Equity"
+          value={`$${equity.toFixed(2)}`}
+          hero
+          sub="balance + positions"
+        />
+        <StatTile
+          label="Available"
+          value={`$${balance.toFixed(2)}`}
+          sub="USDC"
+        />
+        <StatTile
+          label="Open positions"
+          value={positions.length}
+          sub={`$${totalSize.toFixed(0)} deployed`}
+        />
+        <StatTile
+          label="Unrealized PnL"
+          value={
+            <span className={pnlTone}>
+              {totalPnL >= 0 ? "+" : ""}${totalPnL.toFixed(2)}
+            </span>
+          }
+          sub={<DeltaChip value={totalPnLPercent} />}
+        />
+      </div>
+
       {positions.length === 0 ? (
-        <div className="text-center py-16">
-          <p className="text-secondary text-sm">No open positions.</p>
-          <p className="text-tertiary text-xs mt-2">
-            Go to the Dashboard and click &ldquo;Trade This&rdquo; on a capture
-            to open a position.
-          </p>
-        </div>
+        <EmptyState
+          title="No open positions"
+          body="Pick a market and take a side. Long if you think attention is heading up, short if it's fading."
+          action={
+            <Link
+              href="/app"
+              className="inline-block text-xs px-5 py-2.5 rounded-full bg-atnx-magenta text-white font-bold hover:bg-atnx-magenta-dim transition-colors"
+            >
+              Browse markets
+            </Link>
+          }
+        />
       ) : (
-        <div className="space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {positions.map((pos) => (
             <PositionCard key={pos.id} position={pos} onClose={handleClose} />
           ))}

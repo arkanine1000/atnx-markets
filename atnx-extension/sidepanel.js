@@ -124,7 +124,6 @@ async function loadSettings() {
   const commands = await chrome.commands.getAll();
   const cmd = commands.find((c) => c.name === 'activate-capture');
   shortcutLink.textContent = cmd?.shortcut || 'Set shortcut';
-  $('statusHint').textContent = cmd?.shortcut || 'Drag to select';
 }
 
 urlForm.addEventListener('submit', async (e) => {

@@ -12,9 +12,11 @@ import { useTheme } from "next-themes";
 //   negative space) sized to the wordmark's footprint. One dot pool, two
 //   target sets, proportional index mapping so left-of-wordmark becomes
 //   left-of-eye and the morph reads as one motion.
-// - At rest it still breathes: a soft per-dot twinkle, a sub-pixel drift,
-//   and every few seconds a horizontal band tears sideways and flashes for
-//   a few frames (a signal glitch) before springing back.
+// - The swap also happens on its own every SWAP_MS, bursting from a point
+//   near the shape's centre; a click resets that timer.
+// - At rest the dots are alive: each wanders on a layered, per-dot noise
+//   path, twinkles and pulses in size, a soft shimmer wave sweeps across
+//   the shape, and the odd dot sparkles.
 // - Rendering uses pre-rasterised sprites (one drawImage per dot) instead of
 //   a path fill per dot, and the loop sleeps when everything is at rest,
 //   off-screen, or the tab is hidden. Reduced-motion users get a static
@@ -47,16 +49,23 @@ const BURST_FRICTION = 0.945;
 // Extra canvas height around the letters so a burst has somewhere to go
 // instead of being clipped at the edge.
 const BURST_ROOM = 0.45;
-// Ambient life while resting.
-const TWINKLE = 0.22; // alpha swing (fraction of base alpha)
-const DRIFT = 0.7; // px of slow sub-pixel wander
-const GLITCH_MIN_MS = 1800; // gap between glitches
-const GLITCH_MAX_MS = 4800;
-const GLITCH_KICK = 9; // px/frame horizontal tear
-const GLITCH_FRAMES = 7; // frames the torn band shows in the flash colour
+// Automatic wordmark ⇄ eye swap.
+const SWAP_MS = 10_000;
+const AUTO_BURST_FORCE = 11; // gentler than a click so it reads as a breath
+// Ambient life while resting. All of this is visual only: physics never sees
+// it, so settle detection and the idle throttle are unaffected.
+const TWINKLE = 0.28; // alpha swing (fraction of base alpha)
+const DRIFT = 1.1; // px of layered per-dot wander
+const SWAY = 1.6; // px of slow whole-shape sway
+const PULSE = 0.16; // radius swing (fraction of base radius)
+const SHIMMER = 0.35; // extra alpha at the crest of the sweeping wave
+const SHIMMER_SPEED = 0.55; // waves per second
+const SHIMMER_LEN = 260; // px between wave crests
+const SPARKLE_RATE = 0.0006; // chance per dot per frame to sparkle
+const SPARKLE_FRAMES = 14;
 const REST_SPEED = 0.03; // px/frame below which a dot counts as settled
 const REST_DIST = 0.15; // px from origin below which a dot snaps home
-const IDLE_FPS = 20; // background drift cadence while nothing else moves
+const IDLE_FPS = 30; // ambient cadence while nothing else moves
 const SPRITE = 16; // sprite raster size (px); drawn scaled to each dot
 const MAX_DPR = 2;
 
@@ -77,7 +86,8 @@ interface Dot {
   r: number;
   a: number; // base alpha
   ph: number; // twinkle / drift phase
-  g: number; // frames left in glitch flash colour
+  ph2: number; // second, unrelated phase so the wander isn't a circle
+  s: number; // frames left in a sparkle
 }
 
 interface BgParticle {
@@ -226,7 +236,8 @@ function makeDots(n: number, w: number, h: number): Dot[] {
       r: 1.5 + Math.random() * 1.5,
       a: 0.8 + Math.random() * 0.2,
       ph: Math.random() * Math.PI * 2,
-      g: 0,
+      ph2: Math.random() * Math.PI * 2,
+      s: 0,
     };
   });
 }
@@ -286,7 +297,9 @@ export function DotMatrixLogo() {
     let settled = false;
     let lastIdleFrame = 0;
     let burstStart = -Infinity;
-    let nextGlitch = performance.now() + 1200;
+    let nextSwap = performance.now() + SWAP_MS;
+    let swapTimer = 0; // reduced-motion fallback: no frame loop to poll from
+    let sparkleBudget = 0;
     let shape: "text" | "eye" = "text";
     let textTargets: Target[] = [];
     let eyeTargets: Target[] = [];
@@ -301,44 +314,102 @@ export function DotMatrixLogo() {
         ctx.drawImage(bgSprites[p.c], p.x - p.r, p.y - p.r, p.r * 2, p.r * 2);
       }
       const t = now * 0.001;
-      for (const d of dots) {
-        let x = d.x;
-        let y = d.y;
-        let a = d.a;
-        if (!reducedMotion) {
-          // Twinkle and wander are purely visual: physics never sees them,
-          // so they cost nothing to the settle detection.
-          a *= 1 - TWINKLE * 0.5 + TWINKLE * 0.5 * Math.sin(t * 2.1 + d.ph);
-          x += DRIFT * Math.sin(t * 0.9 + d.ph);
-          y += DRIFT * Math.cos(t * 0.7 + d.ph * 1.7);
+      // Whole-shape sway: a slow figure-of-eight so the mark never sits
+      // perfectly still, like it's floating.
+      const swayX = reducedMotion ? 0 : SWAY * Math.sin(t * 0.31);
+      const swayY = reducedMotion ? 0 : SWAY * 0.6 * Math.sin(t * 0.47 + 1.3);
+      const shimmerPhase = t * SHIMMER_SPEED * Math.PI * 2;
+      const shimmerK = (Math.PI * 2) / SHIMMER_LEN;
+      if (!reducedMotion) {
+        // Pick this frame's sparkles up front (expected count carried as a
+        // fractional budget) instead of rolling a random per dot per frame.
+        sparkleBudget += SPARKLE_RATE * dots.length;
+        while (sparkleBudget >= 1) {
+          sparkleBudget -= 1;
+          const d = dots[(Math.random() * dots.length) | 0];
+          if (d && d.s === 0) d.s = SPARKLE_FRAMES;
         }
-        const sprite = d.g > 0 ? sprites[3] : sprites[d.c];
-        if (d.g > 0) d.g--;
-        ctx.globalAlpha = a;
-        ctx.drawImage(sprite, x - d.r, y - d.r, d.r * 2, d.r * 2);
+      }
+      for (const d of dots) {
+        let x = d.x + swayX;
+        let y = d.y + swayY;
+        let a = d.a;
+        let r = d.r;
+        if (!reducedMotion) {
+          // Layered wander: two incommensurate sines per axis, each with its
+          // own phase, so the path is a slow, non-repeating loop rather
+          // than a circle.
+          x +=
+            DRIFT *
+            (0.65 * Math.sin(t * 0.9 + d.ph) + 0.35 * Math.sin(t * 2.3 + d.ph2));
+          y +=
+            DRIFT *
+            (0.65 * Math.cos(t * 0.7 + d.ph2) + 0.35 * Math.sin(t * 1.9 + d.ph));
+          // Twinkle: slow per-dot breathing with a faster flicker on top.
+          const tw = 0.7 * Math.sin(t * 1.3 + d.ph) + 0.3 * Math.sin(t * 4.1 + d.ph2);
+          a *= 1 - TWINKLE * 0.5 + TWINKLE * 0.5 * tw;
+          // Size pulse, out of phase with the twinkle.
+          r *= 1 + PULSE * 0.5 * Math.sin(t * 1.1 + d.ph2);
+          // Shimmer: a soft diagonal wave of brightness sweeping across the
+          // shape. Squared so the crest is narrow and the rest is dark.
+          const wave = 0.5 + 0.5 * Math.sin(shimmerPhase - (d.ox + d.oy * 0.6) * shimmerK);
+          a += SHIMMER * wave * wave * wave;
+          // Sparkle: a rare, brief flare on a single dot.
+          if (d.s > 0) {
+            const k = d.s / SPARKLE_FRAMES;
+            a += 0.6 * k;
+            r *= 1 + 0.9 * Math.sin(k * Math.PI);
+            d.s--;
+          }
+        }
+        ctx.globalAlpha = Math.min(1, a);
+        ctx.drawImage(sprites[d.c], x - r, y - r, r * 2, r * 2);
       }
       ctx.globalAlpha = 1;
     }
 
-    // Tear a horizontal band of the shape sideways. The spring brings it
-    // back; the band shows the flash colour for a few frames.
-    function glitch(now: number) {
-      nextGlitch = now + GLITCH_MIN_MS + Math.random() * (GLITCH_MAX_MS - GLITCH_MIN_MS);
-      if (!dots.length) return;
-      const b = boundsOf(shape === "eye" ? eyeTargets : textTargets);
-      const bandH = 6 + Math.random() * 22;
-      const bandY = b.minY + Math.random() * (b.maxY - b.minY - bandH);
-      const dir = Math.random() < 0.5 ? -1 : 1;
-      const kick = GLITCH_KICK * (0.6 + Math.random() * 0.8);
-      // Sometimes tear the whole band, sometimes only one side of centre.
-      const side = Math.random() < 0.4 ? (Math.random() < 0.5 ? -1 : 1) : 0;
-      const cx = (b.minX + b.maxX) / 2;
-      for (const d of dots) {
-        if (d.oy < bandY || d.oy > bandY + bandH) continue;
-        if (side && Math.sign(d.ox - cx) !== side) continue;
-        d.vx += dir * kick;
-        d.g = GLITCH_FRAMES;
+    // Swap wordmark ⇄ eye and blow the dots apart from (x, y) so they
+    // reassemble as the other shape. Shared by click and the auto timer.
+    function toggleShape() {
+      if (!eyeTargets.length) return;
+      shape = shape === "text" ? "eye" : "text";
+      applyShape(dots, shape === "eye" ? eyeTargets : textTargets, gapPx);
+      el.setAttribute("aria-label", shape === "eye" ? "ATNX eye" : "ATNX");
+    }
+    function burst(x: number, y: number, force: number) {
+      const now = performance.now();
+      nextSwap = now + SWAP_MS;
+      toggleShape();
+      if (reducedMotion) {
+        for (const d of dots) {
+          d.x = d.ox;
+          d.y = d.oy;
+        }
+        wake();
+        return;
       }
+      burstStart = now;
+      const spin = Math.random() < 0.5 ? -1 : 1;
+      for (const d of dots) {
+        const dx = d.x - x;
+        const dy = d.y - y;
+        const dist = Math.hypot(dx, dy) || 1;
+        // Nearer dots fly harder; a tangential component makes it swirl.
+        const falloff = 0.5 + 0.5 * Math.min(1, 220 / dist);
+        const kick = force * falloff * (0.6 + Math.random() * 0.8);
+        const swirl = BURST_SWIRL * falloff * spin * (0.5 + Math.random());
+        d.vx += (dx / dist) * kick + (-dy / dist) * swirl;
+        d.vy += (dy / dist) * kick + (dx / dist) * swirl;
+      }
+      wake();
+    }
+    // The timed swap bursts from somewhere near the middle of the current
+    // shape, a little off-centre each time so it doesn't look mechanical.
+    function autoSwap() {
+      const b = boundsOf(shape === "eye" ? eyeTargets : textTargets);
+      const x = (b.minX + b.maxX) / 2 + (Math.random() - 0.5) * (b.maxX - b.minX) * 0.5;
+      const y = (b.minY + b.maxY) / 2 + (Math.random() - 0.5) * (b.maxY - b.minY) * 0.5;
+      burst(x, y, AUTO_BURST_FORCE);
     }
 
     // Physics step. Returns true if any text dot is still moving.
@@ -400,8 +471,14 @@ export function DotMatrixLogo() {
     }
 
     function frame(now: number) {
-      raf = 0;
-      if (cancelled || !visible) return;
+      // `raf` keeps the (already fired) handle until the end of the frame,
+      // so a wake() from inside the frame (the auto swap goes through
+      // burst → wake) is a no-op. Zeroing it here let each swap start an
+      // extra parallel loop, which is why the page slowed down over time.
+      if (cancelled || !visible) {
+        raf = 0;
+        return;
+      }
 
       const dotsMoving = stepDots(now);
       settled = !dotsMoving && !pointer.inside;
@@ -417,9 +494,10 @@ export function DotMatrixLogo() {
 
       if (!reducedMotion) {
         stepBg();
-        // Only glitch when idle: never on top of a burst or a hover scatter.
-        if (settled && now >= nextGlitch) {
-          glitch(now);
+        // Timed swap. Wait for the previous burst to settle so two never
+        // overlap; a hover scatter is fine to swap over.
+        if (now >= nextSwap && !dotsMoving) {
+          autoSwap();
           settled = false;
         }
       }
@@ -427,7 +505,7 @@ export function DotMatrixLogo() {
 
       // Reduced motion: draw once and stop. Otherwise keep the (throttled)
       // ambient loop going while we're on screen.
-      if (!reducedMotion) raf = requestAnimationFrame(frame);
+      raf = reducedMotion ? 0 : requestAnimationFrame(frame);
     }
 
     function wake() {
@@ -471,6 +549,15 @@ export function DotMatrixLogo() {
         }
       }
       settled = false;
+      nextSwap = performance.now() + SWAP_MS;
+      // Reduced motion draws once and stops, so the frame loop can't drive
+      // the swap; a plain interval does it instead (skipped while off-screen).
+      window.clearInterval(swapTimer);
+      if (reducedMotion) {
+        swapTimer = window.setInterval(() => {
+          if (visible && !cancelled) autoSwap();
+        }, SWAP_MS);
+      }
       wake();
     }
 
@@ -485,38 +572,11 @@ export function DotMatrixLogo() {
       wake();
     }
     // Click / tap: blow the wordmark apart from the touch point and let it
-    // reassemble. Cheap, and the one thing people remember.
-    function toggleShape() {
-      if (!eyeTargets.length) return;
-      shape = shape === "text" ? "eye" : "text";
-      applyShape(dots, shape === "eye" ? eyeTargets : textTargets, gapPx);
-      el.setAttribute("aria-label", shape === "eye" ? "ATNX eye" : "ATNX");
-    }
+    // reassemble. Cheap, and the one thing people remember. Also restarts
+    // the auto-swap countdown.
     function onPointerDown(e: PointerEvent) {
       toLocal(e);
-      toggleShape();
-      if (reducedMotion) {
-        for (const d of dots) {
-          d.x = d.ox;
-          d.y = d.oy;
-        }
-        wake();
-        return;
-      }
-      burstStart = performance.now();
-      const spin = Math.random() < 0.5 ? -1 : 1;
-      for (const d of dots) {
-        const dx = d.x - pointer.x;
-        const dy = d.y - pointer.y;
-        const dist = Math.hypot(dx, dy) || 1;
-        // Nearer dots fly harder; a tangential component makes it swirl.
-        const falloff = 0.5 + 0.5 * Math.min(1, 220 / dist);
-        const kick = BURST_FORCE * falloff * (0.6 + Math.random() * 0.8);
-        const swirl = BURST_SWIRL * falloff * spin * (0.5 + Math.random());
-        d.vx += (dx / dist) * kick + (-dy / dist) * swirl;
-        d.vy += (dy / dist) * kick + (dx / dist) * swirl;
-      }
-      wake();
+      burst(pointer.x, pointer.y, BURST_FORCE);
     }
     function onPointerLeave() {
       pointer = { x: -1e4, y: -1e4, inside: false };
@@ -540,7 +600,11 @@ export function DotMatrixLogo() {
     // Sleep while scrolled out of view; wake and resume when back.
     const io = new IntersectionObserver(([entry]) => {
       visible = entry.isIntersecting;
-      if (visible) wake();
+      if (visible) {
+        // Don't swap the instant the mark scrolls back in; give it a beat.
+        nextSwap = Math.max(nextSwap, performance.now() + SWAP_MS / 2);
+        wake();
+      }
     });
     io.observe(el);
 
@@ -550,6 +614,7 @@ export function DotMatrixLogo() {
       cancelled = true;
       cancelAnimationFrame(raf);
       window.clearTimeout(resizeTimer);
+      window.clearInterval(swapTimer);
       io.disconnect();
       el.removeEventListener("pointermove", onPointerMove);
       el.removeEventListener("pointerdown", onPointerDown);
