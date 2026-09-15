@@ -29,11 +29,14 @@ const FRICTION = 0.85;
 // Click/tap burst: a hard outward kick with a little swirl, then the spring
 // is weakened and drag reduced for BURST_MS so the dots hang in the air and
 // drift home instead of snapping back. Eases back to normal physics.
-const BURST_FORCE = 34;
-const BURST_SWIRL = 10;
+const BURST_FORCE = 15;
+const BURST_SWIRL = 5;
 const BURST_MS = 2600;
 const BURST_RETURN = 0.006;
-const BURST_FRICTION = 0.965;
+const BURST_FRICTION = 0.945;
+// Extra canvas height around the letters so a burst has somewhere to go
+// instead of being clipped at the edge.
+const BURST_ROOM = 0.45;
 const REST_SPEED = 0.03; // px/frame below which a dot counts as settled
 const REST_DIST = 0.15; // px from origin below which a dot snaps home
 const IDLE_FPS = 20; // background drift cadence while nothing else moves
@@ -70,7 +73,7 @@ function dims(vw: number) {
   // Integers only: the sampling canvas indexes pixel rows by width, so a
   // fractional width shears every row and turns the letters into streaks.
   const w = Math.round(Math.min(vw * widthPct, 1200));
-  const h = Math.round(w * aspect);
+  const h = Math.round(w * aspect * (1 + BURST_ROOM));
   return { w, h, gap: vw < 480 ? 4 : vw < 1024 ? 5 : 4 };
 }
 
@@ -95,7 +98,9 @@ function sampleText(w: number, h: number, gap: number): Dot[] {
   off.width = w;
   off.height = h;
   const ctx = off.getContext("2d", { willReadFrequently: true })!;
-  const fontSize = h * 0.7;
+  // The letters are sized to the canvas minus the burst room, so adding
+  // room doesn't shrink the wordmark.
+  const fontSize = (h / (1 + BURST_ROOM)) * 0.7;
   ctx.fillStyle = "#fff";
   ctx.font = `bold ${fontSize}px "JetBrains Mono", "Fira Code", monospace`;
   ctx.textAlign = "center";
