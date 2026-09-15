@@ -63,7 +63,8 @@ atnx/
 | Endpoint | Purpose |
 | --- | --- |
 | `POST /api/captures` | Extension ingest: normalize name, run `composeVi`, upload screenshot, resolve/create market, record VI |
-| `GET /api/captures` | Dashboard feed (grouped by market, latest first) |
+| `GET /api/captures` | Dashboard feed (grouped by market, latest first); also feeds the extension side panel's top markets |
+| `GET /api/portfolio` | Extension side panel: signed-in user's handle, sim balance, realized/unrealized PnL, open positions (401 when signed out) |
 | `GET /api/markets/refresh` | Cron-only; re-runs `composeVi` for every live market, applies ±1.5% jitter, appends `vi_history` |
 
 ### Key libraries (`atnx-web/lib/`)
@@ -137,11 +138,13 @@ Storage: the `screenshots` bucket holds capture images; public URLs are stored o
 
 Manifest V3, vanilla JS, no build step. Three moving parts:
 
-- **`background.js`** (service worker) — Owns the capture pipeline. On `Ctrl+Shift+X` or the popup button it injects `content.js` on demand (`activeTab` + `scripting`), receives the selected rect, screenshots the tab, crops it in-worker with `createImageBitmap` + `OffscreenCanvas` (longest edge capped at 2000 px so uploads stay under Vercel's 4.5 MB body limit), then POSTs the PNG as `multipart/form-data` to `${webAppUrl}/api/captures` with `credentials: 'include'`. Status is mirrored on the toolbar badge (`…` / `✓` / `!`).
+- **`background.js`** (service worker) — Owns the capture pipeline. On `Ctrl+Shift+X` or the side panel's Capture button it injects `content.js` on demand (`activeTab` + `scripting`), receives the selected rect, screenshots the tab, crops it in-worker with `createImageBitmap` + `OffscreenCanvas` (longest edge capped at 2000 px so uploads stay under Vercel's 4.5 MB body limit), then POSTs the PNG as `multipart/form-data` to `${webAppUrl}/api/captures` with `credentials: 'include'`. Status is mirrored on the toolbar badge (`…` / `✓` / `!`).
 - **`content.js`** — Drag-to-select overlay and toast notifications, rendered inside a closed Shadow DOM host that is promoted to the browser's top layer via the Popover API, so page CSS and z-index stacking can't interfere. Uses pointer events with pointer capture; Escape cancels. Only injected on pages the user captures.
-- **`popup.html` + `popup.js`** — Settings surface. Web App URL (default `https://atnx.app`; override for local dev — saving a custom origin requests an optional host permission for it), capture button, status (driven by `storage.onChanged`, no polling), current shortcut, dashboard link.
+- **`sidepanel.html` + `sidepanel.js`** — Clicking the toolbar icon opens a Chrome side panel (wallet-style, no popup). It shows the Capture button and live status, the signed-in user's portfolio (`GET /api/portfolio`: balance, unrealized/realized PnL, open positions), and the top markets by VI (`GET /api/captures`, grouped by market). Rows deep-link to `/app/markets/[id]`. Polls every 30 s while visible. The gear reveals settings: Web App URL (default `https://atnx.app`; override for local dev — saving a custom origin requests an optional host permission for it) and the current shortcut.
 
-Permissions: `activeTab`, `scripting`, `storage`, host access to `https://atnx.app/*` only. Other origins are `optional_host_permissions`, granted from the popup when you save a custom URL. Host access to the web app keeps the Supabase auth cookie flowing even when third-party cookies are blocked.
+Permissions: `activeTab`, `scripting`, `storage`, `sidePanel`, host access to `https://atnx.app/*` only. Other origins are `optional_host_permissions`, granted from the panel when you save a custom URL. Host access to the web app keeps the Supabase auth cookie flowing even when third-party cookies are blocked.
+
+`activeTab` is granted per tab by the hotkey or a toolbar click, so the panel's Capture button only works on the tab the panel was opened from; on another tab it explains to use the shortcut or click the icon again. Icons are the bare eye-and-beam glyph on a transparent background (16/32/48/128), regenerated from `atnx-web/public/app_icon.png`.
 
 Defaults & config (`chrome.storage.local`):
 - `webAppUrl` — default `https://atnx.app`, editable from the popup
@@ -174,7 +177,7 @@ Env vars:
 ### Extension
 
 1. `chrome://extensions` → enable **Developer Mode** → **Load unpacked** → select `atnx-extension/`.
-2. Open the popup and set **Web App URL** to `http://localhost:3000` while developing locally. Chrome will ask to grant the extension access to that origin — accept, or captures can't attach the auth cookie.
+2. Click the toolbar icon to open the side panel, open the gear, and set **Web App URL** to `http://localhost:3000` while developing locally. Chrome will ask to grant the extension access to that origin — accept, or captures can't attach the auth cookie.
 3. Sign in at your web app URL first so the Supabase auth cookie exists. Then `Ctrl+Shift+X` / `Cmd+Shift+X` to capture.
 
 Change the hotkey at `chrome://extensions/shortcuts`.

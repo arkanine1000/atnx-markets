@@ -22,6 +22,11 @@ chrome.runtime.onInstalled.addListener(() => {
   updateStatus('ready');
 });
 
+// Clicking the toolbar icon opens the side panel (there is no popup).
+chrome.sidePanel
+  .setPanelBehavior({ openPanelOnActionClick: true })
+  .catch((err) => console.warn('sidePanel behavior:', err.message));
+
 async function getWebAppUrl() {
   const { webAppUrl } = await chrome.storage.local.get('webAppUrl');
   const raw = (webAppUrl || '').trim().replace(/\/+$/, '');
@@ -44,10 +49,13 @@ async function getActiveTab() {
 // Content script is injected on demand (activeTab + scripting) rather than
 // declared for <all_urls>, so nothing runs on pages the user never captures.
 // content.js guards against double-injection, so a retry is always safe.
+// Resolves to { ok: true } or { ok: false, reason } so the side panel can
+// explain a failure inline.
 async function activateTab(tab) {
-  if (!tab?.id) return;
+  if (!tab?.id) return { ok: false, reason: 'No active tab' };
   try {
     await chrome.tabs.sendMessage(tab.id, { action: 'activate-capture' });
+    return { ok: true };
   } catch {
     try {
       await chrome.scripting.executeScript({
@@ -55,12 +63,23 @@ async function activateTab(tab) {
         files: ['content.js']
       });
       await chrome.tabs.sendMessage(tab.id, { action: 'activate-capture' });
+      return { ok: true };
     } catch (err) {
-      // chrome://, the Web Store, PDFs and other restricted pages refuse
-      // injection. There is no page to toast into, so use the badge.
+      // Two cases land here: restricted pages (chrome://, the Web Store,
+      // PDFs) and tabs the extension has no activeTab grant for — the
+      // grant comes from the hotkey or the toolbar click and is per-tab.
       console.warn('Cannot activate capture on this page:', err.message);
       updateStatus('error');
       resetStatusAfter(4000);
+      const restricted = /chrome:\/\/|chrome-extension:\/\/|Web Store/i.test(
+        `${tab.url || ''} ${err.message}`
+      );
+      return {
+        ok: false,
+        reason: restricted
+          ? "Chrome doesn't allow captures on this page"
+          : 'Press the shortcut on the page, or click the toolbar icon first'
+      };
     }
   }
 }
@@ -71,11 +90,12 @@ chrome.commands.onCommand.addListener(async (command) => {
   }
 });
 
-chrome.runtime.onMessage.addListener((msg, sender) => {
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === 'capture-region') {
     handleCapture(msg, sender.tab);
   } else if (msg.action === 'start-capture') {
-    getActiveTab().then(activateTab);
+    getActiveTab().then(activateTab).then(sendResponse);
+    return true; // async sendResponse
   }
 });
 
