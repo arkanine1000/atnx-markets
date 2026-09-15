@@ -1,7 +1,7 @@
 const DEFAULT_WEB_APP_URL = 'https://atnx.app';
 const STALE_STATUS_MS = 10_000;
 const REFRESH_MS = 30_000;
-const TOP_MARKETS = 8;
+const TOP_MARKETS = 5;
 
 const $ = (id) => document.getElementById(id);
 
@@ -14,14 +14,16 @@ function el(tag, className, text) {
   return node;
 }
 
-function replaceChildren(parent, ...children) {
-  parent.replaceChildren(...children);
-}
-
 const usd = new Intl.NumberFormat('en-US', {
   style: 'currency',
   currency: 'USD',
   maximumFractionDigits: 2
+});
+
+const usdCompact = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+  maximumFractionDigits: 0
 });
 
 function signed(n, fmt = (x) => x.toFixed(2)) {
@@ -55,6 +57,28 @@ function hostOf(url) {
 
 async function openTab(url) {
   await chrome.tabs.create({ url });
+}
+
+// Thumbnail with a first-letter fallback when there is no image (or it fails).
+function thumb(imageUrl, name, badge) {
+  const box = el('div', 'thumb');
+  const letter = el('span', '', (name || '?').trim().charAt(0).toUpperCase());
+  if (imageUrl) {
+    const img = document.createElement('img');
+    img.alt = '';
+    img.loading = 'lazy';
+    img.src = imageUrl;
+    img.addEventListener('error', () => img.replaceWith(letter));
+    box.appendChild(img);
+  } else {
+    box.appendChild(letter);
+  }
+  if (badge) {
+    const b = el('span', 'badge', badge.text);
+    b.title = badge.title;
+    box.appendChild(b);
+  }
+  return box;
 }
 
 // --- Settings (URL, shortcut, version) ---
@@ -209,6 +233,188 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if ('captureStatus' in changes || 'captureCount' in changes) loadStatus();
 });
 
+// --- Value tile: hero number + 7d delta + sparkline ---
+
+const valueTile = $('valueTile');
+const tileValue = $('tileValue');
+const tileDelta = $('tileDelta');
+const chartEl = $('chart');
+const chartSvg = $('chartSvg');
+const chartTip = $('chartTip');
+const tipValue = $('tipValue');
+const tipTime = $('tipTime');
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+const CHART_H = 72;
+const PAD_Y = 6;
+const timeFmt = new Intl.DateTimeFormat('en-US', {
+  month: 'short',
+  day: 'numeric',
+  hour: 'numeric',
+  minute: '2-digit'
+});
+
+let chartSeries = [];
+let chartPoints = []; // [{x, y, t, value}] in SVG px
+let chartHover = -1;
+
+function svgEl(tag, attrs) {
+  const node = document.createElementNS(SVG_NS, tag);
+  for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, String(v));
+  return node;
+}
+
+function renderChart() {
+  const w = chartEl.clientWidth;
+  if (!w || chartSeries.length === 0) return;
+  const h = CHART_H;
+  chartSvg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+  chartSvg.replaceChildren();
+
+  const values = chartSeries.map((p) => p.value);
+  let min = Math.min(...values);
+  let max = Math.max(...values);
+  if (max - min < 1e-9) {
+    // Flat series: draw it through the middle rather than dividing by zero.
+    min -= 1;
+    max += 1;
+  }
+  const t0 = new Date(chartSeries[0].t).getTime();
+  const t1 = new Date(chartSeries[chartSeries.length - 1].t).getTime();
+  const span = Math.max(1, t1 - t0);
+
+  chartPoints = chartSeries.map((p) => {
+    const t = new Date(p.t).getTime();
+    return {
+      x: ((t - t0) / span) * w,
+      y: PAD_Y + (1 - (p.value - min) / (max - min)) * (h - PAD_Y * 2),
+      t,
+      value: p.value
+    };
+  });
+
+  const line = chartPoints.map((p, i) => `${i ? 'L' : 'M'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+  const last = chartPoints[chartPoints.length - 1];
+
+  // Area wash: series hue at ~10% opacity fading to nothing.
+  const defs = svgEl('defs', {});
+  const grad = svgEl('linearGradient', { id: 'sparkFill', x1: 0, y1: 0, x2: 0, y2: 1 });
+  grad.appendChild(svgEl('stop', { offset: '0%', 'stop-color': '#00D4FF', 'stop-opacity': 0.18 }));
+  grad.appendChild(svgEl('stop', { offset: '100%', 'stop-color': '#00D4FF', 'stop-opacity': 0 }));
+  defs.appendChild(grad);
+  chartSvg.appendChild(defs);
+
+  chartSvg.appendChild(svgEl('path', {
+    d: `${line} L${last.x.toFixed(1)},${h} L${chartPoints[0].x.toFixed(1)},${h} Z`,
+    fill: 'url(#sparkFill)'
+  }));
+  chartSvg.appendChild(svgEl('path', {
+    d: line,
+    fill: 'none',
+    stroke: '#00D4FF',
+    'stroke-width': 2,
+    'stroke-linejoin': 'round',
+    'stroke-linecap': 'round'
+  }));
+  // Hairline baseline at the window's starting value so the reader sees
+  // above/below at a glance.
+  const y0 = chartPoints[0].y;
+  chartSvg.appendChild(svgEl('line', {
+    x1: 0, x2: w, y1: y0.toFixed(1), y2: y0.toFixed(1),
+    stroke: '#2A2A2A', 'stroke-width': 1
+  }));
+  // End marker with a surface ring.
+  chartSvg.appendChild(svgEl('circle', { cx: last.x, cy: last.y, r: 5.5, fill: '#141414' }));
+  chartSvg.appendChild(svgEl('circle', { cx: last.x, cy: last.y, r: 4, fill: '#00D4FF' }));
+
+  // Crosshair layer (hidden until hover/focus).
+  const cross = svgEl('g', { id: 'cross', visibility: 'hidden' });
+  cross.appendChild(svgEl('line', { id: 'crossLine', y1: 0, y2: h, stroke: '#8A8A8A', 'stroke-width': 1 }));
+  cross.appendChild(svgEl('circle', { id: 'crossRing', r: 6, fill: '#141414' }));
+  cross.appendChild(svgEl('circle', { id: 'crossDot', r: 4, fill: '#F0F0F0' }));
+  chartSvg.appendChild(cross);
+
+  if (chartHover >= 0) showHover(Math.min(chartHover, chartPoints.length - 1));
+}
+
+function showHover(i) {
+  chartHover = i;
+  const p = chartPoints[i];
+  if (!p) return;
+  const cross = chartSvg.querySelector('#cross');
+  cross.setAttribute('visibility', 'visible');
+  cross.querySelector('#crossLine').setAttribute('x1', p.x);
+  cross.querySelector('#crossLine').setAttribute('x2', p.x);
+  cross.querySelector('#crossRing').setAttribute('cx', p.x);
+  cross.querySelector('#crossRing').setAttribute('cy', p.y);
+  cross.querySelector('#crossDot').setAttribute('cx', p.x);
+  cross.querySelector('#crossDot').setAttribute('cy', p.y);
+
+  tipValue.textContent = usd.format(p.value);
+  tipTime.textContent = timeFmt.format(new Date(p.t));
+  chartTip.hidden = false;
+  // Keep the tooltip inside the tile.
+  const w = chartEl.clientWidth;
+  const tw = chartTip.offsetWidth;
+  const left = Math.min(Math.max(p.x, tw / 2), w - tw / 2);
+  chartTip.style.left = `${left}px`;
+}
+
+function hideHover() {
+  chartHover = -1;
+  chartSvg.querySelector('#cross')?.setAttribute('visibility', 'hidden');
+  chartTip.hidden = true;
+}
+
+function nearestIndex(clientX) {
+  const rect = chartEl.getBoundingClientRect();
+  const x = clientX - rect.left;
+  let best = 0;
+  let bestD = Infinity;
+  chartPoints.forEach((p, i) => {
+    const d = Math.abs(p.x - x);
+    if (d < bestD) {
+      bestD = d;
+      best = i;
+    }
+  });
+  return best;
+}
+
+chartEl.addEventListener('pointermove', (e) => {
+  if (chartPoints.length) showHover(nearestIndex(e.clientX));
+});
+chartEl.addEventListener('pointerleave', hideHover);
+chartEl.addEventListener('focus', () => {
+  if (chartPoints.length) showHover(chartPoints.length - 1);
+});
+chartEl.addEventListener('blur', hideHover);
+chartEl.addEventListener('keydown', (e) => {
+  if (!chartPoints.length) return;
+  if (e.key === 'ArrowLeft') showHover(Math.max(0, (chartHover < 0 ? chartPoints.length : chartHover) - 1));
+  else if (e.key === 'ArrowRight') showHover(Math.min(chartPoints.length - 1, chartHover + 1));
+  else if (e.key === 'Home') showHover(0);
+  else if (e.key === 'End') showHover(chartPoints.length - 1);
+  else return;
+  e.preventDefault();
+});
+new ResizeObserver(() => renderChart()).observe(chartEl);
+
+function renderTile(data) {
+  valueTile.hidden = false;
+  tileValue.textContent = usd.format(data.totalValueUsd);
+  const dir = data.changeUsd >= 0 ? 'up' : 'down';
+  tileDelta.className = `tile-delta ${dir}`;
+  tileDelta.textContent =
+    `${signed(data.changeUsd, (x) => usdCompact.format(x))} (${signed(data.changePercent, (x) => x.toFixed(1))}%) 7d`;
+  chartEl.setAttribute(
+    'aria-label',
+    `Portfolio value ${usd.format(data.totalValueUsd)}, ${tileDelta.textContent}`
+  );
+  chartSeries = Array.isArray(data.history) ? data.history : [];
+  renderChart();
+}
+
 // --- Data: portfolio + top markets ---
 
 const portfolioEl = $('portfolio');
@@ -216,6 +422,11 @@ const marketsEl = $('markets');
 const marketsMeta = $('marketsMeta');
 const handleChip = $('handleChip');
 const refreshBtn = $('refreshBtn');
+
+let portfolioOpen = false;
+chrome.storage.local.get('portfolioOpen').then(({ portfolioOpen: v }) => {
+  portfolioOpen = Boolean(v);
+});
 
 async function fetchJson(path) {
   const base = await getWebAppUrl();
@@ -245,33 +456,37 @@ function placeholder(text, action) {
   return box;
 }
 
-function stat(label, value, cls, sub) {
+function stat(label, value, cls) {
   const box = el('div', 'stat');
   box.appendChild(el('div', 'label', label));
   box.appendChild(el('div', `value ${cls || ''}`.trim(), value));
-  if (sub) box.appendChild(el('div', 'sub', sub));
   return box;
 }
 
+// Position row: thumbnail · name · current value / PnL %.
 function positionRow(p, base) {
   const row = el('button', 'row');
   row.type = 'button';
-  row.title = 'Open market';
+  row.title = `${p.direction === 'short' ? 'Short' : 'Long'} ${p.leverage}x · ${usd.format(p.sizeUsd)} in · VI ${p.entryVi} → ${p.currentVi}`;
   row.addEventListener('click', () => openTab(`${base}/app/markets/${p.marketId}`));
 
-  const tag = el('span', `tag ${p.direction}`, `${p.direction.toUpperCase()} ${p.leverage}x`);
-
-  const lead = el('div', 'lead');
-  lead.appendChild(el('div', 'name', p.name));
-  lead.appendChild(el('div', 'meta', `${usd.format(p.sizeUsd)} · VI ${p.entryVi} → ${p.currentVi}`));
-
+  const badge = p.direction === 'short' ? { text: 'S', title: 'Short' } : null;
+  const dir = p.pnlPercent >= 0 ? 'up' : 'down';
   const end = el('div', 'end');
-  const dir = p.pnlUsd >= 0 ? 'up' : 'down';
-  end.appendChild(el('div', `big ${dir}`, signed(p.pnlUsd, (x) => usd.format(x))));
-  end.appendChild(el('div', `small ${dir}`, `${signed(p.pnlPercent)}%`));
+  end.appendChild(el('div', 'big', usd.format(p.valueUsd ?? p.sizeUsd + p.pnlUsd)));
+  end.appendChild(el('div', `small ${dir}`, `${signed(p.pnlPercent, (x) => x.toFixed(1))}%`));
 
-  row.append(tag, lead, end);
+  row.append(thumb(p.imageUrl, p.name, badge), el('div', 'name', p.name), end);
   return row;
+}
+
+function setPortfolioOpen(open) {
+  portfolioOpen = open;
+  chrome.storage.local.set({ portfolioOpen: open });
+  const toggle = portfolioEl.querySelector('.stats-toggle');
+  const list = portfolioEl.querySelector('.positions');
+  if (toggle) toggle.setAttribute('aria-expanded', String(open));
+  if (list) list.hidden = !open;
 }
 
 async function loadPortfolio() {
@@ -280,14 +495,15 @@ async function loadPortfolio() {
   try {
     ({ res, base } = await fetchJson('/api/portfolio'));
   } catch {
-    replaceChildren(portfolioEl, placeholder(`Can't reach ${hostOf(await getWebAppUrl())}`));
+    valueTile.hidden = true;
+    portfolioEl.replaceChildren(placeholder(`Can't reach ${hostOf(await getWebAppUrl())}`));
     return;
   }
 
   if (res.status === 401) {
     handleChip.hidden = true;
-    replaceChildren(
-      portfolioEl,
+    valueTile.hidden = true;
+    portfolioEl.replaceChildren(
       placeholder(`Sign in at ${hostOf(base)} to see your balance and positions`, {
         label: 'Sign in',
         onClick: () => openTab(`${base}/app/portfolio`)
@@ -295,19 +511,18 @@ async function loadPortfolio() {
     );
     return;
   }
-  if (res.status === 404) {
-    // Older web app without the portfolio endpoint.
-    replaceChildren(portfolioEl, placeholder('Portfolio needs a newer web app build'));
-    return;
-  }
   if (!res.ok) {
-    replaceChildren(portfolioEl, placeholder(`Portfolio unavailable (${res.status})`));
+    valueTile.hidden = true;
+    portfolioEl.replaceChildren(placeholder(
+      res.status === 404 ? 'Portfolio needs a newer web app build' : `Portfolio unavailable (${res.status})`
+    ));
     return;
   }
 
   const data = await readJson(res);
   if (!data || !Array.isArray(data.positions)) {
-    replaceChildren(portfolioEl, placeholder(`Unexpected response from ${hostOf(base)}`));
+    valueTile.hidden = true;
+    portfolioEl.replaceChildren(placeholder(`Unexpected response from ${hostOf(base)}`));
     return;
   }
 
@@ -318,17 +533,35 @@ async function loadPortfolio() {
     handleChip.hidden = true;
   }
 
-  const stats = el('div', 'stats');
-  stats.appendChild(stat('Balance', usd.format(data.balanceUsd), 'yellow', 'USDC'));
-  const pnlDir = data.unrealizedPnlUsd >= 0 ? 'up' : 'down';
-  stats.appendChild(
-    stat('Unrealized', signed(data.unrealizedPnlUsd, (x) => usd.format(x)), pnlDir,
-      `${signed(data.realizedPnlUsd, (x) => usd.format(x))} realized`)
-  );
-  stats.appendChild(stat('Open', String(data.positions.length), '', `${data.totalTrades} trades`));
+  renderTile(data);
 
-  const list = el('div', 'list');
-  list.appendChild(stats);
+  // Collapsed: the three numbers. Expanded: the open positions.
+  const toggle = el('button', 'stats-toggle');
+  toggle.type = 'button';
+  toggle.setAttribute('aria-expanded', String(portfolioOpen));
+  toggle.setAttribute('aria-controls', 'positions');
+  toggle.appendChild(stat('Balance', usd.format(data.balanceUsd), 'yellow'));
+  toggle.appendChild(
+    stat('Unrealized', signed(data.unrealizedPnlUsd, (x) => usd.format(x)),
+      data.unrealizedPnlUsd >= 0 ? 'up' : 'down')
+  );
+  toggle.appendChild(stat('Open', String(data.positions.length)));
+  const chev = document.createElementNS(SVG_NS, 'svg');
+  chev.setAttribute('viewBox', '0 0 24 24');
+  chev.setAttribute('width', '16');
+  chev.setAttribute('height', '16');
+  chev.setAttribute('class', 'chevron');
+  chev.setAttribute('aria-hidden', 'true');
+  chev.appendChild(svgEl('path', {
+    d: 'M6 9l6 6 6-6', fill: 'none', stroke: 'currentColor',
+    'stroke-width': 2.2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round'
+  }));
+  toggle.appendChild(chev);
+  toggle.addEventListener('click', () => setPortfolioOpen(!portfolioOpen));
+
+  const list = el('div', 'positions');
+  list.id = 'positions';
+  list.hidden = !portfolioOpen;
   if (data.positions.length === 0) {
     list.appendChild(placeholder('No open positions', {
       label: 'Browse markets',
@@ -337,16 +570,9 @@ async function loadPortfolio() {
   } else {
     for (const p of data.positions) list.appendChild(positionRow(p, base));
   }
-  replaceChildren(portfolioEl, list);
-}
 
-const TREND = {
-  spiking: { glyph: '▲▲', cls: 'up' },
-  rising: { glyph: '▲', cls: 'up' },
-  falling: { glyph: '▼', cls: 'down' },
-  new: { glyph: '✦', cls: 'value yellow' },
-  stable: { glyph: '—', cls: 'muted' }
-};
+  portfolioEl.replaceChildren(toggle, list);
+}
 
 // /api/captures returns the capture feed newest-first; the dashboard groups
 // it by market and ranks by VI, so do the same here.
@@ -354,38 +580,26 @@ function topMarkets(captures) {
   const byMarket = new Map();
   for (const c of captures) {
     if (!c.marketId) continue;
-    const entry = byMarket.get(c.marketId);
-    if (entry) {
-      entry.captures += 1;
-    } else {
-      byMarket.set(c.marketId, { latest: c, captures: 1 });
-    }
+    if (!byMarket.has(c.marketId)) byMarket.set(c.marketId, c);
   }
   return [...byMarket.values()]
-    .sort((a, b) => b.latest.viralityScore - a.latest.viralityScore)
+    .sort((a, b) => b.viralityScore - a.viralityScore)
     .slice(0, TOP_MARKETS);
 }
 
-function marketRow(group, rank, base) {
-  const c = group.latest;
+// Market row: thumbnail · name · VI.
+function marketRow(c, base) {
   const row = el('button', 'row');
   row.type = 'button';
-  row.title = 'Open market';
+  const trend = c.trends?.trend;
+  row.title = trend ? `Virality Index ${c.viralityScore} · ${trend}` : `Virality Index ${c.viralityScore}`;
   row.addEventListener('click', () => openTab(`${base}/app/markets/${c.marketId}`));
 
-  const lead = el('div', 'lead');
-  lead.appendChild(el('div', 'name', c.analysis?.name || 'Unknown'));
-  const category = c.analysis?.category || c.analysis?.type || 'other';
-  lead.appendChild(
-    el('div', 'meta', `${category} · ${group.captures} capture${group.captures === 1 ? '' : 's'}`)
-  );
-
-  const trend = TREND[c.trends?.trend] || TREND.stable;
+  const name = c.analysis?.name || 'Unknown';
   const end = el('div', 'end');
-  end.appendChild(el('div', 'big', `VI ${c.viralityScore}`));
-  end.appendChild(el('div', `small trend ${trend.cls}`, `${trend.glyph} ${c.trends?.trend || 'stable'}`));
+  end.appendChild(el('div', 'big', String(c.viralityScore)));
 
-  row.append(el('div', 'rank', String(rank)), lead, end);
+  row.append(thumb(c.screenshot, name), el('div', 'name', name), end);
   return row;
 }
 
@@ -395,30 +609,30 @@ async function loadMarkets() {
   try {
     ({ res, base } = await fetchJson('/api/captures'));
   } catch {
-    replaceChildren(marketsEl, placeholder(`Can't reach ${hostOf(await getWebAppUrl())}`));
+    marketsEl.replaceChildren(placeholder(`Can't reach ${hostOf(await getWebAppUrl())}`));
     marketsMeta.textContent = '';
     return;
   }
   if (!res.ok) {
-    replaceChildren(marketsEl, placeholder(`Markets unavailable (${res.status})`));
+    marketsEl.replaceChildren(placeholder(`Markets unavailable (${res.status})`));
     marketsMeta.textContent = '';
     return;
   }
 
   const data = await readJson(res);
   if (!data || !Array.isArray(data.captures)) {
-    replaceChildren(marketsEl, placeholder(`Unexpected response from ${hostOf(base)}`));
+    marketsEl.replaceChildren(placeholder(`Unexpected response from ${hostOf(base)}`));
     marketsMeta.textContent = '';
     return;
   }
-  const groups = topMarkets(data.captures);
-  marketsMeta.textContent = groups.length ? 'by Virality Index' : '';
+  const top = topMarkets(data.captures);
+  marketsMeta.textContent = top.length ? 'VI' : '';
 
-  if (groups.length === 0) {
-    replaceChildren(marketsEl, placeholder('No markets yet — capture something to spawn one'));
+  if (top.length === 0) {
+    marketsEl.replaceChildren(placeholder('No markets yet — capture something to spawn one'));
     return;
   }
-  replaceChildren(marketsEl, ...groups.map((g, i) => marketRow(g, i + 1, base)));
+  marketsEl.replaceChildren(...top.map((c) => marketRow(c, base)));
 }
 
 let refreshing = false;
@@ -426,11 +640,13 @@ async function refreshData() {
   if (refreshing) return;
   refreshing = true;
   refreshBtn.classList.add('spinning');
+  document.body.classList.add('refreshing');
   try {
     await Promise.all([loadPortfolio(), loadMarkets()]);
   } finally {
     refreshing = false;
     refreshBtn.classList.remove('spinning');
+    document.body.classList.remove('refreshing');
   }
 }
 

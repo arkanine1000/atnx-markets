@@ -57,6 +57,22 @@
       <div id="captureNote" class="note" hidden></div>
     </section>
 
+    <!-- Stat tile: hero value + 7d delta + sparkline. Hidden until signed in. -->
+    <section id="valueTile" class="card tile" hidden>
+      <div class="tile-head">
+        <span class="tile-label">Portfolio value</span>
+        <span id="tileDelta" class="tile-delta"></span>
+      </div>
+      <div id="tileValue" class="hero">$0.00</div>
+      <div id="chart" class="chart" tabindex="0" role="img" aria-label="Portfolio value over the last 7 days">
+        <svg id="chartSvg" aria-hidden="true"></svg>
+        <div id="chartTip" class="chart-tip" hidden>
+          <strong id="tipValue"></strong>
+          <span id="tipTime"></span>
+        </div>
+      </div>
+    </section>
+
     <section class="section">
       <div class="section-head">
         <h2>Portfolio</h2>
