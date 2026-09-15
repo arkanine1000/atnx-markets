@@ -24,6 +24,7 @@ const BG_COLORS = {
 const TEXT = "ATNX";
 const MOUSE_RADIUS = 80;
 const SCATTER_FORCE = 8;
+const BURST_FORCE = 22; // click/tap explosion impulse (px/frame)
 const RETURN_SPEED = 0.08;
 const FRICTION = 0.85;
 const REST_SPEED = 0.03; // px/frame below which a dot counts as settled
@@ -313,6 +314,21 @@ export function DotMatrixLogo() {
       toLocal(e);
       wake();
     }
+    // Click / tap: blow the wordmark apart from the touch point and let it
+    // reassemble. Cheap, and the one thing people remember.
+    function onPointerDown(e: PointerEvent) {
+      toLocal(e);
+      if (reducedMotion) return;
+      for (const d of dots) {
+        const dx = d.x - pointer.x;
+        const dy = d.y - pointer.y;
+        const dist = Math.hypot(dx, dy) || 1;
+        const kick = BURST_FORCE * (0.6 + Math.random() * 0.8);
+        d.vx += (dx / dist) * kick;
+        d.vy += (dy / dist) * kick;
+      }
+      wake();
+    }
     function onPointerLeave() {
       pointer = { x: -1e4, y: -1e4, inside: false };
       wake();
@@ -327,7 +343,7 @@ export function DotMatrixLogo() {
     }
 
     el.addEventListener("pointermove", onPointerMove);
-    el.addEventListener("pointerdown", onPointerMove);
+    el.addEventListener("pointerdown", onPointerDown);
     el.addEventListener("pointerleave", onPointerLeave);
     el.addEventListener("pointercancel", onPointerLeave);
     window.addEventListener("resize", onResize);
@@ -347,7 +363,7 @@ export function DotMatrixLogo() {
       window.clearTimeout(resizeTimer);
       io.disconnect();
       el.removeEventListener("pointermove", onPointerMove);
-      el.removeEventListener("pointerdown", onPointerMove);
+      el.removeEventListener("pointerdown", onPointerDown);
       el.removeEventListener("pointerleave", onPointerLeave);
       el.removeEventListener("pointercancel", onPointerLeave);
       window.removeEventListener("resize", onResize);
