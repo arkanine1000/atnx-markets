@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 // Three-step explainer. Each step is an inline SVG "screen" animated with CSS
-// keyframes (see the .hiw-* rules in globals.css) on a shared 6s loop, so a
+// keyframes (the .hiw-* rules in HIW_CSS below) on a shared 6s loop, so a
 // scene reads as a short looping clip. The illustrations are always drawn on
 // a dark panel, device-mock style, whatever the page theme.
 
@@ -35,6 +35,161 @@ const TONE = {
   yellow:
     "bg-atnx-yellow/10 text-atnx-yellow light:text-atnx-yellow-light border-atnx-yellow/25",
 };
+
+// Scene animation CSS lives with the component (not globals.css) so it can
+// never be stale or stripped relative to the markup it animates.
+const HIW_CSS = `
+/* --- How-it-works scenes ------------------------------------------------
+   Every element loops on the same 6s clock; keyframe percentages are the
+   scene's timeline. Base styles are the scene's END state, so with reduced
+   motion (animation: none) the finished frame shows. */
+.hiw-scene { font-family: var(--font-mono); }
+.hiw-scene [class^="hiw-"], .hiw-scene [class*=" hiw-"] {
+  animation-duration: 6s;
+  animation-iteration-count: infinite;
+  animation-timing-function: ease-in-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hiw-scene * { animation: none !important; }
+}
+
+/* scene 1: scroll, select, flash, badge */
+.hiw-feed { transform: translateY(-72px); animation-name: hiw-feed; }
+@keyframes hiw-feed { 0% { transform: translateY(0); } 28%, 100% { transform: translateY(-72px); } }
+
+.hiw-sel { transform-box: fill-box; transform-origin: top left; animation-name: hiw-sel; }
+@keyframes hiw-sel {
+  0%, 30% { transform: scale(0); opacity: 0; }
+  31% { opacity: 1; }
+  46%, 92% { transform: scale(1); opacity: 1; }
+  97%, 100% { transform: scale(1); opacity: 0; }
+}
+
+.hiw-cursor { opacity: 0; animation-name: hiw-cursor; }
+@keyframes hiw-cursor {
+  0%, 16% { transform: translate(200px, 150px); opacity: 1; }
+  30% { transform: translate(14px, 28px); opacity: 1; }
+  46% { transform: translate(226px, 102px); opacity: 1; }
+  56%, 100% { transform: translate(226px, 102px); opacity: 0; }
+}
+
+.hiw-scene .hiw-flash { opacity: 0; animation-name: hiw-flash; animation-timing-function: linear; }
+@keyframes hiw-flash { 0%, 46% { opacity: 0; } 48% { opacity: 0.55; } 52%, 100% { opacity: 0; } }
+
+.hiw-badge { transform-box: fill-box; transform-origin: center; animation-name: hiw-pop; }
+@keyframes hiw-pop {
+  0%, 52% { transform: scale(0.6); opacity: 0; }
+  58%, 92% { transform: scale(1); opacity: 1; }
+  97%, 100% { transform: scale(1); opacity: 0; }
+}
+
+/* scene 1, phone: scroll, press the side button, flash, screen shrinks to a
+   thumbnail, then expands back as the loop resets */
+.hiw-pfeed { transform: translateY(-70px); animation-name: hiw-pfeed; }
+@keyframes hiw-pfeed { 0% { transform: translateY(0); } 28%, 100% { transform: translateY(-70px); } }
+
+.hiw-pbtn { animation-name: hiw-pbtn; }
+@keyframes hiw-pbtn { 0%, 47% { transform: translateX(0); } 49% { transform: translateX(-2px); } 51%, 100% { transform: translateX(0); } }
+
+.hiw-scene .hiw-pflash { opacity: 0; animation-name: hiw-pflash; animation-timing-function: linear; }
+@keyframes hiw-pflash { 0%, 49% { opacity: 0; } 51% { opacity: 0.75; } 55%, 100% { opacity: 0; } }
+
+/* Origin is the screen's bottom-left in the phone group's own coordinates: the
+   group's bounding box would include the off-screen feed cards, so fill-box
+   would anchor the shrink in the wrong place. */
+.hiw-pshot { transform-box: view-box; transform-origin: 5px 191px; animation-name: hiw-pshot; }
+@keyframes hiw-pshot {
+  0%, 53% { transform: scale(1) translate(0, 0); }
+  63%, 93% { transform: scale(0.42) translate(14px, -20px); }
+  100% { transform: scale(1) translate(0, 0); }
+}
+.hiw-pshot-frame { animation-name: hiw-pshot-frame; }
+@keyframes hiw-pshot-frame { 0%, 56% { opacity: 0; } 62%, 93% { opacity: 1; } 100% { opacity: 0; } }
+
+/* scene 2: pick a side, type an amount, submit, toast */
+.hiw-cursor2 { opacity: 0; animation-name: hiw-cursor2; }
+@keyframes hiw-cursor2 {
+  0%, 6% { transform: translate(250px, 170px); opacity: 1; }
+  20% { transform: translate(70px, 78px); opacity: 1; }
+  24% { transform: translate(70px, 78px) scale(0.85); }
+  27% { transform: translate(70px, 78px) scale(1); }
+  40% { transform: translate(120px, 120px); }
+  60% { transform: translate(150px, 160px); opacity: 1; }
+  64% { transform: translate(150px, 160px) scale(0.85); }
+  67% { transform: translate(150px, 160px) scale(1); opacity: 1; }
+  76%, 100% { transform: translate(150px, 160px); opacity: 0; }
+}
+
+.hiw-long { fill: rgba(0, 212, 255, 0.15); stroke: #00D4FF; animation-name: hiw-long; }
+@keyframes hiw-long {
+  0%, 24% { fill: #1e1e1e; stroke: #2a2a2a; }
+  27%, 100% { fill: rgba(0, 212, 255, 0.15); stroke: #00D4FF; }
+}
+.hiw-long-text { fill: #00D4FF; animation-name: hiw-long-text; }
+@keyframes hiw-long-text { 0%, 24% { fill: #999; } 27%, 100% { fill: #00D4FF; } }
+
+.hiw-amt { fill-opacity: 1; }
+.hiw-amt-1 { animation-name: hiw-amt-1; }
+.hiw-amt-2 { animation-name: hiw-amt-2; }
+.hiw-amt-3 { animation-name: hiw-amt-3; }
+@keyframes hiw-amt-1 { 0%, 40% { fill-opacity: 0; } 42%, 100% { fill-opacity: 1; } }
+@keyframes hiw-amt-2 { 0%, 46% { fill-opacity: 0; } 48%, 100% { fill-opacity: 1; } }
+@keyframes hiw-amt-3 { 0%, 52% { fill-opacity: 0; } 54%, 100% { fill-opacity: 1; } }
+
+.hiw-submit { transform-box: fill-box; transform-origin: center; animation-name: hiw-submit; }
+@keyframes hiw-submit {
+  0%, 63% { transform: scale(1); }
+  65% { transform: scale(0.96); }
+  68%, 100% { transform: scale(1); }
+}
+
+.hiw-toast { animation-name: hiw-toast; }
+@keyframes hiw-toast {
+  0%, 68% { transform: translateY(-36px); opacity: 0; }
+  73%, 93% { transform: translateY(6px); opacity: 1; }
+  98%, 100% { transform: translateY(-36px); opacity: 0; }
+}
+
+/* scene 3: line draws, index jumps, PnL lands */
+.hiw-reveal { animation-name: hiw-reveal; }
+@keyframes hiw-reveal { 0%, 6% { width: 0; } 56%, 100% { width: 280px; } }
+
+.hiw-entry { transform-box: fill-box; transform-origin: center; animation-name: hiw-pop-early; }
+@keyframes hiw-pop-early {
+  0%, 16% { transform: scale(0.6); opacity: 0; }
+  21%, 100% { transform: scale(1); opacity: 1; }
+}
+
+.hiw-end { animation-name: hiw-fade-late; }
+@keyframes hiw-fade-late { 0%, 55% { opacity: 0; } 58%, 100% { opacity: 1; } }
+
+.hiw-ring { transform-box: fill-box; transform-origin: center; opacity: 0; animation-name: hiw-ring; }
+@keyframes hiw-ring {
+  0%, 56% { transform: scale(1); opacity: 0; }
+  58% { transform: scale(1); opacity: 0.9; }
+  75% { transform: scale(3.2); opacity: 0; }
+  100% { transform: scale(3.2); opacity: 0; }
+}
+
+.hiw-vi-old { opacity: 0; animation-name: hiw-vi-old; }
+.hiw-vi-new { animation-name: hiw-fade-late; }
+@keyframes hiw-vi-old { 0%, 55% { opacity: 1; } 58%, 100% { opacity: 0; } }
+
+.hiw-viral { transform-box: fill-box; transform-origin: center; animation-name: hiw-pop-late; }
+.hiw-pnl { transform-box: fill-box; transform-origin: center; animation-name: hiw-pop-late; }
+@keyframes hiw-pop-late {
+  0%, 60% { transform: scale(0.6); opacity: 0; }
+  66%, 100% { transform: scale(1); opacity: 1; }
+}
+
+.hiw-conf { opacity: 0; }
+.hiw-conf-1 { animation-name: hiw-conf-1; }
+.hiw-conf-2 { animation-name: hiw-conf-2; }
+.hiw-conf-3 { animation-name: hiw-conf-3; }
+@keyframes hiw-conf-1 { 0%, 64% { transform: translate(0, 0); opacity: 0; } 66% { opacity: 1; } 84%, 100% { transform: translate(-14px, -34px); opacity: 0; } }
+@keyframes hiw-conf-2 { 0%, 64% { transform: translate(0, 0); opacity: 0; } 66% { opacity: 1; } 84%, 100% { transform: translate(2px, -40px); opacity: 0; } }
+@keyframes hiw-conf-3 { 0%, 64% { transform: translate(0, 0); opacity: 0; } 66% { opacity: 1; } 84%, 100% { transform: translate(16px, -32px); opacity: 0; } }
+`;
 
 // Mounted only while open (the parent conditionally renders it), so every
 // opening starts fresh at step 1.
@@ -95,6 +250,7 @@ export function HowItWorksModal({ onClose }: { onClose: () => void }) {
         </div>
 
         {/* scene */}
+        <style>{HIW_CSS}</style>
         <div className="px-5">
           <div className="rounded-xl overflow-hidden border border-surface bg-[#0f0f0f]">
             {step === 0 && <SceneCapture />}
