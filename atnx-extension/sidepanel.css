@@ -632,6 +632,19 @@ main {
   opacity: var(--rank-heat, 0.15);
 }
 
+.row.ranked {
+  grid-template-columns: 18px auto 1fr auto;
+  gap: 10px;
+}
+
+.rank {
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+  color: var(--yellow);
+  opacity: calc(0.45 + var(--rank-heat, 0.15) * 0.55);
+}
+
 .top .row .thumb {
   border-color: rgba(255, 229, 0, 0.35);
 }

@@ -573,8 +573,8 @@ function topMarkets(captures) {
 }
 
 // Market row: thumbnail · name · VI.
-function marketRow(c, base) {
-  const row = el('button', 'row');
+function marketRow(c, base, rank) {
+  const row = el('button', 'row ranked');
   row.type = 'button';
   const trend = c.trends?.trend;
   row.title = trend ? `Virality Index ${c.viralityScore} · ${trend}` : `Virality Index ${c.viralityScore}`;
@@ -584,7 +584,7 @@ function marketRow(c, base) {
   const end = el('div', 'end');
   end.appendChild(el('div', 'big', String(c.viralityScore)));
 
-  row.append(thumb(c.screenshot, name), el('div', 'name', name), end);
+  row.append(el('div', 'rank', String(rank)), thumb(c.screenshot, name), el('div', 'name', name), end);
   return row;
 }
 
@@ -619,7 +619,7 @@ async function loadMarkets() {
   }
   marketsEl.replaceChildren(
     ...top.map((c, i) => {
-      const row = marketRow(c, base);
+      const row = marketRow(c, base, i + 1);
       // 1 → 0.25 heat across the five rows.
       row.style.setProperty('--rank-heat', String(1 - (i / Math.max(1, top.length - 1)) * 0.75));
       return row;
