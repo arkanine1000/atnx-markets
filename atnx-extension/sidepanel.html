@@ -41,10 +41,12 @@
   <main>
     <section class="capture-hero">
       <button id="captureBtn" class="btn-capture" type="button">
-        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M4 9V6a2 2 0 0 1 2-2h3M15 4h3a2 2 0 0 1 2 2v3M20 15v3a2 2 0 0 1-2 2h-3M9 20H6a2 2 0 0 1-2-2v-3"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2.2"/></svg>
-        <span id="captureText">CAPTURE</span>
+        <span class="btn-capture-main">
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M4 9V6a2 2 0 0 1 2-2h3M15 4h3a2 2 0 0 1 2 2v3M20 15v3a2 2 0 0 1-2 2h-3M9 20H6a2 2 0 0 1-2-2v-3"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2.2"/></svg>
+          <span id="captureText">CAPTURE</span>
+        </span>
+        <span class="shortcut-hint"><span id="statusHint" class="kbd">Ctrl+Shift+X</span></span>
       </button>
-      <div class="shortcut-hint"><span id="statusHint" class="kbd">Ctrl+Shift+X</span></div>
       <div id="captureNote" class="note" hidden></div>
     </section>
 
