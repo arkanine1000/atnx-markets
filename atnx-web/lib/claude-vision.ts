@@ -20,14 +20,18 @@ export type VisionMediaType =
 
 const client = new Anthropic();
 
+// claude-sonnet-4-20250514 was retired on 2026-06-15 and now returns
+// not_found_error. claude-sonnet-5 is its drop-in replacement.
+const VISION_MODEL = 'claude-sonnet-5';
+
 function buildPrompt(
   sourceUrl: string | undefined,
   pageTitle: string | undefined,
   pageContext: string | undefined
 ): string {
-  // Keep the base instructions byte-identical to atnx-extension/background.js
-  // so composeVi's downstream parsing stays stable. pageContext is appended
-  // only when the caller (e.g. Android share target) has extra text to pass.
+  // The response shape feeds composeVi's downstream parsing, so keep the
+  // field list stable. pageContext is appended only when the caller (e.g.
+  // Android share target) has extra text to pass.
   const base = `Analyze this screenshot captured from ${sourceUrl ?? 'unknown'} (${pageTitle ?? 'unknown'}).
 
 Identify the main subject/content and extract the following information. Respond ONLY in valid JSON with these fields:
@@ -57,8 +61,13 @@ export async function analyzeScreenshot(opts: {
   const prompt = buildPrompt(opts.sourceUrl, opts.pageTitle, opts.pageContext);
 
   const res = await client.messages.create({
-    model: 'claude-sonnet-4-20250514',
-    max_tokens: 1024,
+    model: VISION_MODEL,
+    // Sonnet 5 thinks by default and max_tokens caps thinking + answer
+    // together, so the old 1024 would truncate the JSON. This is a scoped
+    // extraction task, so low effort keeps latency and cost down.
+    max_tokens: 8192,
+    thinking: { type: 'adaptive' },
+    output_config: { effort: 'low' },
     messages: [
       {
         role: 'user',
@@ -76,6 +85,17 @@ export async function analyzeScreenshot(opts: {
       },
     ],
   });
+
+  if (res.stop_reason === 'refusal') {
+    throw new Error(
+      `Claude declined to analyze this image${
+        res.stop_details?.explanation ? `: ${res.stop_details.explanation}` : ''
+      }`
+    );
+  }
+  if (res.stop_reason === 'max_tokens') {
+    throw new Error('Claude response was truncated (max_tokens)');
+  }
 
   const textBlock = res.content.find((b) => b.type === 'text');
   if (!textBlock || textBlock.type !== 'text') {
