@@ -182,6 +182,20 @@ Env vars:
 
 Change the hotkey at `chrome://extensions/shortcuts`.
 
+### Releasing the extension to the Chrome Web Store
+
+```bash
+cd atnx-extension
+node package.mjs                 # → dist/atnx-capture-v<version>.zip (only the files the manifest needs)
+node ../scripts/store-assets.mjs # regenerates store/screenshot-*.png + promo-small.png (needs Playwright)
+```
+
+Then follow `atnx-extension/store/LISTING.md`: it has the listing text, the
+per-permission justifications, the data-usage disclosures, and the checklist
+for the Developer Dashboard. The privacy policy the listing links to is served
+by the web app at `/privacy`, so deploy the web app before submitting. Bump
+`version` in `manifest.json` for every upload.
+
 ---
 
 ## Deployment

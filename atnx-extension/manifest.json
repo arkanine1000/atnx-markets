@@ -2,7 +2,8 @@
   "manifest_version": 3,
   "name": "ATNX Capture",
   "version": "1.4.0",
-  "description": "Capture anything on screen, identify it with AI",
+  "description": "Capture any part of a page, let AI identify it, and trade its Virality Index on ATNX.",
+  "homepage_url": "https://atnx.app",
   "minimum_chrome_version": "116",
   "icons": {
     "16": "icons/icon16.png",
