@@ -281,11 +281,11 @@ main {
 
 .btn-capture {
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 10px;
   width: 100%;
-  padding: 13px 15px 11px;
+  padding: 15px;
   background: var(--magenta);
   color: var(--bg);
   border: 2px solid var(--magenta);
@@ -312,30 +312,6 @@ main {
   color: var(--magenta);
   animation: pulse 1.5s infinite;
   cursor: progress;
-}
-
-.btn-capture-main {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-}
-
-.shortcut-hint {
-  display: flex;
-  justify-content: center;
-  margin-top: 8px;
-}
-
-.btn-capture .kbd {
-  color: #fff;
-  background: rgba(0, 0, 0, 0.3);
-  border: 0;
-  border-radius: 6px;
-  padding: 3px 10px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.5px;
 }
 
 .note {
