@@ -1,36 +1,42 @@
 {
   "manifest_version": 3,
   "name": "ATNX Capture",
-  "version": "1.2.0",
-  "description": "Capture anything on screen, identify it with AI",
+  "version": "1.4.0",
+  "description": "Capture any part of a page, let AI identify it, and trade its Virality Index on ATNX.",
+  "homepage_url": "https://atnx.app",
+  "minimum_chrome_version": "116",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
   "permissions": [
     "activeTab",
     "scripting",
     "storage",
-    "offscreen"
+    "sidePanel"
   ],
   "host_permissions": [
-    "<all_urls>"
+    "https://atnx.app/*"
+  ],
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*"
   ],
   "background": {
     "service_worker": "background.js"
   },
   "action": {
-    "default_popup": "popup.html",
+    "default_title": "ATNX",
     "default_icon": {
       "16": "icons/icon16.png",
-      "48": "icons/icon48.png",
-      "128": "icons/icon128.png"
+      "32": "icons/icon32.png"
     }
   },
-  "content_scripts": [
-    {
-      "matches": ["<all_urls>"],
-      "js": ["content.js"],
-      "css": ["content.css"],
-      "run_at": "document_idle"
-    }
-  ],
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
   "commands": {
     "activate-capture": {
       "suggested_key": {

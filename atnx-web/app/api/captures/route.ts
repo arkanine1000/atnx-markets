@@ -1,19 +1,7 @@
 import { getCaptures } from '@/lib/store';
 import { processCapture, toMediaType } from '@/lib/capture';
 import { createClient } from '@/lib/supabase/server';
-
-// CORS with credentials requires echoing the caller's Origin (not `*`) so the
-// Chrome extension's auth cookie is accepted on cross-origin requests.
-function corsHeaders(request: Request): Record<string, string> {
-  const origin = request.headers.get('origin') ?? '';
-  return {
-    'Access-Control-Allow-Origin': origin,
-    'Access-Control-Allow-Credentials': 'true',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
-    Vary: 'Origin',
-  };
-}
+import { corsHeaders, corsPreflight } from '@/lib/cors';
 
 export async function POST(request: Request) {
   const headers = corsHeaders(request);
@@ -102,5 +90,5 @@ export async function GET(request: Request) {
 }
 
 export async function OPTIONS(request: Request) {
-  return new Response(null, { status: 204, headers: corsHeaders(request) });
+  return corsPreflight(request);
 }
