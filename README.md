@@ -135,19 +135,19 @@ Storage: the `screenshots` bucket holds capture images; public URLs are stored o
 
 ## Chrome extension (`atnx-extension/`)
 
-Manifest V3, vanilla JS. Four moving parts:
+Manifest V3, vanilla JS, no build step. Three moving parts:
 
-- **`background.js`** (service worker) — Owns the capture pipeline. On `Ctrl+Shift+X` or the popup button it injects `content.js` if needed, receives the selected rect, crops via an offscreen document, calls the Claude API directly, then POSTs the result to `${webAppUrl}/api/captures` with `credentials: 'include'`.
-- **`content.js` + `content.css`** — Injects the drag-to-select overlay and inline toast notifications on any page.
-- **`popup.html` + `popup.js`** — Settings surface. Inputs for the Anthropic API key and the Web App URL (default `https://atnx.app`; override for local dev). Capture button, status dot, dashboard link.
-- **`offscreen.html` + `offscreen.js`** — MV3 workaround for canvas-based cropping (service workers can't touch `<canvas>`).
+- **`background.js`** (service worker) — Owns the capture pipeline. On `Ctrl+Shift+X` or the popup button it injects `content.js` on demand (`activeTab` + `scripting`), receives the selected rect, screenshots the tab, crops it in-worker with `createImageBitmap` + `OffscreenCanvas` (longest edge capped at 2000 px so uploads stay under Vercel's 4.5 MB body limit), then POSTs the PNG as `multipart/form-data` to `${webAppUrl}/api/captures` with `credentials: 'include'`. Status is mirrored on the toolbar badge (`…` / `✓` / `!`).
+- **`content.js`** — Drag-to-select overlay and toast notifications, rendered inside a closed Shadow DOM host that is promoted to the browser's top layer via the Popover API, so page CSS and z-index stacking can't interfere. Uses pointer events with pointer capture; Escape cancels. Only injected on pages the user captures.
+- **`popup.html` + `popup.js`** — Settings surface. Web App URL (default `https://atnx.app`; override for local dev — saving a custom origin requests an optional host permission for it), capture button, status (driven by `storage.onChanged`, no polling), current shortcut, dashboard link.
+
+Permissions: `activeTab`, `scripting`, `storage`, host access to `https://atnx.app/*` only. Other origins are `optional_host_permissions`, granted from the popup when you save a custom URL. Host access to the web app keeps the Supabase auth cookie flowing even when third-party cookies are blocked.
 
 Defaults & config (`chrome.storage.local`):
 - `webAppUrl` — default `https://atnx.app`, editable from the popup
-- `apiKey` — user's Anthropic API key (required for vision analysis)
-- `captureStatus`, `captureCount` — UI feedback bookkeeping
+- `captureStatus`, `captureStatusAt`, `captureCount` — UI feedback bookkeeping
 
-Error copy surfaces the real issue: `401 → "Sign in at atnx.app first"`, network failure → `"Web app unreachable — check URL in popup"`.
+Error copy surfaces the real issue: `401 → "Sign in at atnx.app first"`, `413 → "Selection too large to upload"`, network failure → `"Web app unreachable — check URL in popup"`.
 
 ---
 
@@ -174,7 +174,7 @@ Env vars:
 ### Extension
 
 1. `chrome://extensions` → enable **Developer Mode** → **Load unpacked** → select `atnx-extension/`.
-2. Open the popup, paste your **Anthropic API key**, and set **Web App URL** to `http://localhost:3000` while developing locally.
+2. Open the popup and set **Web App URL** to `http://localhost:3000` while developing locally. Chrome will ask to grant the extension access to that origin — accept, or captures can't attach the auth cookie.
 3. Sign in at your web app URL first so the Supabase auth cookie exists. Then `Ctrl+Shift+X` / `Cmd+Shift+X` to capture.
 
 Change the hotkey at `chrome://extensions/shortcuts`.
@@ -198,14 +198,13 @@ Change the hotkey at `chrome://extensions/shortcuts`.
 | UI | React 19.2, Tailwind v4, `next-themes`, `recharts` for sparklines |
 | Auth + DB | Supabase (Postgres + RLS + Storage + Google OAuth), `@supabase/ssr` 0.10 |
 | Signals | `google-trends-api`, Wikipedia REST (opensearch + per-article-daily), deterministic LLM baseline |
-| Extension | Manifest V3, offscreen document for canvas cropping, `chrome.storage.local` for config |
-| Vision | Claude (Anthropic) via direct extension-side API call — the key never leaves the user's browser |
+| Extension | Manifest V3, in-worker `OffscreenCanvas` cropping, Shadow DOM + Popover API overlay, `chrome.storage.local` for config |
+| Vision | Claude (Anthropic) server-side in `/api/captures` — the extension only ships the cropped PNG |
 
 ---
 
 ## Known rough edges
 
-- Extension API key lives in `chrome.storage.local`; production should proxy Claude calls through the server.
 - `trends-cache.ts` is in-memory — in a multi-region Vercel deployment it's per-instance.
 - No automated tests yet; verification is manual (see each feature's PR notes).
 - Google Trends has no official API. Rate-limit hiccups surface as `score === 0` and the refresh cron quietly skips the market.

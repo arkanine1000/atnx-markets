@@ -1,12 +1,26 @@
 const DEFAULT_WEB_APP_URL = 'https://atnx.app';
 
-// One-time cleanup: legacy `captures` array stored base64 screenshots and
-// blew the 10 MB chrome.storage.local quota. Web dashboard is now the source
-// of truth, so drop the key on every service-worker wake.
-chrome.storage.local.remove('captures').catch(() => {});
-// Claude vision moved server-side in v1.2 — the extension no longer needs
-// an Anthropic API key. Clear any stored value on every wake.
-chrome.storage.local.remove('apiKey').catch(() => {});
+// Longest edge (in device pixels) of the uploaded crop. Vision models
+// downsample anything larger anyway, and Vercel rejects request bodies over
+// 4.5 MB — a full-width retina PNG crop can blow straight past that.
+const MAX_UPLOAD_EDGE = 2000;
+
+const BADGE = {
+  capturing: { text: '…', color: '#FF00E5' },
+  analyzing: { text: '…', color: '#FFE500' },
+  done: { text: '✓', color: '#00D4FF' },
+  error: { text: '!', color: '#FF00E5' },
+  ready: { text: '', color: '#00D4FF' }
+};
+
+// Storage migrations. `captures` (v1.0) held base64 screenshots and blew the
+// chrome.storage.local quota; `apiKey` (v1.1) became unnecessary once vision
+// moved server-side in v1.2. Runs once per install/update instead of on every
+// service-worker wake.
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.storage.local.remove(['captures', 'apiKey']).catch(() => {});
+  updateStatus('ready');
+});
 
 async function getWebAppUrl() {
   const { webAppUrl } = await chrome.storage.local.get('webAppUrl');
@@ -22,91 +36,74 @@ function hostOf(url) {
   }
 }
 
-// Inject content script if not already present, then send activation message
+async function getActiveTab() {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  return tab;
+}
+
+// Content script is injected on demand (activeTab + scripting) rather than
+// declared for <all_urls>, so nothing runs on pages the user never captures.
+// content.js guards against double-injection, so a retry is always safe.
 async function activateTab(tab) {
-  if (!tab || !tab.id) return;
+  if (!tab?.id) return;
   try {
     await chrome.tabs.sendMessage(tab.id, { action: 'activate-capture' });
   } catch {
-    // Content script not injected yet — inject it manually
-    await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      files: ['content.js']
-    });
-    await chrome.scripting.insertCSS({
-      target: { tabId: tab.id },
-      files: ['content.css']
-    });
-    await chrome.tabs.sendMessage(tab.id, { action: 'activate-capture' });
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        files: ['content.js']
+      });
+      await chrome.tabs.sendMessage(tab.id, { action: 'activate-capture' });
+    } catch (err) {
+      // chrome://, the Web Store, PDFs and other restricted pages refuse
+      // injection. There is no page to toast into, so use the badge.
+      console.warn('Cannot activate capture on this page:', err.message);
+      updateStatus('error');
+      resetStatusAfter(4000);
+    }
   }
 }
 
-// Command listener (hotkey)
-chrome.commands.onCommand.addListener((command) => {
+chrome.commands.onCommand.addListener(async (command) => {
   if (command === 'activate-capture') {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (tabs[0]) {
-        activateTab(tabs[0]);
-      }
-    });
+    activateTab(await getActiveTab());
   }
 });
 
-// Message listener
-chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((msg, sender) => {
   if (msg.action === 'capture-region') {
     handleCapture(msg, sender.tab);
-  }
-  if (msg.action === 'start-capture') {
-    // From popup
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (tabs[0]) {
-        activateTab(tabs[0]);
-      }
-    });
-  }
-  if (msg.action === 'get-status') {
-    chrome.storage.local.get(['captureStatus', 'captureCount'], (data) => {
-      sendResponse({
-        status: data.captureStatus || 'ready',
-        count: data.captureCount || 0
-      });
-    });
-    return true;
+  } else if (msg.action === 'start-capture') {
+    getActiveTab().then(activateTab);
   }
 });
-
-function base64ToBlob(base64, mediaType) {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return new Blob([bytes], { type: mediaType });
-}
 
 async function handleCapture(msg, tab) {
   try {
+    // 1. Screenshot first, toast second — otherwise the "capturing" toast
+    //    could land inside the crop.
+    const dataUrl = await chrome.tabs.captureVisibleTab(tab?.windowId, {
+      format: 'png'
+    });
+
     updateStatus('capturing');
     notifyTab(tab, 'capturing');
 
-    // 1. Capture visible tab
-    const dataUrl = await chrome.tabs.captureVisibleTab(null, { format: 'png' });
-
-    // 2. Crop to selection using offscreen document
-    const croppedBase64 = await cropImageOffscreen(dataUrl, msg.rect);
+    // 2. Crop (and cap the size) right here in the worker. OffscreenCanvas
+    //    and createImageBitmap are available to service workers, so the old
+    //    offscreen-document round trip is no longer needed.
+    const blob = await cropScreenshot(dataUrl, msg.rect);
 
     updateStatus('analyzing');
     notifyTab(tab, 'analyzing');
 
-    // 3. Bump the popup counter (web app holds the durable history).
-    const { captureCount = 0 } = await chrome.storage.local.get('captureCount');
-    await chrome.storage.local.set({ captureCount: captureCount + 1 });
-
-    // 4. POST the raw image to the web app. The server runs Claude vision and
-    // persists the capture. `credentials: 'include'` attaches the Supabase
-    // auth cookie so the handler can attribute the capture to the user.
+    // 3. POST the image to the web app. The server runs Claude vision and
+    //    persists the capture. `credentials: 'include'` attaches the Supabase
+    //    auth cookie so the handler can attribute the capture to the user.
     const webAppUrl = await getWebAppUrl();
     const form = new FormData();
-    form.append('image', base64ToBlob(croppedBase64, 'image/png'), 'capture.png');
+    form.append('image', blob, 'capture.png');
     form.append('sourceUrl', msg.pageUrl || '');
     form.append('pageTitle', msg.pageTitle || '');
 
@@ -120,6 +117,8 @@ async function handleCapture(msg, tab) {
       });
       if (res.status === 401) {
         persistFailed = `Sign in at ${hostOf(webAppUrl)} first`;
+      } else if (res.status === 413) {
+        persistFailed = 'Selection too large to upload';
       } else if (!res.ok) {
         persistFailed = `Save failed (${res.status})`;
       } else {
@@ -133,53 +132,73 @@ async function handleCapture(msg, tab) {
     if (persistFailed) {
       updateStatus('error');
       notifyTab(tab, 'error', persistFailed);
-      setTimeout(() => updateStatus('ready'), 5000);
+      resetStatusAfter(5000);
     } else {
+      // Popup counter only; the web app holds the durable history.
+      const { captureCount = 0 } = await chrome.storage.local.get('captureCount');
+      await chrome.storage.local.set({ captureCount: captureCount + 1 });
+
       const name = serverPayload?.entityName || 'Content';
       updateStatus('done');
       notifyTab(tab, 'done', `Identified: ${name}`);
-      setTimeout(() => updateStatus('ready'), 3000);
+      resetStatusAfter(3000);
     }
   } catch (err) {
     console.error('Capture error:', err);
     updateStatus('error');
     notifyTab(tab, 'error', err.message);
-    setTimeout(() => updateStatus('ready'), 5000);
+    resetStatusAfter(5000);
   }
 }
 
 function notifyTab(tab, status, detail) {
-  if (!tab || !tab.id) return;
-  chrome.tabs.sendMessage(tab.id, {
-    action: 'capture-status',
-    status,
-    detail
-  }).catch(() => {});
+  if (!tab?.id) return;
+  chrome.tabs
+    .sendMessage(tab.id, { action: 'capture-status', status, detail })
+    .catch(() => {});
 }
 
-async function cropImageOffscreen(dataUrl, rect) {
-  // Ensure offscreen document exists
-  const existingContexts = await chrome.runtime.getContexts({
-    contextTypes: ['OFFSCREEN_DOCUMENT']
+// rect is in CSS pixels relative to the viewport; the screenshot is in
+// device pixels, so scale by the tab's devicePixelRatio.
+async function cropScreenshot(dataUrl, rect) {
+  const dpr = rect.devicePixelRatio || 1;
+  const sx = Math.round(rect.x * dpr);
+  const sy = Math.round(rect.y * dpr);
+  const sw = Math.max(1, Math.round(rect.width * dpr));
+  const sh = Math.max(1, Math.round(rect.height * dpr));
+
+  const scale = Math.min(1, MAX_UPLOAD_EDGE / Math.max(sw, sh));
+  const outW = Math.max(1, Math.round(sw * scale));
+  const outH = Math.max(1, Math.round(sh * scale));
+
+  const source = await (await fetch(dataUrl)).blob();
+  const bitmap = await createImageBitmap(source, sx, sy, sw, sh, {
+    resizeWidth: outW,
+    resizeHeight: outH,
+    resizeQuality: 'high'
   });
 
-  if (existingContexts.length === 0) {
-    await chrome.offscreen.createDocument({
-      url: 'offscreen.html',
-      reasons: ['BLOBS'],
-      justification: 'Crop screenshot to selection area'
-    });
-  }
+  const canvas = new OffscreenCanvas(outW, outH);
+  canvas.getContext('2d').drawImage(bitmap, 0, 0);
+  bitmap.close();
 
-  const response = await chrome.runtime.sendMessage({
-    action: 'crop-image',
-    dataUrl: dataUrl,
-    rect: rect
-  });
-
-  return response.base64;
+  return canvas.convertToBlob({ type: 'image/png' });
 }
 
+// Status is written to storage (the popup subscribes via storage.onChanged)
+// and mirrored on the toolbar badge, which works even on pages that refuse
+// content scripts. `captureStatusAt` lets the popup ignore a stale
+// done/error if the worker was torn down before the reset timer fired.
 function updateStatus(status) {
-  chrome.storage.local.set({ captureStatus: status });
+  const badge = BADGE[status] || BADGE.ready;
+  chrome.action.setBadgeText({ text: badge.text });
+  chrome.action.setBadgeBackgroundColor({ color: badge.color });
+  chrome.action.setBadgeTextColor?.({ color: '#0A0A0A' });
+  chrome.storage.local.set({ captureStatus: status, captureStatusAt: Date.now() });
+}
+
+let resetTimer = null;
+function resetStatusAfter(ms) {
+  clearTimeout(resetTimer);
+  resetTimer = setTimeout(() => updateStatus('ready'), ms);
 }

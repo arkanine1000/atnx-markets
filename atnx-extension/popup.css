@@ -1,3 +1,16 @@
+:root {
+  color-scheme: dark;
+  --bg: #0A0A0A;
+  --surface: #141414;
+  --line: #2A2A2A;
+  --text: #F0F0F0;
+  --muted: #999999;
+  --cyan: #00D4FF;
+  --magenta: #FF00E5;
+  --magenta-deep: #CC00B8;
+  --yellow: #FFE500;
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -6,9 +19,9 @@
 
 body {
   width: 320px;
-  background: #0A0A0A;
-  color: #F0F0F0;
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  background: var(--bg);
+  color: var(--text);
+  font-family: ui-monospace, 'JetBrains Mono', 'Fira Code', Menlo, Consolas, monospace;
   font-size: 13px;
 }
 
@@ -20,21 +33,21 @@ body {
 }
 
 .header h1 {
-  color: #00D4FF;
+  color: var(--cyan);
   font-size: 22px;
   font-weight: 700;
   letter-spacing: 4px;
 }
 
 .header .subtitle {
-  color: #999999;
+  color: var(--muted);
   font-size: 11px;
   letter-spacing: 1px;
 }
 
 .section label {
   display: block;
-  color: #999999;
+  color: var(--muted);
   font-size: 11px;
   margin-bottom: 6px;
   text-transform: uppercase;
@@ -48,9 +61,10 @@ body {
 
 .input-row input {
   flex: 1;
-  background: #141414;
-  border: 1px solid #2A2A2A;
-  color: #F0F0F0;
+  min-width: 0;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--text);
   padding: 8px 10px;
   border-radius: 4px;
   font-family: inherit;
@@ -58,14 +72,14 @@ body {
   outline: none;
 }
 
-.input-row input:focus {
-  border-color: #00D4FF;
+.input-row input:focus-visible {
+  border-color: var(--cyan);
 }
 
 .btn-small {
-  background: #141414;
-  border: 1px solid #00D4FF;
-  color: #00D4FF;
+  background: var(--surface);
+  border: 1px solid var(--cyan);
+  color: var(--cyan);
   padding: 8px 14px;
   border-radius: 4px;
   cursor: pointer;
@@ -74,9 +88,10 @@ body {
   font-weight: 600;
 }
 
-.btn-small:hover {
-  background: #00D4FF;
-  color: #0A0A0A;
+.btn-small:hover,
+.btn-small:focus-visible {
+  background: var(--cyan);
+  color: var(--bg);
 }
 
 .status-text {
@@ -86,18 +101,18 @@ body {
 }
 
 .status-text.saved {
-  color: #00D4FF;
+  color: var(--cyan);
 }
 
 .status-text.error {
-  color: #FF00E5;
+  color: var(--magenta);
 }
 
 .btn-capture {
   width: 100%;
   padding: 14px;
-  background: #FF00E5;
-  color: #0A0A0A;
+  background: var(--magenta);
+  color: var(--bg);
   border: none;
   border-radius: 6px;
   font-family: inherit;
@@ -108,8 +123,9 @@ body {
   transition: background 0.15s;
 }
 
-.btn-capture:hover {
-  background: #CC00B8;
+.btn-capture:hover,
+.btn-capture:focus-visible {
+  background: var(--magenta-deep);
 }
 
 .btn-capture:active {
@@ -117,15 +133,23 @@ body {
 }
 
 .btn-capture.analyzing {
-  background: #141414;
-  color: #FF00E5;
-  border: 2px solid #FF00E5;
+  background: var(--surface);
+  color: var(--magenta);
+  border: 2px solid var(--magenta);
   animation: pulse 1.5s infinite;
+  cursor: progress;
 }
 
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.6; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn-capture.analyzing,
+  .status-dot {
+    animation: none;
+  }
 }
 
 .status-bar {
@@ -139,42 +163,50 @@ body {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #00D4FF;
+  background: var(--cyan);
 }
 
 .status-dot.capturing {
-  background: #FF00E5;
+  background: var(--magenta);
   animation: pulse 0.8s infinite;
 }
 
 .status-dot.analyzing {
-  background: #FFE500;
+  background: var(--yellow);
   animation: pulse 1s infinite;
 }
 
 .status-dot.error {
-  background: #FF00E5;
+  background: var(--magenta);
 }
 
 .footer {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 8px;
   padding-top: 6px;
-  border-top: 1px solid #2A2A2A;
+  border-top: 1px solid var(--line);
+  font-size: 11px;
 }
 
 #captureCount {
-  color: #999999;
-  font-size: 11px;
+  color: var(--muted);
 }
 
-#openDashboard {
-  color: #00D4FF;
-  font-size: 11px;
+.footer a {
+  color: var(--cyan);
   text-decoration: none;
 }
 
-#openDashboard:hover {
+.footer a:hover,
+.footer a:focus-visible {
   text-decoration: underline;
+}
+
+.shortcut {
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 1px 6px;
 }
