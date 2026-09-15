@@ -185,8 +185,10 @@ export function StatTile({
         {label}
       </div>
       <div
-        className={`font-mono font-bold text-primary truncate ${
-          hero ? "text-2xl sm:text-3xl" : "text-xl sm:text-2xl"
+        className={`font-mono text-primary truncate ${
+          hero
+            ? "text-2xl sm:text-3xl font-bold"
+            : "text-xl sm:text-2xl font-semibold"
         }`}
       >
         {value}

@@ -48,7 +48,7 @@ function PositionCard({
         </div>
         <div className="text-right shrink-0">
           <div
-            className={`text-xl font-bold font-mono tabular-nums ${pnlTone}`}
+            className={`text-xl font-semibold font-mono tabular-nums ${pnlTone}`}
           >
             {pnl.isProfit ? "+" : ""}${pnl.pnlAmount}
           </div>
@@ -73,13 +73,13 @@ function PositionCard({
         ].map(([k, v, cls]) => (
           <div
             key={String(k)}
-            className="rounded-lg bg-elevated border border-surface px-2.5 py-2 min-w-0"
+            className="rounded-lg bg-elevated px-2.5 py-2 min-w-0"
           >
             <dt className="text-[10px] uppercase tracking-wider text-tertiary">
               {k}
             </dt>
             <dd
-              className={`mt-0.5 font-mono font-bold tabular-nums truncate ${cls}`}
+              className={`mt-0.5 text-sm font-mono font-normal tabular-nums truncate ${cls}`}
             >
               {v}
             </dd>
@@ -87,13 +87,21 @@ function PositionCard({
         ))}
       </dl>
 
-      <button
-        type="button"
-        onClick={() => onClose(position)}
-        className="mt-3 w-full py-2 rounded-lg border border-surface text-xs font-bold text-secondary hover:border-atnx-magenta/50 hover:text-atnx-magenta cursor-pointer transition-colors"
-      >
-        Close position
-      </button>
+      <div className="mt-3 pt-3 border-t border-surface flex items-center justify-between">
+        <Link
+          href={`/app/markets/${position.marketId}`}
+          className="text-[11px] text-tertiary hover:text-atnx-cyan transition-colors"
+        >
+          View market {"↗"}
+        </Link>
+        <button
+          type="button"
+          onClick={() => onClose(position)}
+          className="text-[11px] px-3 py-1.5 rounded-full border border-surface text-secondary hover:border-atnx-magenta/50 hover:text-atnx-magenta cursor-pointer transition-colors"
+        >
+          Close position
+        </button>
+      </div>
     </Card>
   );
 }
