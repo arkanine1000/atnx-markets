@@ -75,7 +75,7 @@ function Intro() {
               >
                 {s.n}
               </span>
-              <span className="text-base sm:text-lg font-bold text-primary">
+              <span className="text-base sm:text-lg font-normal text-secondary">
                 {s.title}
               </span>
             </li>
