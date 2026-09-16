@@ -12,6 +12,9 @@ const STEPS = [
     n: 1,
     title: "Capture anything",
     body: "Scrolling and something's blowing up? Hit Ctrl+Shift+X, drag a box around it, and it's captured. Claude works out what it is and opens a market for it.",
+    // Shown instead of `body` when the device toggle is on Mobile.
+    bodyMobile:
+      "Scrolling and something's blowing up? Screenshot it, share it to ATNX, and it's captured. Claude works out what it is and opens a market for it.",
     tone: "cyan" as const,
   },
   {
@@ -26,6 +29,13 @@ const STEPS = [
     body: "As the index moves, so does your position. Call it before the crowd and the difference is yours.",
     tone: "yellow" as const,
   },
+];
+
+type Device = "desktop" | "mobile";
+
+const DEVICES: { id: Device; label: string }[] = [
+  { id: "desktop", label: "Desktop" },
+  { id: "mobile", label: "Mobile" },
 ];
 
 const TONE = {
@@ -189,12 +199,32 @@ const HIW_CSS = `
 @keyframes hiw-conf-1 { 0%, 64% { transform: translate(0, 0); opacity: 0; } 66% { opacity: 1; } 84%, 100% { transform: translate(-14px, -34px); opacity: 0; } }
 @keyframes hiw-conf-2 { 0%, 64% { transform: translate(0, 0); opacity: 0; } 66% { opacity: 1; } 84%, 100% { transform: translate(2px, -40px); opacity: 0; } }
 @keyframes hiw-conf-3 { 0%, 64% { transform: translate(0, 0); opacity: 0; } 66% { opacity: 1; } 84%, 100% { transform: translate(16px, -32px); opacity: 0; } }
+
+/* trophy pops in on the same beat as the VIRAL badge (hiw-pop-late), with a
+   little overshoot, and stays until the loop resets */
+.hiw-trophy { transform-box: fill-box; transform-origin: center bottom; animation-name: hiw-trophy; }
+@keyframes hiw-trophy {
+  0%, 60% { transform: scale(0) rotate(-18deg); opacity: 0; }
+  64% { transform: scale(1.22) rotate(6deg); opacity: 1; }
+  67%, 100% { transform: scale(1) rotate(0); opacity: 1; }
+}
+.hiw-trophy-glow { animation-name: hiw-trophy-glow; }
+@keyframes hiw-trophy-glow { 0%, 60% { opacity: 0; } 66% { opacity: 0.35; } 100% { opacity: 0.3; } }
 `;
 
 // Mounted only while open (the parent conditionally renders it), so every
 // opening starts fresh at step 1.
 export function HowItWorksModal({ onClose }: { onClose: () => void }) {
   const [step, setStep] = useState(0);
+  // Which version of the capture flow to illustrate. Defaults to the device
+  // the viewer is on (safe to read the window here: the modal is only ever
+  // mounted client-side, on click); the toggle in the header switches it.
+  const [device, setDevice] = useState<Device>(() =>
+    typeof window !== "undefined" &&
+    window.matchMedia("(max-width: 639px), (pointer: coarse)").matches
+      ? "mobile"
+      : "desktop",
+  );
   const closeRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -215,6 +245,7 @@ export function HowItWorksModal({ onClose }: { onClose: () => void }) {
   }, [onClose]);
 
   const s = STEPS[step];
+  const body = device === "mobile" && "bodyMobile" in s ? s.bodyMobile : s.body;
   const last = step === STEPS.length - 1;
 
   return (
@@ -238,22 +269,37 @@ export function HowItWorksModal({ onClose }: { onClose: () => void }) {
           <div className="text-[10px] uppercase tracking-[0.2em] text-tertiary">
             How ATNX works
           </div>
-          <button
-            ref={closeRef}
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="h-8 w-8 -mr-2 rounded-full inline-flex items-center justify-center text-secondary hover:text-primary hover:bg-elevated cursor-pointer transition-colors"
-          >
-            {"✕"}
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Only the capture step differs by device; keep the header
+                width stable on the other steps with an invisible spacer. */}
+            <div
+              className={step === 0 ? "" : "invisible"}
+              aria-hidden={step !== 0}
+            >
+              <DeviceToggle value={device} onChange={setDevice} />
+            </div>
+            <button
+              ref={closeRef}
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              className="h-8 w-8 -mr-2 rounded-full inline-flex items-center justify-center text-secondary hover:text-primary hover:bg-elevated cursor-pointer transition-colors"
+            >
+              {"✕"}
+            </button>
+          </div>
         </div>
 
         {/* scene */}
         <style>{HIW_CSS}</style>
         <div className="px-5">
           <div className="rounded-xl overflow-hidden border border-surface bg-[#0f0f0f]">
-            {step === 0 && <SceneCapture />}
+            {step === 0 &&
+              (device === "desktop" ? (
+                <SceneCaptureDesktop />
+              ) : (
+                <SceneCaptureMobile />
+              ))}
             {step === 1 && <SceneTrade />}
             {step === 2 && <SceneProfit />}
           </div>
@@ -272,7 +318,7 @@ export function HowItWorksModal({ onClose }: { onClose: () => void }) {
             </h2>
           </div>
           <p className="mt-2 text-sm text-secondary leading-relaxed font-sans">
-            {s.body}
+            {body}
           </p>
         </div>
 
@@ -330,7 +376,52 @@ export function HowItWorksModal({ onClose }: { onClose: () => void }) {
 
 const CURSOR = "M0 0 L0 15 L4.2 11.4 L7.2 17.6 L9.8 16.5 L6.8 10.3 L11.6 9.8 Z";
 
-function SceneCapture() {
+function DeviceToggle({
+  value,
+  onChange,
+}: {
+  value: Device;
+  onChange: (d: Device) => void;
+}) {
+  return (
+    <div
+      role="radiogroup"
+      aria-label="Show the capture flow for"
+      className="inline-flex items-center p-0.5 rounded-full border border-surface bg-elevated/60"
+    >
+      {DEVICES.map((d) => {
+        const active = d.id === value;
+        return (
+          <button
+            key={d.id}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            onClick={() => onChange(d.id)}
+            className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-[0.12em] cursor-pointer transition-colors ${
+              active
+                ? "bg-surface text-primary shadow-sm"
+                : "text-tertiary hover:text-secondary"
+            }`}
+          >
+            {d.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+const MEDIA_GRADIENT = (
+  <linearGradient id="hiw-media" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stopColor="#FF00E5" />
+    <stop offset="1" stopColor="#00D4FF" />
+  </linearGradient>
+);
+
+// Desktop capture: scroll the feed in a browser window, drag a selection box
+// with the cursor, flash, "Captured" badge.
+function SceneCaptureDesktop() {
   return (
     <svg
       viewBox="0 0 360 220"
@@ -341,230 +432,267 @@ function SceneCapture() {
         <clipPath id="hiw-feed-clip">
           <rect x="0" y="22" width="240" height="154" />
         </clipPath>
-        <linearGradient id="hiw-media" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#FF00E5" />
-          <stop offset="1" stopColor="#00D4FF" />
-        </linearGradient>
+        {MEDIA_GRADIENT}
       </defs>
 
-      {/* shortcut hint, under the desktop window */}
-      <g transform="translate(16,186)">
-        <rect width="86" height="18" rx="4" fill="#1e1e1e" stroke="#2a2a2a" />
-        <text x="43" y="12.5" textAnchor="middle" fontSize="8.5" fill="#999">
-          Ctrl+Shift+X
-        </text>
+      <g transform="translate(60,14)">
+        <BrowserMock />
       </g>
 
-      {/* phone: same feed, then the screenshot gesture (side button, flash,
-          screen shrinks into a thumbnail) */}
-      <g transform="translate(246,12)">
-        <rect x="-3" y="50" width="3" height="14" rx="1.5" fill="#3a3a3a" />
-        <rect x="-3" y="70" width="3" height="14" rx="1.5" fill="#3a3a3a" />
-        <g className="hiw-pbtn">
-          <rect x="92" y="58" width="3" height="26" rx="1.5" fill="#3a3a3a" />
-        </g>
-        <rect width="92" height="196" rx="16" fill="#1e1e1e" stroke="#2f2f2f" />
-        <rect x="5" y="5" width="82" height="186" rx="12" fill="#0f0f0f" />
-        <clipPath id="hiw-phone-clip">
-          <rect x="5" y="5" width="82" height="186" rx="12" />
-        </clipPath>
-        <g clipPath="url(#hiw-phone-clip)">
-          <g className="hiw-pshot">
-            <rect x="5" y="5" width="82" height="186" fill="#0f0f0f" />
-            {/* clipped again inside the scaled group so off-screen feed never
-                shows in the shrunken thumbnail */}
-            <g clipPath="url(#hiw-phone-clip)">
-              <g className="hiw-pfeed">
-                {[0, 1, 2, 3, 4].map((i) => (
-                  <g key={i} transform={`translate(11, ${30 + i * 70})`}>
-                    <rect
-                      width="70"
-                      height="60"
-                      rx="6"
-                      fill="#1c1c1c"
-                      stroke="#2a2a2a"
-                    />
-                    <circle cx="9" cy="10" r="5" fill="#333" />
-                    <rect
-                      x="17"
-                      y="7"
-                      width="30"
-                      height="4"
-                      rx="2"
-                      fill="#3a3a3a"
-                    />
-                    <rect
-                      x="17"
-                      y="13"
-                      width="20"
-                      height="3"
-                      rx="1.5"
-                      fill="#2c2c2c"
-                    />
-                    <rect
-                      x="6"
-                      y="22"
-                      width="58"
-                      height="30"
-                      rx="4"
-                      fill={i === 1 ? "url(#hiw-media)" : "#242424"}
-                    />
-                  </g>
-                ))}
-              </g>
-            </g>
-            <rect
-              className="hiw-pshot-frame"
-              x="5"
-              y="5"
-              width="82"
-              height="186"
-              rx="12"
-              fill="none"
-              stroke="#fff"
-              strokeWidth="2"
-              vectorEffect="non-scaling-stroke"
-            />
-          </g>
-        </g>
-        <rect x="32" y="10" width="28" height="7" rx="3.5" fill="#000" />
-        <rect x="31" y="184" width="30" height="3" rx="1.5" fill="#444" />
-        <rect
-          className="hiw-pflash"
-          opacity="0"
-          x="5"
-          y="5"
-          width="82"
-          height="186"
-          rx="12"
-          fill="#fff"
-        />
+      {/* shortcut hint, under the window */}
+      <g transform="translate(60,196)">
+        <HintPill label="Ctrl+Shift+X" />
       </g>
 
-      {/* browser, scaled to leave room for the phone */}
-      <g transform="translate(16,26) scale(0.86)">
-        <rect
-          width="240"
-          height="176"
-          rx="10"
-          fill="#161616"
-          stroke="#2a2a2a"
-        />
-        <path
-          d="M0 10 a10 10 0 0 1 10 -10 h220 a10 10 0 0 1 10 10 v12 h-240 z"
-          fill="#1e1e1e"
-        />
-        <circle cx="13" cy="11" r="3" fill="#ff5f57" />
-        <circle cx="23" cy="11" r="3" fill="#febc2e" />
-        <circle cx="33" cy="11" r="3" fill="#28c840" />
-        <rect x="70" y="6" width="120" height="10" rx="5" fill="#262626" />
-
-        <g clipPath="url(#hiw-feed-clip)">
-          <g className="hiw-feed">
-            {[0, 1, 2, 3].map((i) => (
-              <g key={i} transform={`translate(20, ${34 + i * 72})`}>
-                <rect
-                  width="200"
-                  height="62"
-                  rx="8"
-                  fill="#1c1c1c"
-                  stroke="#2a2a2a"
-                />
-                <circle cx="16" cy="15" r="7" fill="#333" />
-                <rect
-                  x="28"
-                  y="9"
-                  width="54"
-                  height="5"
-                  rx="2.5"
-                  fill="#3a3a3a"
-                />
-                <rect
-                  x="28"
-                  y="18"
-                  width="34"
-                  height="4"
-                  rx="2"
-                  fill="#2c2c2c"
-                />
-                <rect
-                  x="10"
-                  y="30"
-                  width="180"
-                  height="24"
-                  rx="5"
-                  fill={i === 1 ? "url(#hiw-media)" : "#242424"}
-                />
-              </g>
-            ))}
-          </g>
-        </g>
-
-        {/* selection box, flash, cursor */}
-        <g transform="translate(14,28)">
-          <rect
-            className="hiw-sel"
-            width="212"
-            height="74"
-            rx="6"
-            fill="rgba(0,212,255,0.12)"
-            stroke="#00D4FF"
-            strokeWidth="1.5"
-            strokeDasharray="6 4"
-          />
-        </g>
-        <rect
-          className="hiw-flash"
-          opacity="0"
-          y="22"
-          width="240"
-          height="154"
-          fill="#fff"
-        />
-        <g className="hiw-cursor">
-          <path
-            d={CURSOR}
-            fill="#fff"
-            stroke="#000"
-            strokeWidth="1"
-            strokeLinejoin="round"
-          />
-        </g>
-      </g>
-
-      {/* captured badge */}
-      <g transform="translate(180,186)">
-        <g className="hiw-badge">
-          <rect
-            x="-46"
-            y="-11"
-            width="92"
-            height="22"
-            rx="11"
-            fill="#0b2a31"
-            stroke="#00D4FF"
-          />
-          <path
-            d="M-32 0 l4 4 l8 -8"
-            fill="none"
-            stroke="#00D4FF"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          <text
-            x="6"
-            y="3.5"
-            textAnchor="middle"
-            fontSize="10"
-            fontWeight="700"
-            fill="#00D4FF"
-          >
-            Captured
-          </text>
-        </g>
+      <g transform="translate(254,205)">
+        <CapturedBadge />
       </g>
     </svg>
+  );
+}
+
+// Mobile capture: same feed on a phone, then the screenshot gesture (side
+// button press, flash, screen shrinks into a thumbnail), "Captured" badge.
+function SceneCaptureMobile() {
+  return (
+    <svg
+      viewBox="0 0 360 220"
+      className="hiw-scene w-full h-auto block"
+      aria-hidden="true"
+    >
+      <defs>{MEDIA_GRADIENT}</defs>
+
+      <g transform="translate(134,12)">
+        <PhoneMock />
+      </g>
+
+      {/* gesture hint, beside the phone */}
+      <g transform="translate(246,101)">
+        <HintPill label="Power + Vol Up" />
+      </g>
+
+      <g transform="translate(66,110)">
+        <CapturedBadge />
+      </g>
+    </svg>
+  );
+}
+
+function HintPill({ label }: { label: string }) {
+  return (
+    <g>
+      <rect width="86" height="18" rx="4" fill="#1e1e1e" stroke="#2a2a2a" />
+      <text x="43" y="12.5" textAnchor="middle" fontSize="8.5" fill="#999">
+        {label}
+      </text>
+    </g>
+  );
+}
+
+// Phone, 92x196 at the origin. Needs #hiw-media in scope.
+function PhoneMock() {
+  return (
+    <g>
+      <rect x="-3" y="50" width="3" height="14" rx="1.5" fill="#3a3a3a" />
+      <rect x="-3" y="70" width="3" height="14" rx="1.5" fill="#3a3a3a" />
+      <g className="hiw-pbtn">
+        <rect x="92" y="58" width="3" height="26" rx="1.5" fill="#3a3a3a" />
+      </g>
+      <rect width="92" height="196" rx="16" fill="#1e1e1e" stroke="#2f2f2f" />
+      <rect x="5" y="5" width="82" height="186" rx="12" fill="#0f0f0f" />
+      <clipPath id="hiw-phone-clip">
+        <rect x="5" y="5" width="82" height="186" rx="12" />
+      </clipPath>
+      <g clipPath="url(#hiw-phone-clip)">
+        <g className="hiw-pshot">
+          <rect x="5" y="5" width="82" height="186" fill="#0f0f0f" />
+          {/* clipped again inside the scaled group so off-screen feed never
+                shows in the shrunken thumbnail */}
+          <g clipPath="url(#hiw-phone-clip)">
+            <g className="hiw-pfeed">
+              {[0, 1, 2, 3, 4].map((i) => (
+                <g key={i} transform={`translate(11, ${30 + i * 70})`}>
+                  <rect
+                    width="70"
+                    height="60"
+                    rx="6"
+                    fill="#1c1c1c"
+                    stroke="#2a2a2a"
+                  />
+                  <circle cx="9" cy="10" r="5" fill="#333" />
+                  <rect
+                    x="17"
+                    y="7"
+                    width="30"
+                    height="4"
+                    rx="2"
+                    fill="#3a3a3a"
+                  />
+                  <rect
+                    x="17"
+                    y="13"
+                    width="20"
+                    height="3"
+                    rx="1.5"
+                    fill="#2c2c2c"
+                  />
+                  <rect
+                    x="6"
+                    y="22"
+                    width="58"
+                    height="30"
+                    rx="4"
+                    fill={i === 1 ? "url(#hiw-media)" : "#242424"}
+                  />
+                </g>
+              ))}
+            </g>
+          </g>
+          <rect
+            className="hiw-pshot-frame"
+            x="5"
+            y="5"
+            width="82"
+            height="186"
+            rx="12"
+            fill="none"
+            stroke="#fff"
+            strokeWidth="2"
+            vectorEffect="non-scaling-stroke"
+          />
+        </g>
+      </g>
+      <rect x="32" y="10" width="28" height="7" rx="3.5" fill="#000" />
+      <rect x="31" y="184" width="30" height="3" rx="1.5" fill="#444" />
+      <rect
+        className="hiw-pflash"
+        opacity="0"
+        x="5"
+        y="5"
+        width="82"
+        height="186"
+        rx="12"
+        fill="#fff"
+      />
+    </g>
+  );
+}
+
+// Browser window, 240x176 at the origin. Needs #hiw-media and #hiw-feed-clip
+// in scope.
+function BrowserMock() {
+  return (
+    <g>
+      <rect width="240" height="176" rx="10" fill="#161616" stroke="#2a2a2a" />
+      <path
+        d="M0 10 a10 10 0 0 1 10 -10 h220 a10 10 0 0 1 10 10 v12 h-240 z"
+        fill="#1e1e1e"
+      />
+      <circle cx="13" cy="11" r="3" fill="#ff5f57" />
+      <circle cx="23" cy="11" r="3" fill="#febc2e" />
+      <circle cx="33" cy="11" r="3" fill="#28c840" />
+      <rect x="70" y="6" width="120" height="10" rx="5" fill="#262626" />
+
+      <g clipPath="url(#hiw-feed-clip)">
+        <g className="hiw-feed">
+          {[0, 1, 2, 3].map((i) => (
+            <g key={i} transform={`translate(20, ${34 + i * 72})`}>
+              <rect
+                width="200"
+                height="62"
+                rx="8"
+                fill="#1c1c1c"
+                stroke="#2a2a2a"
+              />
+              <circle cx="16" cy="15" r="7" fill="#333" />
+              <rect
+                x="28"
+                y="9"
+                width="54"
+                height="5"
+                rx="2.5"
+                fill="#3a3a3a"
+              />
+              <rect x="28" y="18" width="34" height="4" rx="2" fill="#2c2c2c" />
+              <rect
+                x="10"
+                y="30"
+                width="180"
+                height="24"
+                rx="5"
+                fill={i === 1 ? "url(#hiw-media)" : "#242424"}
+              />
+            </g>
+          ))}
+        </g>
+      </g>
+
+      {/* selection box, flash, cursor */}
+      <g transform="translate(14,28)">
+        <rect
+          className="hiw-sel"
+          width="212"
+          height="74"
+          rx="6"
+          fill="rgba(0,212,255,0.12)"
+          stroke="#00D4FF"
+          strokeWidth="1.5"
+          strokeDasharray="6 4"
+        />
+      </g>
+      <rect
+        className="hiw-flash"
+        opacity="0"
+        y="22"
+        width="240"
+        height="154"
+        fill="#fff"
+      />
+      <g className="hiw-cursor">
+        <path
+          d={CURSOR}
+          fill="#fff"
+          stroke="#000"
+          strokeWidth="1"
+          strokeLinejoin="round"
+        />
+      </g>
+    </g>
+  );
+}
+
+// "Captured" badge, 92x22 centred on the origin; pops in after the flash.
+function CapturedBadge() {
+  return (
+    <g className="hiw-badge">
+      <rect
+        x="-46"
+        y="-11"
+        width="92"
+        height="22"
+        rx="11"
+        fill="#0b2a31"
+        stroke="#00D4FF"
+      />
+      <path
+        d="M-32 0 l4 4 l8 -8"
+        fill="none"
+        stroke="#00D4FF"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <text
+        x="6"
+        y="3.5"
+        textAnchor="middle"
+        fontSize="10"
+        fontWeight="700"
+        fill="#00D4FF"
+      >
+        Captured
+      </text>
+    </g>
   );
 }
 
@@ -776,6 +904,14 @@ function SceneProfit() {
         <clipPath id="hiw-reveal-clip">
           <rect className="hiw-reveal" x="0" y="0" width="280" height="180" />
         </clipPath>
+        <linearGradient id="hiw-gold" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#FFE500" />
+          <stop offset="1" stopColor="#F5A600" />
+        </linearGradient>
+        <radialGradient id="hiw-gold-glow">
+          <stop offset="0" stopColor="#FFE500" stopOpacity="1" />
+          <stop offset="1" stopColor="#FFE500" stopOpacity="0" />
+        </radialGradient>
       </defs>
 
       <g transform="translate(40,20)">
@@ -946,6 +1082,52 @@ function SceneProfit() {
             r="3"
             fill="#FFE500"
           />
+        </g>
+
+        {/* trophy: the payoff, centred above the line as it goes viral */}
+        <g transform="translate(140,74)">
+          <circle
+            className="hiw-trophy-glow"
+            r="22"
+            fill="url(#hiw-gold-glow)"
+            opacity="0.3"
+          />
+          <g className="hiw-trophy">
+            {/* handles */}
+            <path
+              d="M-9 -11 h-4 a4.5 4.5 0 0 0 0 9 h2.5"
+              fill="none"
+              stroke="#F5A600"
+              strokeWidth="2"
+              strokeLinecap="round"
+            />
+            <path
+              d="M9 -11 h4 a4.5 4.5 0 0 1 0 9 h-2.5"
+              fill="none"
+              stroke="#F5A600"
+              strokeWidth="2"
+              strokeLinecap="round"
+            />
+            {/* cup */}
+            <path d="M-9 -14 h18 v7 a9 9 0 0 1 -18 0 z" fill="url(#hiw-gold)" />
+            <path
+              d="M-5 -11 v5"
+              stroke="#fff"
+              strokeOpacity="0.55"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+            />
+            {/* stem + base */}
+            <rect x="-2" y="2" width="4" height="5" fill="#D89400" />
+            <rect
+              x="-7.5"
+              y="7"
+              width="15"
+              height="3.5"
+              rx="1.5"
+              fill="url(#hiw-gold)"
+            />
+          </g>
         </g>
       </g>
     </svg>
