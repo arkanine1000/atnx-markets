@@ -174,6 +174,18 @@ Env vars:
 | `SUPABASE_SERVICE_ROLE_KEY` | server only | Admin client, bypasses RLS |
 | `CRON_SECRET` | server only | Bearer token Vercel sends to `/api/markets/refresh` |
 
+### Seeding trending markets
+
+A fresh database renders the empty state until someone captures something. To fill it with a curated set of currently-trending memes and moments:
+
+```bash
+npm run seed:trending              # creates ~10 markets (needs SUPABASE_SERVICE_ROLE_KEY in .env.local)
+npm run seed:trending -- --dry-run # fetches the images and writes previews to .seed-preview/, touches nothing
+npm run seed:trending -- --user <auth uuid>   # attribute the captures to a user instead of leaving user_id null
+```
+
+Each item becomes a `markets` row, one `captures` row (image is the source page's og:image, uploaded to the `captures` bucket, with a generated card as fallback) and a 7-day `vi_history` series shaped to its trend. Markets whose name already exists are skipped, so re-running is safe. The VI refresh cron takes over scoring from there. The list lives in `scripts/seed-trending.mjs`; edit `TRENDING` to swap in whatever is hot.
+
 ### Extension
 
 1. `chrome://extensions` → enable **Developer Mode** → **Load unpacked** → select `atnx-extension/`.

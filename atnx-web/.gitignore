@@ -37,6 +37,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# seed script previews (npm run seed:trending -- --dry-run)
+/.seed-preview
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
