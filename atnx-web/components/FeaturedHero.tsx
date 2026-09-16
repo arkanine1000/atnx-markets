@@ -145,7 +145,7 @@ function Intro() {
           onClick={() => setShowHow(true)}
           className="btn-cmyk mt-7 inline-flex items-center gap-1.5 rounded-full px-[18px] py-[9px] text-[13px] font-bold font-mono cursor-pointer"
         >
-          How?
+          Show Me
           <span aria-hidden="true" className="opacity-60">
             {"›"}
           </span>
