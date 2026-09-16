@@ -50,6 +50,62 @@ const STEPS = [
   },
 ];
 
+// CMYK outline CTA. A thin gradient ring (the gradient is painted on a
+// ::before and masked to the border), faded at rest with a soft glow and
+// brought up to full on hover / focus; it never fills. The gradient is
+// cyan / magenta / yellow blocks with 3% seams rather than a smooth blend,
+// because blending yellow into cyan passes through green and cyan into
+// magenta through blue. It's twice the button's width and slides across it
+// so the colours keep changing; the last stop repeats the first so the loop
+// is seamless. Static under reduced motion. Lives with the component (not
+// globals.css) so it can never be stale or stripped relative to the markup
+// it styles.
+const BTN_CSS = `
+@keyframes cmyk-shift {
+  from { background-position: 0% 50%; }
+  to { background-position: 200% 50%; }
+}
+.btn-cmyk {
+  position: relative;
+  isolation: isolate;
+  color: rgba(255, 255, 255, 0.85);
+  background: transparent;
+  box-shadow: 0 0 12px rgba(255, 0, 229, 0.12), 0 0 24px rgba(0, 212, 255, 0.08);
+  transition: color 0.25s ease, box-shadow 0.3s ease;
+}
+.light .btn-cmyk { color: rgba(10, 10, 10, 0.85); }
+.btn-cmyk::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  padding: 1.5px;
+  opacity: 0.6;
+  background-image: linear-gradient(90deg,
+    #00D4FF 0%, #00D4FF 30%,
+    #FF00E5 33%, #FF00E5 63%,
+    #FFE500 66%, #FFE500 97%,
+    #00D4FF 100%);
+  background-size: 200% 100%;
+  animation: cmyk-shift 6s linear infinite;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  transition: opacity 0.25s ease;
+}
+.btn-cmyk:hover, .btn-cmyk:focus-visible {
+  color: #FFFFFF;
+  box-shadow: 0 0 16px rgba(255, 0, 229, 0.22), 0 0 32px rgba(0, 212, 255, 0.14);
+}
+.light .btn-cmyk:hover, .light .btn-cmyk:focus-visible { color: #0A0A0A; }
+.btn-cmyk:hover::before, .btn-cmyk:focus-visible::before { opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .btn-cmyk::before { animation: none; }
+}
+`;
+
 function Intro() {
   const [showHow, setShowHow] = useState(false);
   return (
@@ -83,13 +139,14 @@ function Intro() {
             </li>
           ))}
         </ol>
+        <style>{BTN_CSS}</style>
         <button
           type="button"
           onClick={() => setShowHow(true)}
-          className="mt-7 inline-flex items-center gap-1.5 rounded-full border border-surface bg-elevated px-4 py-2 text-xs font-bold text-primary hover:border-atnx-cyan/50 hover:text-atnx-cyan cursor-pointer transition-colors"
+          className="btn-cmyk mt-7 inline-flex items-center gap-1.5 rounded-full px-[18px] py-[9px] text-[13px] font-bold font-mono cursor-pointer"
         >
-          How?
-          <span aria-hidden="true" className="text-tertiary">
+          Show Me
+          <span aria-hidden="true" className="opacity-60">
             {"›"}
           </span>
         </button>

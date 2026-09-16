@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "seed:trending": "node --env-file=.env.local scripts/seed-trending.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.90.0",
