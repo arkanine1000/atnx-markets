@@ -50,33 +50,33 @@ const STEPS = [
   },
 ];
 
-// Three "?" chips styled like the step badges above them, one per brand
-// colour, with a soft neon glow. Faded at rest, full brightness on hover.
+// Three bare "?" glyphs in the same mono weight as the step badges, one per
+// brand colour, with a neon text glow. Faded at rest, full brightness on hover.
 const QMARKS = [
   {
     tone: "cyan",
     tilt: "-rotate-6",
-    cls: "bg-atnx-cyan/10 text-atnx-cyan light:text-atnx-cyan-light border-atnx-cyan/25 shadow-[0_0_18px_rgba(0,212,255,0.28)] [text-shadow:0_0_10px_rgba(0,212,255,0.75)]",
+    cls: "text-atnx-cyan light:text-atnx-cyan-light [text-shadow:0_0_12px_rgba(0,212,255,0.85),0_0_24px_rgba(0,212,255,0.4)]",
   },
   {
     tone: "magenta",
-    tilt: "-translate-y-1",
-    cls: "bg-atnx-magenta/10 text-atnx-magenta light:text-atnx-magenta-light border-atnx-magenta/25 shadow-[0_0_18px_rgba(255,0,229,0.28)] [text-shadow:0_0_10px_rgba(255,0,229,0.75)]",
+    tilt: "-translate-y-0.5",
+    cls: "text-atnx-magenta light:text-atnx-magenta-light [text-shadow:0_0_12px_rgba(255,0,229,0.85),0_0_24px_rgba(255,0,229,0.4)]",
   },
   {
     tone: "yellow",
     tilt: "rotate-6",
-    cls: "bg-atnx-yellow/10 text-atnx-yellow light:text-atnx-yellow-light border-atnx-yellow/25 shadow-[0_0_18px_rgba(255,229,0,0.28)] [text-shadow:0_0_10px_rgba(255,229,0,0.75)]",
+    cls: "text-atnx-yellow light:text-atnx-yellow-light [text-shadow:0_0_12px_rgba(255,229,0,0.85),0_0_24px_rgba(255,229,0,0.4)]",
   },
 ];
 
 function QuestionMarks() {
   return (
-    <span className="inline-flex items-center gap-2" aria-hidden="true">
+    <span className="inline-flex items-center gap-0.5" aria-hidden="true">
       {QMARKS.map((q) => (
         <span
           key={q.tone}
-          className={`h-8 w-8 rounded-lg inline-flex items-center justify-center text-sm font-bold font-mono border opacity-70 transition-all duration-300 group-hover:opacity-100 ${q.tilt} ${q.cls}`}
+          className={`inline-flex items-center justify-center text-5xl font-bold font-mono leading-none opacity-75 transition-opacity duration-300 group-hover:opacity-100 ${q.tilt} ${q.cls}`}
         >
           ?
         </span>
