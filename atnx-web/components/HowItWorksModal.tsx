@@ -200,15 +200,16 @@ const HIW_CSS = `
 @keyframes hiw-conf-2 { 0%, 64% { transform: translate(0, 0); opacity: 0; } 66% { opacity: 1; } 84%, 100% { transform: translate(2px, -40px); opacity: 0; } }
 @keyframes hiw-conf-3 { 0%, 64% { transform: translate(0, 0); opacity: 0; } 66% { opacity: 1; } 84%, 100% { transform: translate(16px, -32px); opacity: 0; } }
 
-/* trophy lands last, with a little overshoot, then its glow breathes */
+/* trophy pops in on the same beat as the VIRAL badge (hiw-pop-late), with a
+   little overshoot, and stays until the loop resets */
 .hiw-trophy { transform-box: fill-box; transform-origin: center bottom; animation-name: hiw-trophy; }
 @keyframes hiw-trophy {
-  0%, 70% { transform: scale(0) rotate(-18deg); opacity: 0; }
-  77% { transform: scale(1.22) rotate(6deg); opacity: 1; }
-  82%, 100% { transform: scale(1) rotate(0); opacity: 1; }
+  0%, 60% { transform: scale(0) rotate(-18deg); opacity: 0; }
+  64% { transform: scale(1.22) rotate(6deg); opacity: 1; }
+  67%, 100% { transform: scale(1) rotate(0); opacity: 1; }
 }
 .hiw-trophy-glow { animation-name: hiw-trophy-glow; }
-@keyframes hiw-trophy-glow { 0%, 76% { opacity: 0; } 82% { opacity: 0.35; } 91% { opacity: 0.15; } 100% { opacity: 0.3; } }
+@keyframes hiw-trophy-glow { 0%, 60% { opacity: 0; } 66% { opacity: 0.35; } 100% { opacity: 0.3; } }
 `;
 
 // Mounted only while open (the parent conditionally renders it), so every
@@ -1083,8 +1084,8 @@ function SceneProfit() {
           />
         </g>
 
-        {/* trophy: the payoff, lands after the PnL */}
-        <g transform="translate(224,160)">
+        {/* trophy: the payoff, centred above the line as it goes viral */}
+        <g transform="translate(140,74)">
           <circle
             className="hiw-trophy-glow"
             r="22"
