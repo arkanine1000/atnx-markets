@@ -50,15 +50,16 @@ const STEPS = [
   },
 ];
 
-// CMYK gradient CTA. At rest it's a 2px gradient ring (the gradient is
-// painted on a ::before and masked to the border); on hover / press the mask
-// drops and it fills. The gradient is cyan / magenta / yellow blocks with
-// 3% seams rather than a smooth blend, because blending yellow into cyan
-// passes through green and cyan into magenta through blue. It's twice the
-// button's width and slides across it so the colours keep changing; the last
-// stop repeats the first so the loop is seamless. Static under reduced
-// motion. Lives with the component (not globals.css) so it can never be
-// stale or stripped relative to the markup it styles.
+// CMYK outline CTA. A thin gradient ring (the gradient is painted on a
+// ::before and masked to the border), faded at rest with a soft glow and
+// brought up to full on hover / focus; it never fills. The gradient is
+// cyan / magenta / yellow blocks with 3% seams rather than a smooth blend,
+// because blending yellow into cyan passes through green and cyan into
+// magenta through blue. It's twice the button's width and slides across it
+// so the colours keep changing; the last stop repeats the first so the loop
+// is seamless. Static under reduced motion. Lives with the component (not
+// globals.css) so it can never be stale or stripped relative to the markup
+// it styles.
 const BTN_CSS = `
 @keyframes cmyk-shift {
   from { background-position: 0% 50%; }
@@ -67,40 +68,39 @@ const BTN_CSS = `
 .btn-cmyk {
   position: relative;
   isolation: isolate;
-  color: #FFFFFF;
+  color: rgba(255, 255, 255, 0.85);
   background: transparent;
-  box-shadow: 0 0 14px rgba(255, 0, 229, 0.18), 0 0 28px rgba(0, 212, 255, 0.1);
-  transition: color 0.2s ease, box-shadow 0.3s ease, transform 0.3s ease;
+  box-shadow: 0 0 12px rgba(255, 0, 229, 0.12), 0 0 24px rgba(0, 212, 255, 0.08);
+  transition: color 0.25s ease, box-shadow 0.3s ease;
 }
-.light .btn-cmyk { color: #0A0A0A; }
+.light .btn-cmyk { color: rgba(10, 10, 10, 0.85); }
 .btn-cmyk::before {
   content: "";
   position: absolute;
   inset: 0;
   z-index: -1;
   border-radius: inherit;
-  padding: 2px;
+  padding: 1.5px;
+  opacity: 0.6;
   background-image: linear-gradient(90deg,
     #00D4FF 0%, #00D4FF 30%,
     #FF00E5 33%, #FF00E5 63%,
     #FFE500 66%, #FFE500 97%,
     #00D4FF 100%);
   background-size: 200% 100%;
-  animation: cmyk-shift 5s linear infinite;
+  animation: cmyk-shift 6s linear infinite;
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
+  transition: opacity 0.25s ease;
 }
-.btn-cmyk:hover, .btn-cmyk:active, .btn-cmyk:focus-visible {
-  color: #0A0A0A;
-  box-shadow: 0 0 24px rgba(255, 0, 229, 0.45), 0 0 48px rgba(0, 212, 255, 0.3), 0 0 64px rgba(255, 229, 0, 0.18);
-  transform: translateY(-1px);
+.btn-cmyk:hover, .btn-cmyk:focus-visible {
+  color: #FFFFFF;
+  box-shadow: 0 0 16px rgba(255, 0, 229, 0.22), 0 0 32px rgba(0, 212, 255, 0.14);
 }
-.btn-cmyk:hover::before, .btn-cmyk:active::before, .btn-cmyk:focus-visible::before {
-  -webkit-mask: none;
-  mask: none;
-}
+.light .btn-cmyk:hover, .light .btn-cmyk:focus-visible { color: #0A0A0A; }
+.btn-cmyk:hover::before, .btn-cmyk:focus-visible::before { opacity: 1; }
 @media (prefers-reduced-motion: reduce) {
   .btn-cmyk::before { animation: none; }
 }
@@ -143,7 +143,7 @@ function Intro() {
         <button
           type="button"
           onClick={() => setShowHow(true)}
-          className="btn-cmyk mt-7 mx-auto flex items-center gap-1.5 rounded-full px-[18px] py-[9px] text-[13px] font-bold font-mono cursor-pointer"
+          className="btn-cmyk mt-7 inline-flex items-center gap-1.5 rounded-full px-[18px] py-[9px] text-[13px] font-bold font-mono cursor-pointer"
         >
           How?
           <span aria-hidden="true" className="opacity-60">
