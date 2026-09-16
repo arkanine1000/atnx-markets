@@ -235,5 +235,5 @@ by the web app at `/privacy`, so deploy the web app before submitting. Bump
 ## Known rough edges
 
 - `trends-cache.ts` is in-memory — in a multi-region Vercel deployment it's per-instance.
-- No automated tests yet; verification is manual (see each feature's PR notes).
+- No automated tests yet — verification is manual (see each feature's PR notes).
 - Google Trends has no official API. Rate-limit hiccups surface as `score === 0` and the refresh cron quietly skips the market.
