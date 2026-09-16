@@ -86,10 +86,10 @@ function Intro() {
         <button
           type="button"
           onClick={() => setShowHow(true)}
-          className="mt-7 mx-auto flex items-center gap-1.5 rounded-full border border-surface bg-elevated px-4 py-2 text-xs font-bold text-white hover:border-atnx-cyan/50 hover:text-atnx-cyan cursor-pointer transition-colors"
+          className="btn-cmyk mt-7 mx-auto flex items-center gap-1.5 rounded-full px-[18px] py-[9px] text-[13px] font-bold font-mono cursor-pointer"
         >
           How?
-          <span aria-hidden="true" className="text-tertiary">
+          <span aria-hidden="true" className="opacity-60">
             {"›"}
           </span>
         </button>
