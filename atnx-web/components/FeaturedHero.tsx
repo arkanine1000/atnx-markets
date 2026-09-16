@@ -50,39 +50,38 @@ const STEPS = [
   },
 ];
 
-// Three hand-drawn question marks in the brand colours: a big magenta one
-// flanked by a smaller yellow and cyan one, each with a dark marker outline.
-// The path is a slightly wobbly hook so it reads as drawn, not typeset.
-const QMARK = "M28 34 C26 12, 74 8, 72 34 C71 50, 52 50, 51 66";
-
-function QuestionMark({ color }: { color: string }) {
-  return (
-    <g strokeLinecap="round" strokeLinejoin="round" fill="none">
-      <path d={QMARK} stroke="#111" strokeWidth="22" />
-      <circle cx="51" cy="87" r="7" fill="#111" stroke="#111" strokeWidth="9" />
-      <path d={QMARK} stroke={color} strokeWidth="12" />
-      <circle cx="51" cy="87" r="7" fill={color} />
-    </g>
-  );
-}
+// Three "?" chips styled like the step badges above them, one per brand
+// colour, with a soft neon glow. Faded at rest, full brightness on hover.
+const QMARKS = [
+  {
+    tone: "cyan",
+    tilt: "-rotate-6",
+    cls: "bg-atnx-cyan/10 text-atnx-cyan light:text-atnx-cyan-light border-atnx-cyan/25 shadow-[0_0_18px_rgba(0,212,255,0.28)] [text-shadow:0_0_10px_rgba(0,212,255,0.75)]",
+  },
+  {
+    tone: "magenta",
+    tilt: "-translate-y-1",
+    cls: "bg-atnx-magenta/10 text-atnx-magenta light:text-atnx-magenta-light border-atnx-magenta/25 shadow-[0_0_18px_rgba(255,0,229,0.28)] [text-shadow:0_0_10px_rgba(255,0,229,0.75)]",
+  },
+  {
+    tone: "yellow",
+    tilt: "rotate-6",
+    cls: "bg-atnx-yellow/10 text-atnx-yellow light:text-atnx-yellow-light border-atnx-yellow/25 shadow-[0_0_18px_rgba(255,229,0,0.28)] [text-shadow:0_0_10px_rgba(255,229,0,0.75)]",
+  },
+];
 
 function QuestionMarks() {
   return (
-    <svg
-      viewBox="0 0 220 104"
-      className="h-20 w-auto drop-shadow-[0_0_14px_rgba(255,0,229,0.18)] group-hover:drop-shadow-[0_0_20px_rgba(255,0,229,0.35)] transition-[filter] duration-300"
-      aria-hidden="true"
-    >
-      <g transform="translate(6,42) scale(0.6) rotate(-14 50 50)">
-        <QuestionMark color="#FFE500" />
-      </g>
-      <g transform="translate(154,42) scale(0.6) rotate(12 50 50)">
-        <QuestionMark color="#00D4FF" />
-      </g>
-      <g transform="translate(60,0)">
-        <QuestionMark color="#FF00E5" />
-      </g>
-    </svg>
+    <span className="inline-flex items-center gap-2" aria-hidden="true">
+      {QMARKS.map((q) => (
+        <span
+          key={q.tone}
+          className={`h-8 w-8 rounded-lg inline-flex items-center justify-center text-sm font-bold font-mono border opacity-70 transition-all duration-300 group-hover:opacity-100 ${q.tilt} ${q.cls}`}
+        >
+          ?
+        </span>
+      ))}
+    </span>
   );
 }
 
@@ -124,7 +123,7 @@ function Intro() {
           onClick={() => setShowHow(true)}
           aria-label="How does ATNX work?"
           title="How it works"
-          className="group mt-6 mx-auto block rounded-2xl p-1 cursor-pointer transition-transform duration-300 hover:scale-105 focus-visible:outline-2 focus-visible:outline-atnx-cyan/60"
+          className="group mt-7 mx-auto block rounded-xl p-1.5 cursor-pointer focus-visible:outline-2 focus-visible:outline-atnx-cyan/60"
         >
           <QuestionMarks />
         </button>
