@@ -50,6 +50,33 @@ const STEPS = [
   },
 ];
 
+// CMYK gradient CTA. The gradient is twice the button's width and slides
+// across it, so the colours keep changing; the last stop repeats the first
+// so the loop is seamless. Glow matches. Static under reduced motion.
+// Lives with the component (not globals.css) so it can never be stale or
+// stripped relative to the markup it styles.
+const BTN_CSS = `
+@keyframes cmyk-shift {
+  from { background-position: 0% 50%; }
+  to { background-position: 200% 50%; }
+}
+.btn-cmyk {
+  color: #0A0A0A;
+  background-image: linear-gradient(90deg, #00D4FF, #FF00E5, #FFE500, #00D4FF);
+  background-size: 200% 100%;
+  animation: cmyk-shift 5s linear infinite;
+  box-shadow: 0 0 18px rgba(255, 0, 229, 0.35), 0 0 36px rgba(0, 212, 255, 0.2);
+  transition: box-shadow 0.3s ease, transform 0.3s ease;
+}
+.btn-cmyk:hover {
+  box-shadow: 0 0 24px rgba(255, 0, 229, 0.5), 0 0 48px rgba(0, 212, 255, 0.35), 0 0 64px rgba(255, 229, 0, 0.2);
+  transform: translateY(-1px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .btn-cmyk { animation: none; }
+}
+`;
+
 function Intro() {
   const [showHow, setShowHow] = useState(false);
   return (
@@ -83,6 +110,7 @@ function Intro() {
             </li>
           ))}
         </ol>
+        <style>{BTN_CSS}</style>
         <button
           type="button"
           onClick={() => setShowHow(true)}
