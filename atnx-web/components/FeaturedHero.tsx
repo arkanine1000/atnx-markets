@@ -50,30 +50,59 @@ const STEPS = [
   },
 ];
 
-// CMYK gradient CTA. The gradient is twice the button's width and slides
-// across it, so the colours keep changing; the last stop repeats the first
-// so the loop is seamless. Glow matches. Static under reduced motion.
-// Lives with the component (not globals.css) so it can never be stale or
-// stripped relative to the markup it styles.
+// CMYK gradient CTA. At rest it's a 2px gradient ring (the gradient is
+// painted on a ::before and masked to the border); on hover / press the mask
+// drops and it fills. The gradient is cyan / magenta / yellow blocks with
+// 3% seams rather than a smooth blend, because blending yellow into cyan
+// passes through green and cyan into magenta through blue. It's twice the
+// button's width and slides across it so the colours keep changing; the last
+// stop repeats the first so the loop is seamless. Static under reduced
+// motion. Lives with the component (not globals.css) so it can never be
+// stale or stripped relative to the markup it styles.
 const BTN_CSS = `
 @keyframes cmyk-shift {
   from { background-position: 0% 50%; }
   to { background-position: 200% 50%; }
 }
 .btn-cmyk {
-  color: #0A0A0A;
-  background-image: linear-gradient(90deg, #00D4FF, #FF00E5, #FFE500, #00D4FF);
+  position: relative;
+  isolation: isolate;
+  color: #FFFFFF;
+  background: transparent;
+  box-shadow: 0 0 14px rgba(255, 0, 229, 0.18), 0 0 28px rgba(0, 212, 255, 0.1);
+  transition: color 0.2s ease, box-shadow 0.3s ease, transform 0.3s ease;
+}
+.light .btn-cmyk { color: #0A0A0A; }
+.btn-cmyk::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  padding: 2px;
+  background-image: linear-gradient(90deg,
+    #00D4FF 0%, #00D4FF 30%,
+    #FF00E5 33%, #FF00E5 63%,
+    #FFE500 66%, #FFE500 97%,
+    #00D4FF 100%);
   background-size: 200% 100%;
   animation: cmyk-shift 5s linear infinite;
-  box-shadow: 0 0 18px rgba(255, 0, 229, 0.35), 0 0 36px rgba(0, 212, 255, 0.2);
-  transition: box-shadow 0.3s ease, transform 0.3s ease;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
 }
-.btn-cmyk:hover {
-  box-shadow: 0 0 24px rgba(255, 0, 229, 0.5), 0 0 48px rgba(0, 212, 255, 0.35), 0 0 64px rgba(255, 229, 0, 0.2);
+.btn-cmyk:hover, .btn-cmyk:active, .btn-cmyk:focus-visible {
+  color: #0A0A0A;
+  box-shadow: 0 0 24px rgba(255, 0, 229, 0.45), 0 0 48px rgba(0, 212, 255, 0.3), 0 0 64px rgba(255, 229, 0, 0.18);
   transform: translateY(-1px);
 }
+.btn-cmyk:hover::before, .btn-cmyk:active::before, .btn-cmyk:focus-visible::before {
+  -webkit-mask: none;
+  mask: none;
+}
 @media (prefers-reduced-motion: reduce) {
-  .btn-cmyk { animation: none; }
+  .btn-cmyk::before { animation: none; }
 }
 `;
 
