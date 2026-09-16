@@ -50,6 +50,42 @@ const STEPS = [
   },
 ];
 
+// Three hand-drawn question marks in the brand colours: a big magenta one
+// flanked by a smaller yellow and cyan one, each with a dark marker outline.
+// The path is a slightly wobbly hook so it reads as drawn, not typeset.
+const QMARK = "M28 34 C26 12, 74 8, 72 34 C71 50, 52 50, 51 66";
+
+function QuestionMark({ color }: { color: string }) {
+  return (
+    <g strokeLinecap="round" strokeLinejoin="round" fill="none">
+      <path d={QMARK} stroke="#111" strokeWidth="22" />
+      <circle cx="51" cy="87" r="7" fill="#111" stroke="#111" strokeWidth="9" />
+      <path d={QMARK} stroke={color} strokeWidth="12" />
+      <circle cx="51" cy="87" r="7" fill={color} />
+    </g>
+  );
+}
+
+function QuestionMarks() {
+  return (
+    <svg
+      viewBox="0 0 220 104"
+      className="h-20 w-auto drop-shadow-[0_0_14px_rgba(255,0,229,0.18)] group-hover:drop-shadow-[0_0_20px_rgba(255,0,229,0.35)] transition-[filter] duration-300"
+      aria-hidden="true"
+    >
+      <g transform="translate(6,42) scale(0.6) rotate(-14 50 50)">
+        <QuestionMark color="#FFE500" />
+      </g>
+      <g transform="translate(154,42) scale(0.6) rotate(12 50 50)">
+        <QuestionMark color="#00D4FF" />
+      </g>
+      <g transform="translate(60,0)">
+        <QuestionMark color="#FF00E5" />
+      </g>
+    </svg>
+  );
+}
+
 function Intro() {
   const [showHow, setShowHow] = useState(false);
   return (
@@ -86,12 +122,11 @@ function Intro() {
         <button
           type="button"
           onClick={() => setShowHow(true)}
-          className="mt-7 inline-flex items-center gap-1.5 rounded-full border border-surface bg-elevated px-4 py-2 text-xs font-bold text-primary hover:border-atnx-cyan/50 hover:text-atnx-cyan cursor-pointer transition-colors"
+          aria-label="How does ATNX work?"
+          title="How it works"
+          className="group mt-6 mx-auto block rounded-2xl p-1 cursor-pointer transition-transform duration-300 hover:scale-105 focus-visible:outline-2 focus-visible:outline-atnx-cyan/60"
         >
-          How?
-          <span aria-hidden="true" className="text-tertiary">
-            {"›"}
-          </span>
+          <QuestionMarks />
         </button>
       </div>
       {showHow && <HowItWorksModal onClose={() => setShowHow(false)} />}
