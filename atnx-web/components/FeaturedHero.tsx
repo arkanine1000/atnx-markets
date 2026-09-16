@@ -50,41 +50,6 @@ const STEPS = [
   },
 ];
 
-// Three bare "?" glyphs in the same mono weight as the step badges, one per
-// brand colour, with a neon text glow. Faded at rest, full brightness on hover.
-const QMARKS = [
-  {
-    tone: "cyan",
-    tilt: "-rotate-6",
-    cls: "text-atnx-cyan light:text-atnx-cyan-light [text-shadow:0_0_12px_rgba(0,212,255,0.85),0_0_24px_rgba(0,212,255,0.4)]",
-  },
-  {
-    tone: "magenta",
-    tilt: "-translate-y-0.5",
-    cls: "text-atnx-magenta light:text-atnx-magenta-light [text-shadow:0_0_12px_rgba(255,0,229,0.85),0_0_24px_rgba(255,0,229,0.4)]",
-  },
-  {
-    tone: "yellow",
-    tilt: "rotate-6",
-    cls: "text-atnx-yellow light:text-atnx-yellow-light [text-shadow:0_0_12px_rgba(255,229,0,0.85),0_0_24px_rgba(255,229,0,0.4)]",
-  },
-];
-
-function QuestionMarks() {
-  return (
-    <span className="inline-flex items-center gap-0.5" aria-hidden="true">
-      {QMARKS.map((q) => (
-        <span
-          key={q.tone}
-          className={`inline-flex items-center justify-center text-5xl font-bold font-mono leading-none opacity-75 transition-opacity duration-300 group-hover:opacity-100 ${q.tilt} ${q.cls}`}
-        >
-          ?
-        </span>
-      ))}
-    </span>
-  );
-}
-
 function Intro() {
   const [showHow, setShowHow] = useState(false);
   return (
@@ -121,11 +86,12 @@ function Intro() {
         <button
           type="button"
           onClick={() => setShowHow(true)}
-          aria-label="How does ATNX work?"
-          title="How it works"
-          className="group mt-7 mx-auto block rounded-xl p-1.5 cursor-pointer focus-visible:outline-2 focus-visible:outline-atnx-cyan/60"
+          className="mt-7 mx-auto flex items-center gap-1.5 rounded-full border border-surface bg-elevated px-4 py-2 text-xs font-bold text-white hover:border-atnx-cyan/50 hover:text-atnx-cyan cursor-pointer transition-colors"
         >
-          <QuestionMarks />
+          How?
+          <span aria-hidden="true" className="text-tertiary">
+            {"›"}
+          </span>
         </button>
       </div>
       {showHow && <HowItWorksModal onClose={() => setShowHow(false)} />}
