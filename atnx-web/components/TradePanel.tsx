@@ -266,8 +266,8 @@ export function TradePanel({
             </span>
           </div>
           <div className="flex items-baseline justify-between">
-            <span className="text-xs text-secondary font-mono">
-              entry {openPos.entryIndex} {"→"} {openPos.currentIndex}
+            <span className="font-mono font-bold tabular-nums text-lg text-primary">
+              ${pnl.currentValue}
             </span>
             <span
               className={`font-mono font-bold tabular-nums ${
@@ -275,6 +275,22 @@ export function TradePanel({
               }`}
             >
               {pnl.isProfit ? "+" : ""}${pnl.pnlAmount}
+            </span>
+          </div>
+          <div className="flex items-baseline justify-between text-xs font-mono tabular-nums">
+            <span className="text-secondary">
+              ${openPos.size.toFixed(2)} in {"·"} entry {openPos.entryIndex}{" "}
+              {"→"} {openPos.currentIndex}
+            </span>
+            <span
+              className={
+                pnl.isProfit
+                  ? "text-atnx-cyan/80 light:text-atnx-cyan-light"
+                  : "text-atnx-magenta/80 light:text-atnx-magenta-light"
+              }
+            >
+              {pnl.isProfit ? "+" : ""}
+              {pnl.pnlPercent}%
             </span>
           </div>
         </Link>
