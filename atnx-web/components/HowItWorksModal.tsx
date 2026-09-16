@@ -12,6 +12,9 @@ const STEPS = [
     n: 1,
     title: "Capture anything",
     body: "Scrolling and something's blowing up? Hit Ctrl+Shift+X, drag a box around it, and it's captured. Claude works out what it is and opens a market for it.",
+    // Shown instead of `body` when the device toggle is on Mobile.
+    bodyMobile:
+      "Scrolling and something's blowing up? Screenshot it, share it to ATNX, and it's captured. Claude works out what it is and opens a market for it.",
     tone: "cyan" as const,
   },
   {
@@ -196,6 +199,16 @@ const HIW_CSS = `
 @keyframes hiw-conf-1 { 0%, 64% { transform: translate(0, 0); opacity: 0; } 66% { opacity: 1; } 84%, 100% { transform: translate(-14px, -34px); opacity: 0; } }
 @keyframes hiw-conf-2 { 0%, 64% { transform: translate(0, 0); opacity: 0; } 66% { opacity: 1; } 84%, 100% { transform: translate(2px, -40px); opacity: 0; } }
 @keyframes hiw-conf-3 { 0%, 64% { transform: translate(0, 0); opacity: 0; } 66% { opacity: 1; } 84%, 100% { transform: translate(16px, -32px); opacity: 0; } }
+
+/* trophy lands last, with a little overshoot, then its glow breathes */
+.hiw-trophy { transform-box: fill-box; transform-origin: center bottom; animation-name: hiw-trophy; }
+@keyframes hiw-trophy {
+  0%, 70% { transform: scale(0) rotate(-18deg); opacity: 0; }
+  77% { transform: scale(1.22) rotate(6deg); opacity: 1; }
+  82%, 100% { transform: scale(1) rotate(0); opacity: 1; }
+}
+.hiw-trophy-glow { animation-name: hiw-trophy-glow; }
+@keyframes hiw-trophy-glow { 0%, 76% { opacity: 0; } 82% { opacity: 0.35; } 91% { opacity: 0.15; } 100% { opacity: 0.3; } }
 `;
 
 // Mounted only while open (the parent conditionally renders it), so every
@@ -231,6 +244,7 @@ export function HowItWorksModal({ onClose }: { onClose: () => void }) {
   }, [onClose]);
 
   const s = STEPS[step];
+  const body = device === "mobile" && "bodyMobile" in s ? s.bodyMobile : s.body;
   const last = step === STEPS.length - 1;
 
   return (
@@ -303,7 +317,7 @@ export function HowItWorksModal({ onClose }: { onClose: () => void }) {
             </h2>
           </div>
           <p className="mt-2 text-sm text-secondary leading-relaxed font-sans">
-            {s.body}
+            {body}
           </p>
         </div>
 
@@ -889,6 +903,14 @@ function SceneProfit() {
         <clipPath id="hiw-reveal-clip">
           <rect className="hiw-reveal" x="0" y="0" width="280" height="180" />
         </clipPath>
+        <linearGradient id="hiw-gold" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#FFE500" />
+          <stop offset="1" stopColor="#F5A600" />
+        </linearGradient>
+        <radialGradient id="hiw-gold-glow">
+          <stop offset="0" stopColor="#FFE500" stopOpacity="1" />
+          <stop offset="1" stopColor="#FFE500" stopOpacity="0" />
+        </radialGradient>
       </defs>
 
       <g transform="translate(40,20)">
@@ -1059,6 +1081,52 @@ function SceneProfit() {
             r="3"
             fill="#FFE500"
           />
+        </g>
+
+        {/* trophy: the payoff, lands after the PnL */}
+        <g transform="translate(224,160)">
+          <circle
+            className="hiw-trophy-glow"
+            r="22"
+            fill="url(#hiw-gold-glow)"
+            opacity="0.3"
+          />
+          <g className="hiw-trophy">
+            {/* handles */}
+            <path
+              d="M-9 -11 h-4 a4.5 4.5 0 0 0 0 9 h2.5"
+              fill="none"
+              stroke="#F5A600"
+              strokeWidth="2"
+              strokeLinecap="round"
+            />
+            <path
+              d="M9 -11 h4 a4.5 4.5 0 0 1 0 9 h-2.5"
+              fill="none"
+              stroke="#F5A600"
+              strokeWidth="2"
+              strokeLinecap="round"
+            />
+            {/* cup */}
+            <path d="M-9 -14 h18 v7 a9 9 0 0 1 -18 0 z" fill="url(#hiw-gold)" />
+            <path
+              d="M-5 -11 v5"
+              stroke="#fff"
+              strokeOpacity="0.55"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+            />
+            {/* stem + base */}
+            <rect x="-2" y="2" width="4" height="5" fill="#D89400" />
+            <rect
+              x="-7.5"
+              y="7"
+              width="15"
+              height="3.5"
+              rx="1.5"
+              fill="url(#hiw-gold)"
+            />
+          </g>
         </g>
       </g>
     </svg>
