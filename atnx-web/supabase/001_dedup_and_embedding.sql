@@ -85,12 +85,11 @@ as $$
 $$;
 
 -- 4. Unused columns ---------------------------------------------------------
--- captures.embedding_text, embedding_image and perceptual_hash exist in
--- production but nothing in this repo writes or reads them. They are kept
--- until it is confirmed that nothing outside the repo reads them either.
--- When that is confirmed, uncomment:
---
--- alter table public.captures
---   drop column if exists embedding_text,
---   drop column if exists embedding_image,
---   drop column if exists perceptual_hash;
+-- captures.embedding_text, embedding_image and perceptual_hash were never
+-- written or read by anything (confirmed 2026-09-21, inside and outside
+-- this repo). The per-capture vector now lives on markets.embedding.
+
+alter table public.captures
+  drop column if exists embedding_text,
+  drop column if exists embedding_image,
+  drop column if exists perceptual_hash;

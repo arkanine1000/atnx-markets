@@ -2,12 +2,14 @@
 
 **Live at [atnx.app](https://atnx.app).**
 
-A Chrome extension + Next.js web app for capturing any content on the internet, analyzing it with Claude, and trading a simulated Virality Index (VI) on what you capture. Your friends' screenshots become markets; markets have a live VI; you can go long or short.
+A Chrome extension + Next.js web app for capturing any content on the internet, identifying it with a vision model, and trading a simulated Virality Index (VI) on what you capture. Your friends' screenshots become markets; markets have a live VI; you can go long or short.
 
 ```
-Ctrl+Shift+X → drag a selection → Claude identifies it → a market spawns
+Ctrl+Shift+X → drag a selection → the model identifies it → linked to a market, or a market spawns
                 → VI updates every 5 min → trade long / short on it
 ```
+
+Three ways in, one pipeline: the extension, the web form at `/app/submit` (screenshot, link, or text), and the Android share sheet.
 
 ---
 
@@ -24,23 +26,26 @@ atnx/
 ## Architecture at a glance
 
 ```
-          ┌────────────────────┐
-          │  Chrome extension  │  screenshots + Claude vision
-          │  (atnx.app default)│
-          └──────────┬─────────┘
-                     │ POST /api/captures  (Supabase cookie)
-                     ▼
-          ┌────────────────────┐        ┌──────────────────────┐
-          │  Next.js @ atnx.app│───────▶│ Supabase (Postgres,  │
-          │  App Router + SSR  │        │ Auth, Storage, RLS)  │
-          └─────┬──────────────┘        └──────────────────────┘
-                │
-                │ composeVi = max(Trends, Wikipedia, LLM baseline)
-                ▼
-          Google Trends · Wikipedia · LLM analysis metrics
-                ▲
-                │ /api/markets/refresh every 5 min (Vercel Cron)
+   ┌──────────────┐  ┌──────────────┐  ┌──────────────┐
+   │  extension   │  │ /app/submit  │  │ Android share│
+   └──────┬───────┘  └──────┬───────┘  └──────┬───────┘
+          │ POST /api/captures (Supabase cookie)│ POST /share
+          ▼                 ▼                  ▼
+   ┌───────────────────────────────────────────────────┐    ┌──────────────────────┐
+   │  Next.js @ atnx.app        lib/capture.ts         │───▶│ Supabase (Postgres + │
+   │  hash → retrieve → model → link check → route     │    │ pgvector, Auth,      │
+   └───────────────┬───────────────────────────────────┘    │ Storage, RLS)        │
+                   │                                        └──────────────────────┘
+                   │ Vercel AI Gateway: Gemini Flash (vision), Cohere Embed v4 (text)
+                   │
+                   │ composeVi = max(Trends, Wikipedia)
+                   ▼
+          Google Trends · Wikipedia
+                   ▲
+                   │ /api/markets/refresh every 5 min (Vercel Cron)
 ```
+
+How a submission is decided, stage by stage, is in [`atnx-web/README.md`](atnx-web/README.md).
 
 ---
 
@@ -53,27 +58,33 @@ atnx/
 | `/` | ✅ | Landing splash with "Launch App" |
 | `/app` | ✅ | Dashboard — every market as a card, sorted by VI / newest / category, refreshes every 5s |
 | `/app/markets/[id]` | ✅ | Market detail — hero card, 7-day VI sparkline, evidence strip of all captures, Trade button |
+| `/app/submit` | ❌ | Web entry: drop or paste a screenshot, or give a link or a line of text; shows which market it landed on |
 | `/app/portfolio` | ❌ | Open + closed positions, realized PnL, sim balance |
 | `/app/settings` | ❌ | Profile management (handle, email) |
-| `/admin` | admins only | Moderation: markets, captures in review, audit log |
+| `/admin` | admins only | Moderation: markets, captures in review (low-confidence creates), audit log |
+| `/share` | ❌ | Android share-target POST (image or link) → same pipeline → redirect to the market |
 | `/auth/callback` | — | OAuth return path; exchanges code → session, ensures `user_profiles` / `sim_balances` rows |
 
 ### API
 
 | Endpoint | Purpose |
 | --- | --- |
-| `POST /api/captures` | Extension ingest: normalize name, run `composeVi`, upload screenshot, resolve/create market, record VI |
+| `POST /api/captures` | Ingest for the extension and the web form. Multipart with `image`, `url`, or `text`. Hash dedup → candidate retrieval → one model call → link check → route (matched / linked / created / rejected) → upload, record VI, write audit row. Rejections are 422 with a reason; X/TikTok/Instagram links that cannot be fetched return `needs_image` |
 | `GET /api/captures` | Dashboard feed (grouped by market, latest first); also feeds the extension side panel's top markets |
 | `GET /api/portfolio` | Extension side panel: handle, sim balance, realized/unrealized PnL, total value, open positions (with latest capture thumbnail), and a 7-day portfolio-value series rebuilt from each open position's `vi_history` (401 when signed out) |
 | `GET /api/markets/refresh` | Cron-only; re-runs `composeVi` for every live market, applies ±1.5% jitter, appends `vi_history` |
 
 ### Key libraries (`atnx-web/lib/`)
 
-- **`signals.ts`** — `composeVi({ term, analysis })` runs Trends + Wikipedia + LLM baseline in parallel, returns the highest score and which source won.
+- **`capture.ts`** — The submission pipeline. `processCapture` hashes the input, retrieves candidates, calls the model, checks the proposal against existing markets, routes, persists, and schedules the low-confidence retry.
+- **`vlm.ts`** — The one model call, through Vercel AI Gateway (Gemini Flash for images, Flash-Lite for text, thinking off). Output validated against a per-request zod schema: admit / reject reason, matched candidate id, or a new market with name, type, category (ten fixed values) and aliases.
+- **`embed.ts`**, **`retrieve.ts`** — Cohere Embed v4 text embeddings (512 dims) and the two retrieval queries (cosine on `markets.embedding`, trigram on names and aliases).
+- **`route.ts`** — Deterministic routing table on the model output and retrieval scores; writes `submission_decisions`.
+- **`signals.ts`** — `composeVi({ term })` runs Trends + Wikipedia in parallel, returns the highest score and which source won.
 - **`trends.ts`** — Google Trends (7d interest), virality score = 0.35 × current + 0.30 × momentum + 0.20 × spike + 0.15 × consistency, all × 10. `normalizeSearchTerm` strips separators so titles like `Foo / Bar` don't tank queries.
 - **`wikipedia.ts`** — OpenSearch → per-article-daily pageviews (30d, 2-day lag). Score = `log10(peak + 10) × 200 − 200`. User-Agent required by Wikimedia. 1h cache.
-- **`llm-baseline.ts`** — Deterministic floor from the analysis payload: parses `metrics_detected` (supports `16,374`, `2.3M`, `500K`, `1.2B`), counts `platforms_detected`, scans `virality_signals` for keyword hits.
-- **`store.ts`** — `addCapture`, `resolveOrCreateMarket` (trigram similarity via `find_similar_market` RPC), `recordVi`, `getCaptures`, `getMarketDetail`.
+- **`store.ts`** — `createMarket` (unique normalised name; re-selects on conflict), `addCapture`, `recordVi`, `getCaptures`, `getMarketDetail`.
+- **`og.ts`** — Fetches a link's `og:image` and title for URL submissions and the share target.
 - **`trends-cache.ts`** — 5 min in-memory cache keyed by lowercased term.
 - **`capture-view.ts`** — UI helpers (`timeAgo`, `sentimentColor`, deterministic 24h % ticker).
 - **`supabase/cookie-options.ts`** — Forces `SameSite=None; Secure` so the extension can attach the auth cookie on cross-origin fetches.
@@ -102,13 +113,12 @@ atnx/
 
 ## VI (Virality Index) pipeline
 
-VI is a composite 0-1000 score. Every source is independent, we take the max — a viral Wikipedia article shouldn't be dragged down because Google Trends is quiet for that term.
+VI is a composite 0-1000 score. Every source is independent, we take the max — a viral Wikipedia article shouldn't be dragged down because Google Trends is quiet for that term. Nothing read off the screenshot feeds the score, so resubmitting the same image cannot move it.
 
 | Source | Fires when | Scoring |
 | --- | --- | --- |
 | Google Trends | `term.length > 1` | Weighted blend of current interest, momentum, spike, consistency |
 | Wikipedia | `term.length > 1` | `log10(peak daily views + 10) × 200 − 200` |
-| LLM baseline | Always (if analysis present) | `max(metricsScore, platformsScore, signalsScore)` |
 
 Cron every 5 minutes re-runs `composeVi` for every live market in batches of 4. If all sources return 0 the market keeps its last known VI instead of being zeroed.
 
@@ -118,8 +128,9 @@ Cron every 5 minutes re-runs `composeVi` for every live market in batches of 4. 
 
 | Table | Purpose |
 | --- | --- |
-| `markets` | One row per identified entity. `current_vi`, `total_captures`, `vi_last_updated`, `deleted_at`. |
-| `captures` | Raw screenshots + AI analysis. FK to `markets`. `resolution_status` (`resolved` / `review` / `new_entity`), `confidence_score`, `deleted_at`. |
+| `markets` | One row per identified entity. `entity_type`, `category`, `aliases`, `embedding vector(512)`, `current_vi`, `total_captures`, `vi_last_updated`, `deleted_at`. Unique on the normalised name among live rows. |
+| `captures` | Screenshots + model analysis. FK to `markets`. `content_hash` (unique among live rows: exact dedup), `resolution_status` (`resolved` / `review`), `confidence_score`, `deleted_at`. |
+| `submission_decisions` | Audit: one row per routed submission with outcome, market, candidates shown, similarity scores, model confidence, reject reason, latency and the full model response. Admin-readable. |
 | `vi_history` | Append-only time series of `(market_id, vi, recorded_at)` powering the sparklines. |
 | `user_profiles` | `id` (= auth.uid), `handle`, `email`, `role` (`user` / `moderator` / `admin`). |
 | `sim_balances` | Per-user simulated USD balance, realized PnL, trade count. |
@@ -128,9 +139,11 @@ Cron every 5 minutes re-runs `composeVi` for every live market in batches of 4. 
 
 ### RPCs (used via `supabase.rpc(...)`)
 
-`find_similar_market`, `is_admin`, `admin_soft_delete_market`, `admin_restore_market`, `admin_edit_market_name`, `admin_soft_delete_capture`, `admin_reassign_capture`.
+`match_markets_by_embedding`, `match_markets_by_name`, `is_admin`, `admin_soft_delete_market`, `admin_restore_market`, `admin_edit_market_name`, `admin_soft_delete_capture`, `admin_reassign_capture`. (`find_similar_market` still exists but is no longer called.)
 
-Storage: the `screenshots` bucket holds capture images; public URLs are stored on the capture row.
+Schema changes are numbered SQL files in `atnx-web/supabase/`, applied by hand in order; see that README for the list.
+
+Storage: the `captures` bucket (public) holds capture images under `{user_id}/`; public URLs are stored on the capture row. Text-only submissions have no image.
 
 ---
 
@@ -138,7 +151,7 @@ Storage: the `screenshots` bucket holds capture images; public URLs are stored o
 
 Manifest V3, vanilla JS, no build step. Three moving parts:
 
-- **`background.js`** (service worker) — Owns the capture pipeline. On `Ctrl+Shift+X` or the side panel's Capture button it injects `content.js` on demand (`activeTab` + `scripting`), receives the selected rect, screenshots the tab, crops it in-worker with `createImageBitmap` + `OffscreenCanvas` (longest edge capped at 2000 px so uploads stay under Vercel's 4.5 MB body limit), then POSTs the PNG as `multipart/form-data` to `${webAppUrl}/api/captures` with `credentials: 'include'`. Status is mirrored on the toolbar badge (`…` / `✓` / `!`).
+- **`background.js`** (service worker) — Owns the capture pipeline. On `Ctrl+Shift+X` or the side panel's Capture button it injects `content.js` on demand (`activeTab` + `scripting`), receives the selected rect, screenshots the tab, crops it in-worker with `createImageBitmap` + `OffscreenCanvas` (longest edge capped at 1080 px, JPEG at 0.85), then POSTs it as `multipart/form-data` to `${webAppUrl}/api/captures` with `credentials: 'include'`. Status is mirrored on the toolbar badge (`…` / `✓` / `!`).
 - **`content.js`** — Drag-to-select overlay and toast notifications, rendered inside a closed Shadow DOM host that is promoted to the browser's top layer via the Popover API, so page CSS and z-index stacking can't interfere. Uses pointer events with pointer capture; Escape cancels. Only injected on pages the user captures.
 - **`sidepanel.html` + `sidepanel.js`** — Clicking the toolbar icon opens a Chrome side panel (wallet-style, no popup). Top to bottom: the signed-in handle; Capture button (which reads CAPTURING… / ANALYZING… while the pipeline runs) with the shortcut beneath; a portfolio-value stat tile (hero number, 7-day delta, SVG sparkline with crosshair tooltip, keyboard-navigable) fed by `GET /api/portfolio`; a collapsible portfolio card (Balance / Unrealized / Open, expands to open positions as thumbnail · name · current value · PnL %, shorts marked with an `S` badge); and the top 5 markets by VI (`GET /api/captures`, grouped by market) as thumbnail · name · VI. Rows deep-link to `/app/markets/[id]`. Polls every 30 s while visible. The gear reveals settings: Web App URL (default `https://atnx.app`; override for local dev — saving a custom origin requests an optional host permission for it) and the current shortcut.
 
@@ -172,7 +185,16 @@ Env vars:
 | `NEXT_PUBLIC_SUPABASE_URL` | client + server | Supabase project URL |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | client + server | Anon key for browser auth |
 | `SUPABASE_SERVICE_ROLE_KEY` | server only | Admin client, bypasses RLS |
+| `AI_GATEWAY_API_KEY` | server only, local | Vercel AI Gateway. Not needed on Vercel itself (OIDC) |
 | `CRON_SECRET` | server only | Bearer token Vercel sends to `/api/markets/refresh` |
+
+Optional overrides (model ids, link and confirm thresholds) and the `EVAL_*` variables for the eval script are listed in `atnx-web/.env.local.example`.
+
+### Checking the pipeline
+
+```bash
+npm run eval:capture -- --cleanup   # 25 fixtures through the real route, then resubmits; needs a running dev server
+```
 
 ### Seeding trending markets
 
@@ -226,14 +248,14 @@ by the web app at `/privacy`, so deploy the web app before submitting. Bump
 | Framework | Next.js 16.2.2 (App Router, Server Actions, `proxy.ts` — renamed from `middleware.ts` in 16) |
 | UI | React 19.2, Tailwind v4, `next-themes`, `recharts` for sparklines |
 | Auth + DB | Supabase (Postgres + RLS + Storage + Google OAuth), `@supabase/ssr` 0.10 |
-| Signals | `google-trends-api`, Wikipedia REST (opensearch + per-article-daily), deterministic LLM baseline |
+| Signals | `google-trends-api`, Wikipedia REST (opensearch + per-article-daily) |
 | Extension | Manifest V3, in-worker `OffscreenCanvas` cropping, Shadow DOM + Popover API overlay, `chrome.storage.local` for config |
-| Vision | Claude (Anthropic) server-side in `/api/captures` — the extension only ships the cropped PNG |
+| Models | Vercel AI SDK + AI Gateway: Gemini Flash / Flash-Lite for vision and text, Cohere Embed v4 for embeddings. The extension only ships the cropped image |
 
 ---
 
 ## Known rough edges
 
 - `trends-cache.ts` is in-memory — in a multi-region Vercel deployment it's per-instance.
-- No automated tests yet; verification is manual (see each feature's PR notes).
+- No test framework. `npm run eval:capture` is the regression check for the submission pipeline; everything else is manual.
 - Google Trends has no official API. Rate-limit hiccups surface as `score === 0` and the refresh cron quietly skips the market.
