@@ -7,18 +7,22 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "seed:trending": "node --env-file=.env.local scripts/seed-trending.mjs"
+    "seed:trending": "node --env-file=.env.local scripts/seed-trending.mjs",
+    "eval:capture": "node --env-file=.env.local scripts/eval-capture.mjs",
+    "fixtures:render": "node scripts/fixtures/render.mjs",
+    "backfill:embeddings": "node --env-file=.env.local scripts/backfill-embeddings.mjs"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.90.0",
     "@supabase/ssr": "^0.10.2",
     "@supabase/supabase-js": "^2.103.3",
+    "ai": "^7.0.107",
     "google-trends-api": "^4.9.2",
     "next": "16.2.2",
     "next-themes": "^0.4.6",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "recharts": "^3.8.1"
+    "recharts": "^3.8.1",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

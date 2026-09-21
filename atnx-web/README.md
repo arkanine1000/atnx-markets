@@ -1,36 +1,87 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# atnx-web
 
-## Getting Started
+The ATNX web app: markets for internet culture, fed by screenshots, links and
+text that people submit. Next.js App Router on Vercel, Supabase for the
+database, auth and storage, and the Vercel AI Gateway for the vision model
+and embeddings.
 
-First, run the development server:
+Read `AGENTS.md` before touching Next.js code. This version has breaking
+changes; the docs that match it are in `node_modules/next/dist/docs/`.
+
+## Run it
 
 ```bash
+npm install
+cp .env.local.example .env.local   # fill in the values
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Environment variables are documented in `.env.local.example`. On Vercel the
+gateway authenticates with OIDC, so `AI_GATEWAY_API_KEY` is only needed
+locally.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Database
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Schema lives in `supabase/` as numbered SQL files, applied by hand in the
+Supabase SQL editor, in order:
 
-## Learn More
+| File | What it does |
+|---|---|
+| `chunk4.sql` | Trigram matcher, `is_admin()`, admin RPCs. Already applied; do not re-run (its index name differs from the live one). |
+| `000_baseline.sql` | Snapshot of the live schema as of 2026-09-20. Idempotent; a no-op on the live project. |
+| `001_dedup_and_embedding.sql` | `captures.content_hash` with a unique index (exact dedup), `markets.embedding vector(512)`, retrieval functions. |
+| `002_taxonomy_and_audit.sql` | `markets.category`, `aliases`, `wikidata_qid`; unique normalised name; `submission_decisions` audit table. Check for duplicate names first (query in the file header). |
+| `003_alias_matching.sql` | Name retrieval also scores each market's aliases. |
 
-To learn more about Next.js, take a look at the following resources:
+After a migration, update `lib/supabase/database.ts` by hand to match. After
+`001`, run `npm run backfill:embeddings` once so markets that predate it get a
+vector; without one, cosine retrieval cannot find them.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## How a submission is handled
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+`lib/capture.ts` is the pipeline. Both `/api/captures` (extension, web
+form) and `/share` (Android share target) call it.
 
-## Deploy on Vercel
+1. Hash the submission (image bytes, normalised URL, or normalised text).
+   A hit in `captures.content_hash` returns the earlier answer with no model
+   call.
+2. Embed the page title and any text (`lib/embed.ts`), retrieve the nearest
+   markets by cosine and by trigram on the name (`lib/retrieve.ts`).
+3. One model call through the gateway with those candidates
+   (`lib/vlm.ts`). Gemini Flash for images, Flash-Lite for text. The output is
+   validated against a schema: admit or reject with a reason, match a shown
+   candidate, or propose a new market with a name, type, category and
+   aliases.
+4. If the model proposed a new market, embed its name and description and
+   check again, name and aliases against names and aliases. A close enough
+   neighbour is linked instead of created. In the band below that, one
+   text-only model call is shown the candidates and decides.
+5. Route (`lib/route.ts`): rejected, matched, linked, created, or created
+   with a review flag when the model's confidence was low. Every decision is
+   written to `submission_decisions`. Low-confidence creates get one
+   background retry with a wider candidate list.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Model ids and link thresholds can be overridden per environment; see
+`.env.local.example`. Thinking is turned off with Gemini's own provider
+option, not the SDK's portable `reasoning` setting, which the gateway
+ignores for Gemini 3.x (measured: 18 s and truncated JSON versus 2.6 s).
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Scripts
+
+| Command | What it does |
+|---|---|
+| `npm run dev` / `build` / `start` / `lint` | The usual. |
+| `npm run eval:capture` | Posts the fixtures in `scripts/fixtures/` through the real route and checks each expected outcome, then resubmits to check dedup. Needs `EVAL_*` variables in `.env.local` and a running server. Run after any change to the pipeline. |
+| `npm run fixtures:render` | Regenerates the fixture images from `scripts/fixtures/manifest.json`. |
+| `npm run backfill:embeddings` | Embeds every live market without a vector. Run once after migration `001` and after any bulk seed. |
+| `npm run seed:trending` | Seeds a fresh database with a hand-curated set of markets. |
+
+## Layout
+
+- `app/` routes. `app/app/` is the signed-in product; `app/app/submit/` is
+  the web entry form; `app/admin/` is the moderation dashboard.
+- `lib/` server code. `capture.ts`, `vlm.ts`, `embed.ts`, `retrieve.ts`,
+  `route.ts`, `store.ts` are the submission path; `signals.ts`, `trends.ts`,
+  `wikipedia.ts` compute the virality index.
+- `components/` shared UI. `supabase/` schema. `scripts/` eval and seeding.
+- `../atnx-extension/` is the Chrome extension that posts to `/api/captures`.

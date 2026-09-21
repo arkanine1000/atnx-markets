@@ -3,6 +3,17 @@
 
 type EmptyRelationships = [];
 
+export type Json = string | number | boolean | null | { [key: string]: Json } | Json[];
+
+export type SubmissionOutcome =
+  | 'rejected'
+  | 'matched'
+  | 'linked'
+  | 'created'
+  | 'created_review'
+  | 'dedup'
+  | 'relinked';
+
 export type Database = {
   __InternalSupabase: {
     PostgrestVersion: '12';
@@ -26,6 +37,12 @@ export type Database = {
           network: 'simulated' | 'devnet' | 'mainnet';
           on_chain_pda: string | null;
           trading_mode: 'sim' | 'live';
+          // pgvector: PostgREST returns the vector as a string, and accepts
+          // a JSON array string ("[0.1,0.2,...]") on insert/update.
+          embedding: string | null;
+          category: string | null;
+          aliases: string[];
+          wikidata_qid: string | null;
           deleted_at: string | null;
           created_at: string;
         };
@@ -45,6 +62,12 @@ export type Database = {
           network?: 'simulated' | 'devnet' | 'mainnet';
           on_chain_pda?: string | null;
           trading_mode?: 'sim' | 'live';
+          // pgvector: PostgREST returns the vector as a string, and accepts
+          // a JSON array string ("[0.1,0.2,...]") on insert/update.
+          embedding?: string | null;
+          category?: string | null;
+          aliases?: string[];
+          wikidata_qid?: string | null;
           deleted_at?: string | null;
           created_at?: string;
         };
@@ -64,6 +87,12 @@ export type Database = {
           network?: 'simulated' | 'devnet' | 'mainnet';
           on_chain_pda?: string | null;
           trading_mode?: 'sim' | 'live';
+          // pgvector: PostgREST returns the vector as a string, and accepts
+          // a JSON array string ("[0.1,0.2,...]") on insert/update.
+          embedding?: string | null;
+          category?: string | null;
+          aliases?: string[];
+          wikidata_qid?: string | null;
           deleted_at?: string | null;
           created_at?: string;
         };
@@ -81,6 +110,7 @@ export type Database = {
           embedding_text: number[] | null;
           embedding_image: number[] | null;
           perceptual_hash: number | null;
+          content_hash: string | null;
           confidence_score: number | null;
           resolution_status: 'pending' | 'resolved' | 'review' | 'new_entity';
           deleted_at: string | null;
@@ -97,6 +127,7 @@ export type Database = {
           embedding_text?: number[] | null;
           embedding_image?: number[] | null;
           perceptual_hash?: number | null;
+          content_hash?: string | null;
           confidence_score?: number | null;
           resolution_status?: 'pending' | 'resolved' | 'review' | 'new_entity';
           deleted_at?: string | null;
@@ -113,6 +144,7 @@ export type Database = {
           embedding_text?: number[] | null;
           embedding_image?: number[] | null;
           perceptual_hash?: number | null;
+          content_hash?: string | null;
           confidence_score?: number | null;
           resolution_status?: 'pending' | 'resolved' | 'review' | 'new_entity';
           deleted_at?: string | null;
@@ -274,6 +306,60 @@ export type Database = {
         };
         Relationships: EmptyRelationships;
       };
+      submission_decisions: {
+        Row: {
+          id: string;
+          capture_id: string | null;
+          user_id: string | null;
+          content_hash: string | null;
+          outcome: SubmissionOutcome;
+          market_id: string | null;
+          candidates: Json;
+          max_cosine: number | null;
+          max_trigram: number | null;
+          model_confidence: string | null;
+          reject_reason: string | null;
+          model: string | null;
+          latency_ms: number | null;
+          model_response: Json | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          capture_id?: string | null;
+          user_id?: string | null;
+          content_hash?: string | null;
+          outcome: SubmissionOutcome;
+          market_id?: string | null;
+          candidates?: Json;
+          max_cosine?: number | null;
+          max_trigram?: number | null;
+          model_confidence?: string | null;
+          reject_reason?: string | null;
+          model?: string | null;
+          latency_ms?: number | null;
+          model_response?: Json | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          capture_id?: string | null;
+          user_id?: string | null;
+          content_hash?: string | null;
+          outcome?: SubmissionOutcome;
+          market_id?: string | null;
+          candidates?: Json;
+          max_cosine?: number | null;
+          max_trigram?: number | null;
+          model_confidence?: string | null;
+          reject_reason?: string | null;
+          model?: string | null;
+          latency_ms?: number | null;
+          model_response?: Json | null;
+          created_at?: string;
+        };
+        Relationships: EmptyRelationships;
+      };
       moderation_log: {
         Row: {
           id: string;
@@ -313,6 +399,24 @@ export type Database = {
       find_similar_market: {
         Args: { query_name: string; threshold?: number };
         Returns: { id: string; entity_name: string; similarity: number }[];
+      };
+      match_markets_by_embedding: {
+        Args: { query_embedding: string; match_count?: number };
+        Returns: {
+          id: string;
+          entity_name: string;
+          entity_type: string | null;
+          similarity: number;
+        }[];
+      };
+      match_markets_by_name: {
+        Args: { query_name: string; match_count?: number; min_similarity?: number };
+        Returns: {
+          id: string;
+          entity_name: string;
+          entity_type: string | null;
+          similarity: number;
+        }[];
       };
       is_admin: {
         Args: Record<string, never>;

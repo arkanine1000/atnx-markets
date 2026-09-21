@@ -4,25 +4,23 @@
 // shouldn't be dragged down just because Google Trends is quiet for that term.
 import { fetchTrendsData, type TrendsResult } from './trends';
 import { fetchWikipediaSignal, type WikipediaResult } from './wikipedia';
-import { llmBaselineScore, type BaselineAnalysis } from './llm-baseline';
 
 export interface SignalInput {
   term: string;
-  analysis?: BaselineAnalysis | null;
 }
 
 export interface SignalResult {
   score: number;
   trends: TrendsResult | null;
   wikipedia: WikipediaResult | null;
-  baselineScore: number;
-  source: 'trends' | 'wikipedia' | 'baseline' | 'none';
+  source: 'trends' | 'wikipedia' | 'none';
 }
 
-export async function composeVi({
-  term,
-  analysis,
-}: SignalInput): Promise<SignalResult> {
+// The third source, a score read off the screenshot by the vision model
+// (view counts, platform list, a free-text "virality" judgement), was
+// removed: it let the same screenshot move the price on every resubmit and
+// had no external referent. Only measured attention counts now.
+export async function composeVi({ term }: SignalInput): Promise<SignalResult> {
   const runTrends = term.length > 1
     ? fetchTrendsData(term).catch(() => null)
     : Promise.resolve(null);
@@ -31,20 +29,13 @@ export async function composeVi({
     : Promise.resolve(null);
 
   const [trends, wikipedia] = await Promise.all([runTrends, runWiki]);
-  const baselineScore = llmBaselineScore(analysis ?? null);
 
   const trendsScore = trends?.viralityScore ?? 0;
   const wikiScore = wikipedia?.score ?? 0;
 
-  const score = Math.max(trendsScore, wikiScore, baselineScore);
+  const score = Math.max(trendsScore, wikiScore);
   const source: SignalResult['source'] =
-    score === 0
-      ? 'none'
-      : score === trendsScore
-        ? 'trends'
-        : score === wikiScore
-          ? 'wikipedia'
-          : 'baseline';
+    score === 0 ? 'none' : score === trendsScore ? 'trends' : 'wikipedia';
 
-  return { score, trends, wikipedia, baselineScore, source };
+  return { score, trends, wikipedia, source };
 }

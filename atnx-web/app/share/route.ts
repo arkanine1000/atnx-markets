@@ -1,8 +1,8 @@
-import { NextResponse } from 'next/server';
+import { after, NextResponse } from 'next/server';
 import { processCapture, toMediaType } from '@/lib/capture';
 import { fetchImageFromUrl, OgFetchError } from '@/lib/og';
 import { createClient } from '@/lib/supabase/server';
-import type { VisionMediaType } from '@/lib/claude-vision';
+import type { VisionMediaType } from '@/lib/vlm';
 
 // Android share target. The manifest registers /share with method=POST and
 // enctype=multipart/form-data; picking ATNX from the share sheet POSTs
@@ -14,7 +14,8 @@ import type { VisionMediaType } from '@/lib/claude-vision';
 //   2. Link share (Twitter, TikTok, IG, YouTube, etc): only `url`/`text`
 //      present — we scrape og:image and feed that through the same pipeline.
 
-export const maxDuration = 30;
+// Bounds the model call plus, when scheduled, the after() retry.
+export const maxDuration = 60;
 
 function firstUrl(text: string | null | undefined): string | undefined {
   if (!text) return undefined;
@@ -110,6 +111,8 @@ export async function POST(request: Request) {
       supabase,
       userId: user.id,
     });
+
+    if (result.retry) after(result.retry);
 
     const target = result.marketId
       ? new URL(`/app/markets/${result.marketId}`, request.url)

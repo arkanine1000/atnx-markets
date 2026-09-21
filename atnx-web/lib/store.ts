@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createAdminClient } from './supabase/admin';
-import { normalizeSearchTerm, type TrendsResult } from './trends';
+import type { TrendsResult } from './trends';
 import type { Database } from './supabase/database';
 
 type DbClient = SupabaseClient<Database>;
@@ -62,71 +62,98 @@ function base64ToBuffer(screenshot: string): Buffer {
   return Buffer.from(raw, 'base64');
 }
 
+const EXT_BY_TYPE: Record<string, string> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/webp': 'webp',
+  'image/gif': 'gif',
+};
+
+// Shown in place of a screenshot for text-only submissions, so every
+// component that renders capture.screenshot keeps working unchanged.
+export const TEXT_PLACEHOLDER_IMAGE =
+  'data:image/svg+xml;utf8,' +
+  encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="240"><rect width="320" height="240" fill="#0b0b0f"/><text x="160" y="128" text-anchor="middle" font-family="sans-serif" font-size="22" fill="#5b5f6b">TEXT</text></svg>'
+  );
+
 async function uploadScreenshot(
   client: DbClient,
   screenshot: string,
-  folder: string
+  folder: string,
+  contentType: string
 ): Promise<string> {
-  const fileName = `${folder}/${crypto.randomUUID()}.png`;
+  const ext = EXT_BY_TYPE[contentType] ?? 'png';
+  const fileName = `${folder}/${crypto.randomUUID()}.${ext}`;
   const buffer = base64ToBuffer(screenshot);
 
   const { error } = await client.storage
     .from(STORAGE_BUCKET)
-    .upload(fileName, buffer, { contentType: 'image/png', upsert: false });
+    .upload(fileName, buffer, { contentType, upsert: false });
   if (error) throw error;
 
   const { data } = client.storage.from(STORAGE_BUCKET).getPublicUrl(fileName);
   return data.publicUrl;
 }
 
-// Trigram similarity threshold: anything above is considered the same entity.
-// Above HIGH_CONFIDENCE we auto-resolve; in between the capture is flagged for
-// admin review but still attached to the matched market.
-const TRIGRAM_THRESHOLD = 0.85;
-const HIGH_CONFIDENCE = 0.95;
+const MARKET_COLUMNS = 'id, entity_name, entity_type, current_vi, vi_last_updated, total_captures';
 
-interface MarketResolution {
-  market: MarketRow;
-  similarity: number | null; // null when a brand-new market was created
+export async function getMarketById(id: string): Promise<MarketRow | null> {
+  const { data, error } = await createAdminClient()
+    .from('markets')
+    .select(MARKET_COLUMNS)
+    .eq('id', id)
+    .is('deleted_at', null)
+    .maybeSingle();
+  if (error) throw error;
+  return (data as MarketRow | null) ?? null;
 }
 
-async function resolveOrCreateMarket(
-  entityName: string,
-  entityType: string | null
-): Promise<MarketResolution> {
-  const supabase = createAdminClient();
-  const normalized = entityName.toLowerCase().trim();
+export interface CreateMarketInput {
+  name: string;
+  entityType: string | null;
+  category: string | null;
+  aliases: string[];
+  embedding: string | null; // pgvector string
+}
 
-  const { data: matches, error: matchErr } = await supabase.rpc(
-    'find_similar_market',
-    { query_name: normalized, threshold: TRIGRAM_THRESHOLD }
-  );
-  if (matchErr) throw matchErr;
+export interface CreateMarketResult {
+  market: MarketRow;
+  created: boolean; // false when a live market with this name already existed
+}
 
-  const top = matches?.[0];
-  if (top) {
-    const { data: existing, error: fetchErr } = await supabase
-      .from('markets')
-      .select('id, entity_name, entity_type, current_vi, vi_last_updated, total_captures')
-      .eq('id', top.id)
-      .maybeSingle();
-    if (fetchErr) throw fetchErr;
-    if (existing) {
-      return { market: existing as MarketRow, similarity: top.similarity };
-    }
-  }
+// Inserts a market. The unique index on entity_name_normalized (live rows)
+// turns a concurrent duplicate into a 23505, in which case the existing row
+// is returned instead. This is what closes the concurrent-creation race.
+export async function createMarket(input: CreateMarketInput): Promise<CreateMarketResult> {
+  const admin = createAdminClient();
+  const normalized = input.name.toLowerCase().trim().replace(/\s+/g, ' ');
 
-  const { data: created, error: insertErr } = await supabase
+  const { data, error } = await admin
     .from('markets')
     .insert({
-      entity_name: entityName,
+      entity_name: input.name,
       entity_name_normalized: normalized,
-      entity_type: entityType,
+      entity_type: input.entityType,
+      category: input.category,
+      aliases: input.aliases,
+      embedding: input.embedding,
     })
-    .select('id, entity_name, entity_type, current_vi, vi_last_updated, total_captures')
+    .select(MARKET_COLUMNS)
     .single();
-  if (insertErr) throw insertErr;
-  return { market: created as MarketRow, similarity: null };
+
+  if (!error) return { market: data as MarketRow, created: true };
+  if (error.code !== '23505') throw error;
+
+  const { data: existing, error: selErr } = await admin
+    .from('markets')
+    .select(MARKET_COLUMNS)
+    .eq('entity_name_normalized', normalized)
+    .is('deleted_at', null)
+    .maybeSingle();
+  if (selErr) throw selErr;
+  if (!existing) throw error;
+  return { market: existing as MarketRow, created: false };
 }
 
 export async function recordVi(marketId: string, vi: number, dataPoints: TrendsResult['dataPoints']) {
@@ -215,26 +242,47 @@ export interface AddCaptureResult {
   isNew: boolean;
 }
 
+export interface AddCaptureOptions {
+  // Market decided by lib/route.ts (matched, linked, or just created).
+  marketId: string;
+  // Similarity evidence for the chosen market, stored as confidence_score.
+  // Null when the market was created for this capture.
+  similarity: number | null;
+  // Flag for the admin review queue. Nothing waits on it.
+  review: boolean;
+  // SHA-256 of the submission; the unique partial index on it enforces
+  // exact dedup.
+  contentHash: string | null;
+  // Real content type of the screenshot, stored as-is. Null for text-only.
+  mediaType?: string | null;
+}
+
+export class DuplicateCaptureError extends Error {
+  constructor(readonly contentHash: string) {
+    super('duplicate capture');
+    this.name = 'DuplicateCaptureError';
+  }
+}
+
 export async function addCapture(
   input: Capture,
   sessionClient: DbClient,
-  userId: string
+  userId: string,
+  opts: AddCaptureOptions
 ): Promise<AddCaptureResult> {
   const admin = createAdminClient();
 
-  const entityName = input.analysis?.name || normalizeSearchTerm(input.analysis) || 'Unknown';
-  const entityType = input.analysis?.type ?? null;
+  // Upload under the user's folder so storage RLS ({user_id}/*) passes.
+  // Text-only submissions have no image.
+  const image_url = input.screenshot
+    ? await uploadScreenshot(sessionClient, input.screenshot, userId, opts.mediaType ?? 'image/png')
+    : null;
 
-  // Upload under the user's folder so storage RLS ({user_id}/*.png) passes,
-  // then resolve/create the shared market row via admin (bypasses RLS).
-  const image_url = await uploadScreenshot(sessionClient, input.screenshot, userId);
-  const { market, similarity } = await resolveOrCreateMarket(entityName, entityType);
+  const market = await getMarketById(opts.marketId);
+  if (!market) throw new Error(`market ${opts.marketId} not found`);
+  const similarity = opts.similarity;
   const isNew = similarity === null;
-
-  // Brand-new markets (isNew) are resolved by definition; otherwise route
-  // anything under HIGH_CONFIDENCE to the admin review queue.
-  const resolutionStatus: 'resolved' | 'review' =
-    isNew || similarity! >= HIGH_CONFIDENCE ? 'resolved' : 'review';
+  const resolutionStatus: 'resolved' | 'review' = opts.review ? 'review' : 'resolved';
 
   const rawAiResponse: Record<string, unknown> = {
     ...input.analysis,
@@ -257,10 +305,26 @@ export async function addCapture(
       raw_ai_response: rawAiResponse,
       confidence_score: similarity,
       resolution_status: resolutionStatus,
+      content_hash: opts.contentHash ?? null,
     })
     .select('id, created_at')
     .single();
-  if (error) throw error;
+  if (error) {
+    // Unique violation on content_hash: a concurrent submission of the same
+    // bytes won the race. Undo the market this call may have created and let
+    // the pipeline return the winner's result.
+    if (error.code === '23505' && opts.contentHash) {
+      if (isNew) {
+        await admin
+          .from('markets')
+          .update({ deleted_at: new Date().toISOString() })
+          .eq('id', market.id)
+          .eq('total_captures', 0);
+      }
+      throw new DuplicateCaptureError(opts.contentHash);
+    }
+    throw error;
+  }
 
   const vi = input.viralityScore;
   const seedPoints = input.trends?.dataPoints ?? [];
@@ -277,7 +341,7 @@ export async function addCapture(
       id: captureRow.id as string,
       marketId: market.id,
       timestamp: captureRow.created_at as string,
-      screenshot: image_url,
+      screenshot: image_url ?? TEXT_PLACEHOLDER_IMAGE,
       viralityScore: vi,
     },
     isNew,
@@ -303,7 +367,7 @@ function rowToCapture(
     timestamp: meta?.captured_at ?? row.created_at,
     pageUrl: row.source_url ?? '',
     pageTitle: meta?.page_title ?? '',
-    screenshot: row.image_url ?? '',
+    screenshot: row.image_url ?? TEXT_PLACEHOLDER_IMAGE,
     analysis: cleanedAnalysis,
     trends,
     viralityScore: Math.round(market?.current_vi ?? 0),

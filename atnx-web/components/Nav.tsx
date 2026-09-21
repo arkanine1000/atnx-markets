@@ -24,6 +24,11 @@ const LINKS = [
     match: (p: string) => p === "/app" || p.startsWith("/app/markets"),
   },
   {
+    href: "/app/submit",
+    label: "Submit",
+    match: (p: string) => p === "/app/submit",
+  },
+  {
     href: "/app/portfolio",
     label: "Portfolio",
     match: (p: string) => p === "/app/portfolio",

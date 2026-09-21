@@ -1,5 +1,5 @@
 import { toMediaType } from './capture';
-import type { VisionMediaType } from './claude-vision';
+import type { VisionMediaType } from './vlm';
 
 // Max bytes we're willing to pull down. The HTML cap is generous because
 // Twitter/TikTok ship bloated pages; the image cap matches Claude's 5MB limit.

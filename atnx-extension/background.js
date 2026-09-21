@@ -3,7 +3,11 @@ const DEFAULT_WEB_APP_URL = 'https://atnx.app';
 // Longest edge (in device pixels) of the uploaded crop. Vision models
 // downsample anything larger anyway, and Vercel rejects request bodies over
 // 4.5 MB — a full-width retina PNG crop can blow straight past that.
-const MAX_UPLOAD_EDGE = 2000;
+// Long-edge cap for uploads. 1080 px is plenty for the vision model and
+// keeps the JPEG well under a megabyte.
+const MAX_UPLOAD_EDGE = 1080;
+const UPLOAD_MIME = 'image/jpeg';
+const UPLOAD_QUALITY = 0.85;
 
 const BADGE = {
   capturing: { text: '…', color: '#FF00E5' },
@@ -118,12 +122,12 @@ async function handleCapture(msg, tab) {
     updateStatus('analyzing');
     notifyTab(tab, 'analyzing');
 
-    // 3. POST the image to the web app. The server runs Claude vision and
+    // 3. POST the image to the web app. The server runs the vision model and
     //    persists the capture. `credentials: 'include'` attaches the Supabase
     //    auth cookie so the handler can attribute the capture to the user.
     const webAppUrl = await getWebAppUrl();
     const form = new FormData();
-    form.append('image', blob, 'capture.png');
+    form.append('image', blob, 'capture.jpg');
     form.append('sourceUrl', msg.pageUrl || '');
     form.append('pageTitle', msg.pageTitle || '');
 
@@ -202,7 +206,7 @@ async function cropScreenshot(dataUrl, rect) {
   canvas.getContext('2d').drawImage(bitmap, 0, 0);
   bitmap.close();
 
-  return canvas.convertToBlob({ type: 'image/png' });
+  return canvas.convertToBlob({ type: UPLOAD_MIME, quality: UPLOAD_QUALITY });
 }
 
 // Status is written to storage (the popup subscribes via storage.onChanged)
