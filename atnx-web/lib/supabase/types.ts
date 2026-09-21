@@ -26,9 +26,6 @@ export type Capture = {
   ocr_text: string | null;
   source_url: string | null;
   raw_ai_response: Record<string, unknown> | null;
-  embedding_text: number[] | null;
-  embedding_image: number[] | null;
-  perceptual_hash: number | null;
   confidence_score: number | null;
   resolution_status: 'pending' | 'resolved' | 'review' | 'new_entity';
   deleted_at: string | null;
