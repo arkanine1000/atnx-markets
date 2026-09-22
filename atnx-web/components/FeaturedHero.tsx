@@ -211,7 +211,9 @@ function Showcase({ items }: { items: Capture[] }) {
             a blurred copy of itself, so nothing gets cropped. */}
         <Link
           href={`/app/markets/${c.marketId}`}
-          className="relative block aspect-[4/3] sm:aspect-auto sm:min-h-[320px] lg:min-h-0 bg-black overflow-hidden"
+          // Wider than tall on phones so the name and score sit within
+          // the first screen instead of a scroll below the image.
+          className="relative block aspect-[16/10] sm:aspect-auto sm:min-h-[320px] lg:min-h-0 bg-black overflow-hidden"
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img

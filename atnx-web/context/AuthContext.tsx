@@ -22,6 +22,21 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
+const AFTER_LOGIN_KEY = "atnx:after-login";
+
+function afterLoginPath(): string | null {
+  let value: string | null = null;
+  try {
+    value = window.sessionStorage.getItem(AFTER_LOGIN_KEY);
+    if (value) window.sessionStorage.removeItem(AFTER_LOGIN_KEY);
+  } catch {
+    /* private mode */
+  }
+  if (!value) value = new URLSearchParams(window.location.search).get("redirect");
+  if (!value || !value.startsWith("/") || value.startsWith("//") || /[@\\]/.test(value)) return null;
+  return value;
+}
+
 export function useAuth() {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error("useAuth must be used within AuthProvider");
@@ -62,10 +77,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signInWithGoogle = useCallback(async () => {
     const supabase = createClient();
+    // Where to land after the OAuth round-trip: a page that asked to be
+    // returned to (the share replay stores it in sessionStorage; links to
+    // "/" carry it as ?redirect=), else the app home. The callback only
+    // accepts a path on this site.
+    const after = afterLoginPath();
+    const callback = new URL("/auth/callback", window.location.origin);
+    if (after) callback.searchParams.set("redirect", after);
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
+        redirectTo: callback.toString(),
       },
     });
     if (error) {

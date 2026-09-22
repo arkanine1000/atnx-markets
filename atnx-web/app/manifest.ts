@@ -34,6 +34,23 @@ export default function manifest(): MetadataRoute.Manifest {
         purpose: 'maskable',
       },
     ],
+    // Long-press on the home-screen icon.
+    shortcuts: [
+      {
+        name: 'Create a market',
+        short_name: 'Create',
+        description: 'Capture a screenshot, a link, or a line of text',
+        url: '/app/submit',
+        icons: [{ src: '/app_icon.png', sizes: '192x192', type: 'image/png' }],
+      },
+      {
+        name: 'Portfolio',
+        short_name: 'Portfolio',
+        description: 'Balance, open positions and PnL',
+        url: '/app/portfolio',
+        icons: [{ src: '/app_icon.png', sizes: '192x192', type: 'image/png' }],
+      },
+    ],
     // Android share target: tapping "Share" on an image in any app and
     // picking ATNX POSTs the image + optional text to /share, which runs
     // the same pipeline as /api/captures and redirects to the new market.

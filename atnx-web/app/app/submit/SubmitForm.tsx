@@ -144,6 +144,8 @@ export function SubmitForm({ initialUrl = "", initialText = "", notice = "" }: S
   const [result, setResult] = useState<Result | null>(null);
   const [noticeDismissed, setNoticeDismissed] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Second picker that opens the camera directly on phones.
+  const cameraRef = useRef<HTMLInputElement>(null);
   const showNotice = Boolean(notice) && !noticeDismissed && !result;
 
   useEffect(() => {
@@ -266,6 +268,14 @@ export function SubmitForm({ initialUrl = "", initialText = "", notice = "" }: S
           className="hidden"
           onChange={(e) => takeFile(e.target.files?.[0])}
         />
+        <input
+          ref={cameraRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={(e) => takeFile(e.target.files?.[0])}
+        />
         {preview ? (
           <div className="flex items-center gap-4 text-left">
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -299,6 +309,26 @@ export function SubmitForm({ initialUrl = "", initialText = "", notice = "" }: S
             <div className="text-xs text-tertiary mt-1">
               or tap to choose, or paste an image anywhere on this page
             </div>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                cameraRef.current?.click();
+              }}
+              className="sm:hidden mt-3 inline-flex items-center gap-1.5 rounded-full border border-surface bg-elevated px-3 py-1.5 text-xs font-bold text-secondary hover:text-primary cursor-pointer"
+            >
+              <svg viewBox="0 0 24 24" width={14} height={14} aria-hidden="true">
+                <path
+                  d="M4 8a2 2 0 0 1 2-2h2l1.5-2h5L16 6h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8z"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                  strokeLinejoin="round"
+                />
+                <circle cx="12" cy="12.5" r="3.5" fill="none" stroke="currentColor" strokeWidth={2} />
+              </svg>
+              Take a photo
+            </button>
           </>
         )}
       </div>

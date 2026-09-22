@@ -75,6 +75,16 @@ export function UserMenu() {
           className="absolute right-0 mt-1 w-44 bg-elevated border border-surface rounded-md shadow-lg z-50 py-1"
           role="menu"
         >
+          {/* Portfolio is not in the phone bottom bar; the account menu is
+              where it lives there. Listed on desktop too, so the menu is
+              the same everywhere. */}
+          <Link
+            href="/app/portfolio"
+            onClick={() => setOpen(false)}
+            className="block px-3 py-2 text-xs text-primary hover:bg-surface transition-colors"
+          >
+            Portfolio
+          </Link>
           <Link
             href="/app/settings"
             onClick={() => setOpen(false)}

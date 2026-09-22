@@ -50,7 +50,8 @@ export function InstallPrompt() {
   };
 
   return (
-    <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 max-w-sm w-[calc(100%-2rem)] rounded-lg border border-dark-border bg-dark-surface p-3 shadow-lg flex items-center gap-3">
+    // Sits above the phone bottom bar; back to the bottom edge on wider screens.
+    <div className="fixed bottom-20 sm:bottom-4 left-1/2 z-50 -translate-x-1/2 max-w-sm w-[calc(100%-2rem)] rounded-lg border border-dark-border bg-dark-surface p-3 shadow-lg flex items-center gap-3">
       <span className="text-sm flex-1">Install ATNX for quick capture from your phone.</span>
       <button
         onClick={install}

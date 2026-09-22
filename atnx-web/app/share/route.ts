@@ -72,10 +72,26 @@ function hostLabel(url: string): string {
   }
 }
 
-function redirectTo(request: Request, path: string, params: Record<string, string | undefined>) {
+// The service worker uploads on the user's behalf (public/sw.js) and asks
+// for JSON: it cannot read the Location of a redirect, so it gets the
+// path to move the window to instead. The share sheet's own POST, when no
+// worker is in control yet, still gets the 303.
+function wantsJson(request: Request): boolean {
+  return (request.headers.get('accept') ?? '').includes('application/json');
+}
+
+function redirectTo(
+  request: Request,
+  path: string,
+  params: Record<string, string | undefined>,
+  extra: Record<string, unknown> = {}
+) {
   const url = new URL(path, request.url);
   for (const [k, v] of Object.entries(params)) {
     if (v) url.searchParams.set(k, v);
+  }
+  if (wantsJson(request)) {
+    return Response.json({ redirect: url.pathname + url.search, ...extra });
   }
   return NextResponse.redirect(url, 303);
 }
@@ -97,13 +113,12 @@ function submitRedirect(
   });
 }
 
+// `shared` carries the outcome so the market page can say what happened
+// (new market, linked to an existing one, seen before).
 function marketRedirect(request: Request, result: ProcessCaptureResult) {
   if (result.background) after(result.background);
-  const target = result.marketId
-    ? new URL(`/app/markets/${result.marketId}`, request.url)
-    : new URL('/app', request.url);
-  target.searchParams.set('shared', '1');
-  return NextResponse.redirect(target, 303);
+  const path = result.marketId ? `/app/markets/${result.marketId}` : '/app';
+  return redirectTo(request, path, { shared: result.outcome });
 }
 
 // The first non-empty file in the form. Chrome names it `image` per the
@@ -124,12 +139,15 @@ export async function POST(request: Request) {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    // Multipart bodies are lost across a redirect, so we can't preserve the
-    // capture through a sign-in round-trip. Send them home with a nudge.
-    const url = new URL('/', request.url);
-    url.searchParams.set('redirect', '/app');
-    url.searchParams.set('shareError', 'Sign in to capture shared content.');
-    return NextResponse.redirect(url, 303);
+    // Multipart bodies are lost across a redirect. The service worker,
+    // told `signIn`, parks the capture and replays it after sign-in; a
+    // bare POST with no worker in control is sent home with a nudge.
+    return redirectTo(
+      request,
+      '/',
+      { redirect: '/app', shareError: 'Sign in to capture shared content.' },
+      { signIn: true }
+    );
   }
 
   let form: FormData;

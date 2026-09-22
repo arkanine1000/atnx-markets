@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { DemoToast, getTrendIndicator } from "@/components/Trading";
+import { ShareButton } from "@/components/ShareButton";
 import {
   ViChart,
   RANGES,
@@ -26,6 +28,42 @@ interface Props {
 }
 
 type Tab = "pulse" | "activity" | "overview";
+
+// After a share-sheet capture the route lands here with ?shared=<outcome>.
+// One toast says what happened, then the flag comes off the URL so a
+// reload or a back-navigation does not repeat it.
+const SHARED_MESSAGE: Record<string, string> = {
+  created: "New market created",
+  created_review: "New market created, flagged for a second look",
+  linked: "Linked to an existing market",
+  matched: "Linked to an existing market",
+  dedup: "Already captured before, same answer",
+};
+
+function SharedNotice({ name }: { name: string }) {
+  const searchParams = useSearchParams();
+  const outcome = searchParams.get("shared");
+  const [message, setMessage] = useState<string | null>(() =>
+    outcome ? (SHARED_MESSAGE[outcome] ?? "Captured") : null,
+  );
+
+  useEffect(() => {
+    if (!outcome) return;
+    const url = new URL(window.location.href);
+    url.searchParams.delete("shared");
+    window.history.replaceState(window.history.state, "", url.toString());
+  }, [outcome]);
+
+  if (!message) return null;
+  return (
+    <DemoToast
+      message="Captured"
+      detail={`${message} · ${name}`}
+      type="long"
+      onDismiss={() => setMessage(null)}
+    />
+  );
+}
 
 export function MarketDetailClient({
   market,
@@ -81,12 +119,23 @@ export function MarketDetailClient({
 
   return (
     <div>
-      <Link
-        href="/app"
-        className="inline-flex items-center gap-1.5 text-xs text-secondary hover:text-atnx-cyan transition-colors mb-4"
-      >
-        <span aria-hidden="true">{"←"}</span> Markets
-      </Link>
+      <Suspense fallback={null}>
+        <SharedNotice name={name} />
+      </Suspense>
+
+      <div className="flex items-center justify-between gap-3 mb-4">
+        <Link
+          href="/app"
+          className="inline-flex items-center gap-1.5 text-xs text-secondary hover:text-atnx-cyan transition-colors"
+        >
+          <span aria-hidden="true">{"←"}</span> Markets
+        </Link>
+        <ShareButton
+          title={`${name} on ATNX`}
+          text={`${name} · Virality Index ${viralityScore}`}
+          path={`/app/markets/${market.id}`}
+        />
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_340px] gap-4 lg:gap-6 items-start">
         {/* ------------------------------------------------ main column */}

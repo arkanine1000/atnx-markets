@@ -262,7 +262,9 @@ export function HowItWorksModal({ onClose }: { onClose: () => void }) {
         aria-modal="true"
         aria-labelledby="hiw-title"
         onClick={(e) => e.stopPropagation()}
-        className="w-full sm:max-w-xl bg-surface border border-surface rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden animate-slide-up"
+        // Capped to the small viewport height and scrollable inside, so a
+        // short phone (or landscape) never loses the footer buttons.
+        className="w-full sm:max-w-xl max-h-[100svh] sm:max-h-[calc(100svh-2rem)] overflow-y-auto bg-surface border border-surface rounded-t-2xl sm:rounded-2xl shadow-2xl animate-slide-up pb-[env(safe-area-inset-bottom)]"
       >
         {/* header */}
         <div className="flex items-center justify-between px-5 pt-4 pb-3">

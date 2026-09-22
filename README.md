@@ -59,10 +59,11 @@ How a submission is decided, stage by stage, is in [`atnx-web/README.md`](atnx-w
 | `/app` | ✅ | Dashboard — every market as a card, sorted by VI / newest / category, refreshes every 30s |
 | `/app/markets/[id]` | ✅ | Market detail — hero card, 7-day VI sparkline, evidence strip of all captures, Trade button |
 | `/app/submit` | ❌ | Web entry: drop or paste a screenshot, or give a link or a line of text; shows which market it landed on |
-| `/app/portfolio` | ❌ | Open + closed positions, realized PnL, sim balance |
+| `/app/portfolio` | ❌ | Open + closed positions, realized PnL, sim balance. On phones it is laid out like the extension's side panel: a value tile with a range sparkline from `/api/portfolio`, then a collapsible Balance / Unrealized / Open card whose rows expand to close a position |
+| `/app/share/resume` | ❌ | Second half of a share that arrived signed out: the service worker parks the capture in the Cache API and sends the window here; after sign-in the page replays it through `/share` |
 | `/app/settings` | ❌ | Profile management (handle, email) |
 | `/admin` | admins only | Moderation: markets, captures in review (low-confidence creates), audit log |
-| `/share` | ❌ | Android share-target POST (image, link, or text) → same pipeline → redirect to the market. The service worker (`public/sw.js`) rewrites a shared screenshot to a 1080 px JPEG on the way in, since raw phone screenshots exceed Vercel's 4.5 MB body limit. A link whose site blocks previews (Facebook, Instagram, TikTok) is tried from its caption, and failing that lands on `/app/submit` prefilled so one screenshot finishes it |
+| `/share` | ❌ | Android share-target POST (image, link, or text) → same pipeline → redirect to the market with `?shared=<outcome>`, which the market page turns into a toast. The service worker (`public/sw.js`) takes the POST over: it answers at once with a "Capturing…" page, shrinks a screenshot to a 1080 px JPEG (raw phone screenshots exceed Vercel's 4.5 MB body limit), uploads with `Accept: application/json` to get the target path back, and moves the window there. A link whose site blocks previews (Facebook, Instagram, TikTok) is tried from its caption, and failing that lands on `/app/submit` prefilled so one screenshot finishes it |
 | `/auth/callback` | — | OAuth return path; exchanges code → session, ensures `user_profiles` / `sim_balances` rows |
 
 ### API
@@ -95,7 +96,9 @@ How a submission is decided, stage by stage, is in [`atnx-web/README.md`](atnx-w
 - **`AuthContext`** — `user`, `loading`, `openLoginModal`, `signInWithGoogle`. Subscribes to `onAuthStateChange` and auto-closes the modal when a session appears.
 - **`DemoContext`** — `positions`, `balance`, `openPosition`, `closePosition`. Refreshes when auth state flips.
 - **`LoginModal`** — Google-only right now. Backdrop-blurred. Escape-to-close.
-- **`Nav`** — Logo + ATNX wordmark, UserMenu, theme toggle on the far right.
+- **`Nav`** — Logo + ATNX wordmark, UserMenu, theme toggle on the far right. From `sm` up the four tabs sit in a pill in the header; on phones they become a fixed bottom bar (Markets, a round + for Create, Leaderboard) and Portfolio moves into the UserMenu.
+- **`PortfolioMobile`**, **`charts/PortfolioSparkline`** — The phone portfolio: value tile, range tabs, positions card, fed by `/api/portfolio`.
+- **`ShareButton`** — Native share sheet on phones (`navigator.share`), clipboard elsewhere; on every market page.
 - **`Trading/*`** — `TradeModal`, `ClosePositionModal`, `TrendSparkline` (entry marker), `DemoToast`, `getTrendIndicator`.
 - **`ThemeToggle`** — `next-themes`, class-based dark/light.
 

@@ -9,6 +9,7 @@ import {
 } from "@/context/DemoContext";
 import { useAuth } from "@/context/AuthContext";
 import { ClosePositionModal, DemoToast } from "@/components/Trading";
+import { PortfolioMobile } from "@/components/PortfolioMobile";
 import { Card, Chip, DeltaChip, EmptyState, StatTile } from "@/components/ui";
 import { timeAgo } from "@/lib/capture-view";
 
@@ -122,6 +123,13 @@ export default function PortfolioPage() {
     },
     [closePosition],
   );
+  const handleCloseById = useCallback(
+    async (id: string) => {
+      const closed = await closePosition(id);
+      if (closed) setClosingPosition(closed);
+    },
+    [closePosition],
+  );
 
   const handleCloseModalDismiss = useCallback(() => {
     if (closingPosition) {
@@ -176,7 +184,15 @@ export default function PortfolioPage() {
         <p className="text-xs text-tertiary mt-1">Simulated USDC account</p>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
+      {/* Phones: the side-panel layout (value tile, collapsible card). */}
+      <div className="md:hidden">
+        <PortfolioMobile
+          onClosePosition={handleCloseById}
+          refreshKey={positions.map((p) => p.id).join(",")}
+        />
+      </div>
+
+      <div className="hidden md:grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
         <StatTile
           label="Equity"
           value={`$${equity.toFixed(2)}`}
@@ -204,26 +220,28 @@ export default function PortfolioPage() {
         />
       </div>
 
-      {positions.length === 0 ? (
-        <EmptyState
-          title="No open positions"
-          body="Pick a market and take a side. Long if you think attention is heading up, short if it's fading."
-          action={
-            <Link
-              href="/app"
-              className="inline-block text-xs px-5 py-2.5 rounded-full bg-atnx-magenta text-white font-bold hover:bg-atnx-magenta-dim transition-colors"
-            >
-              Browse markets
-            </Link>
-          }
-        />
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {positions.map((pos) => (
-            <PositionCard key={pos.id} position={pos} onClose={handleClose} />
-          ))}
-        </div>
-      )}
+      <div className="hidden md:block">
+        {positions.length === 0 ? (
+          <EmptyState
+            title="No open positions"
+            body="Pick a market and take a side. Long if you think attention is heading up, short if it's fading."
+            action={
+              <Link
+                href="/app"
+                className="inline-block text-xs px-5 py-2.5 rounded-full bg-atnx-magenta text-white font-bold hover:bg-atnx-magenta-dim transition-colors"
+              >
+                Browse markets
+              </Link>
+            }
+          />
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {positions.map((pos) => (
+              <PositionCard key={pos.id} position={pos} onClose={handleClose} />
+            ))}
+          </div>
+        )}
+      </div>
 
       {closingPosition && (
         <ClosePositionModal

@@ -7,7 +7,8 @@ import { Nav } from "@/components/Nav";
 // keeps it in place across navigations; only the page below swaps.
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="max-w-6xl mx-auto px-4 pb-12 w-full">
+    // Extra bottom padding on phones clears the fixed bottom bar.
+    <div className="max-w-6xl mx-auto px-4 pb-24 sm:pb-12 w-full">
       <Nav />
       {children}
     </div>
