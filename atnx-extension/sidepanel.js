@@ -3,6 +3,9 @@
 // default skips the redirect.
 const DEFAULT_WEB_APP_URL = 'https://www.atnx.app';
 const STALE_STATUS_MS = 10_000;
+// A capture still "busy" after this long means the worker died mid-flight
+// (the upload itself gives up at 75 s); show the button again.
+const BUSY_STALE_MS = 90_000;
 const REFRESH_MS = 30_000;
 // After the user clicks "Sign in" we poll faster for a few minutes so the
 // panel flips to signed-in as soon as the web app tab finishes.
@@ -218,11 +221,18 @@ captureBtn.addEventListener('click', async () => {
 const BUSY = { capturing: 'CAPTURING…', analyzing: 'ANALYZING…' };
 
 let lastStatus = 'ready';
+let busyTimer = null;
 
 function renderStatus({ captureStatus = 'ready', captureStatusAt = 0 }) {
   let status = captureStatus;
-  if ((status === 'done' || status === 'error') && Date.now() - captureStatusAt > STALE_STATUS_MS) {
+  const age = Date.now() - captureStatusAt;
+  if ((status === 'done' || status === 'error') && age > STALE_STATUS_MS) {
     status = 'ready';
+  }
+  let timedOut = false;
+  if (BUSY[status] && age > BUSY_STALE_MS) {
+    status = 'ready';
+    timedOut = true;
   }
 
   captureBtn.className = 'btn-capture';
@@ -233,6 +243,13 @@ function renderStatus({ captureStatus = 'ready', captureStatusAt = 0 }) {
     captureBtn.classList.add('analyzing');
     captureBtn.disabled = true;
     captureText.textContent = BUSY[status];
+    // Re-check when this status would go stale, so a dead worker cannot
+    // leave the button disabled until the next storage event.
+    clearTimeout(busyTimer);
+    busyTimer = setTimeout(loadStatus, BUSY_STALE_MS - age + 50);
+  } else if (timedOut) {
+    captureNote.textContent = 'Last capture timed out — try again';
+    captureNote.hidden = false;
   }
 
   // A finished capture changes the market list, so pull fresh data.

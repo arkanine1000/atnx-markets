@@ -14,6 +14,14 @@ const MAX_UPLOAD_EDGE = 1080;
 const UPLOAD_MIME = 'image/jpeg';
 const UPLOAD_QUALITY = 0.85;
 
+// The web app's capture handler has a 60 s budget (maxDuration on
+// /api/captures). Give the upload a little longer than that, then give up
+// rather than leave the panel on ANALYZING… forever.
+const UPLOAD_TIMEOUT_MS = 75_000;
+// A busy status older than this is a worker that died mid-capture (Chrome
+// tears service workers down) — reset it so the button comes back.
+const BUSY_STALE_MS = 90_000;
+
 const BADGE = {
   capturing: { text: '…', color: '#FF00E5' },
   analyzing: { text: '…', color: '#FFE500' },
@@ -36,6 +44,17 @@ chrome.runtime.onInstalled.addListener(async () => {
   }
   updateStatus('ready');
 });
+
+// Runs every time the worker wakes: if the previous incarnation was torn
+// down while a capture was in flight, the stored status would stay busy and
+// the panel's button would stay disabled.
+chrome.storage.local
+  .get(['captureStatus', 'captureStatusAt'])
+  .then(({ captureStatus, captureStatusAt = 0 }) => {
+    const busy = captureStatus === 'capturing' || captureStatus === 'analyzing';
+    if (busy && Date.now() - captureStatusAt > BUSY_STALE_MS) updateStatus('ready');
+  })
+  .catch(() => {});
 
 // Clicking the toolbar icon opens the side panel (there is no popup).
 chrome.sidePanel
@@ -148,7 +167,8 @@ async function handleCapture(msg, tab) {
       const res = await fetch(`${webAppUrl}/api/captures`, {
         method: 'POST',
         credentials: 'include',
-        body: form
+        body: form,
+        signal: AbortSignal.timeout(UPLOAD_TIMEOUT_MS)
       });
       if (res.status === 401) {
         persistFailed = `Sign in at ${hostOf(webAppUrl)} first`;
@@ -161,7 +181,9 @@ async function handleCapture(msg, tab) {
       }
     } catch (e) {
       console.warn('Could not send to web app:', e.message);
-      persistFailed = `Can't reach ${hostOf(webAppUrl)} — check the URL in the side panel settings`;
+      persistFailed = e.name === 'TimeoutError'
+        ? 'Analysis timed out — try a smaller selection'
+        : `Can't reach ${hostOf(webAppUrl)} — check the URL in the side panel settings`;
     }
 
     if (persistFailed) {
