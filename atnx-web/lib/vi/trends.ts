@@ -111,7 +111,9 @@ async function fetchBatch(terms: string[], depth = 0): Promise<Map<string, Trend
       level: trendsLevel(current),
       momentum: quantised ? null : ratioToBaseline(latestFull, prior),
       fetchedAt: new Date().toISOString(),
-      series,
+      // A quantised series (raw 0s, 1s and 2s) is noise on the VI axis
+      // too: it would seed a sparkline that swings between 0 and ~180.
+      series: quantised ? [] : series,
       meta: {
         ratio_to_benchmark: Number(current.toFixed(3)),
         benchmark: BENCHMARK,

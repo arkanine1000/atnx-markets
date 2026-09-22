@@ -87,7 +87,10 @@ export async function scoreTerms(requests: ScoreRequest[], cadence: Cadence): Pr
       }
 
       const composite = combine(components);
-      const seedSeries = trends?.series ?? [];
+      // Seed the sparkline only from a Trends reading that counts toward
+      // the score. A series dropped by the generic-term guard would draw
+      // a week of history the score itself refuses to use.
+      const seedSeries = components.trends ? (trends?.series ?? []) : [];
       // Persist only the breakdown; the series is for seeding and would
       // bloat the row.
       const persisted: Components = {};
