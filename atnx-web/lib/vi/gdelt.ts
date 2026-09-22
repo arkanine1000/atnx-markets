@@ -33,8 +33,16 @@ export function gdeltLevel(meanPct: number): number {
   return clamp(Math.round(((Math.log10(meanPct) + 4) / 4) * 1000));
 }
 
-export async function fetchGdeltSignal(term: string): Promise<SourceComponent> {
-  const key = term.toLowerCase().trim();
+const MAX_PHRASES = 4;
+
+export async function fetchGdeltSignal(term: string, aliases: string[] = []): Promise<SourceComponent> {
+  // The name and up to three aliases as one OR query; GDELT counts an
+  // article once however many phrases it matches.
+  const phrases = [term, ...aliases]
+    .map((p) => p.trim().replace(/"/g, ''))
+    .filter((p, i, all) => p.length >= 2 && all.findIndex((q) => q.toLowerCase() === p.toLowerCase()) === i)
+    .slice(0, MAX_PHRASES);
+  const key = phrases.join('|').toLowerCase();
   const hit = cache.get(key);
   if (hit && Date.now() < hit.expiry) return hit.data;
 
@@ -44,10 +52,11 @@ export async function fetchGdeltSignal(term: string): Promise<SourceComponent> {
     momentum: null,
     fetchedAt: new Date().toISOString(),
   };
-  if (key.length < 2) return empty;
+  if (phrases.length === 0) return empty;
 
+  const quoted = phrases.map((p) => `"${p}"`);
   const params = new URLSearchParams({
-    query: `"${term.replace(/"/g, '')}"`,
+    query: quoted.length === 1 ? quoted[0] : `(${quoted.join(' OR ')})`,
     mode: 'timelinevol',
     timespan: '7d',
     format: 'json',

@@ -372,7 +372,7 @@ export async function processCapture(opts: ProcessCaptureInput): Promise<Process
   const analysis = toVisionAnalysis(submission, matched);
 
   const searchTerm = normalizeSearchTerm(analysis);
-  const signal = await composeVi({ term: searchTerm });
+  const signal = await composeVi({ term: searchTerm, aliases: await marketAliases(marketId, decision) });
 
   const input: Capture = {
     id: crypto.randomUUID(),
@@ -447,6 +447,15 @@ export async function processCapture(opts: ProcessCaptureInput): Promise<Process
   }
 
   return result;
+}
+
+// Aliases for the market a capture landed on: straight from the model for
+// a market created just now, from the row for an existing one.
+async function marketAliases(marketId: string, decision: { outcome: string }): Promise<string[]> {
+  const created = (decision as { newMarket?: { aliases?: string[] } }).newMarket;
+  if (created?.aliases) return created.aliases;
+  const { data } = await createAdminClient().from('markets').select('aliases').eq('id', marketId).maybeSingle();
+  return (data?.aliases as string[] | null) ?? [];
 }
 
 interface RetryContext {

@@ -29,7 +29,7 @@ export async function runRefresh(request: Request, cadence: 'fast' | 'slow') {
   const supabase = createAdminClient();
   const { data: markets, error } = await supabase
     .from('markets')
-    .select('id, entity_name, vi_components')
+    .select('id, entity_name, aliases, vi_components')
     .is('deleted_at', null);
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -45,7 +45,11 @@ export async function runRefresh(request: Request, cadence: 'fast' | 'slow') {
   for (let i = 0; i < markets.length; i += batchSize) {
     const batch = markets.slice(i, i + batchSize);
     const results = await scoreTerms(
-      batch.map((m) => ({ term: m.entity_name, stored: (m.vi_components as Components | null) ?? null })),
+      batch.map((m) => ({
+        term: m.entity_name,
+        aliases: (m.aliases as string[] | null) ?? [],
+        stored: (m.vi_components as Components | null) ?? null,
+      })),
       cadence
     );
     await Promise.all(

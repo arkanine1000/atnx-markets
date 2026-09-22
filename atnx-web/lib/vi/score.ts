@@ -162,7 +162,18 @@ export function isGenericTerm(term: string, wikipediaTitle: string | null): bool
   return wikipediaTitle.trim().toLowerCase() !== term.trim().toLowerCase();
 }
 
+// An alias is used as a search phrase. A single short or common word
+// would match far more than the subject, so it is not searchable.
+export function isSearchableAlias(alias: string): boolean {
+  const tokens = alias.trim().split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return false;
+  if (tokens.length >= 2) return true;
+  const t = tokens[0];
+  return t.length >= 6 && !FUNCTION_WORDS.has(t.toLowerCase());
+}
+
 const FUNCTION_WORDS = new Set([
+  'problem', 'trend', 'reaction', 'edit', 'edits', 'moment', 'face',
   'the', 'a', 'an', 'and', 'or', 'but', 'of', 'in', 'on', 'at', 'to', 'for',
   'by', 'with', 'from', 'as', 'is', 'was', 'are', 'were', 'be', 'been', 'it',
   'its', 'this', 'that', 'these', 'those', 'he', 'she', 'they', 'we', 'you',

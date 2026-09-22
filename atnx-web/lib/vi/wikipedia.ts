@@ -26,8 +26,8 @@ export function wikipediaLevel(dailyViews: number): number {
   return clamp(Math.round(Math.log10(dailyViews + 10) * 200 - 200));
 }
 
-export async function fetchWikipediaSignal(term: string): Promise<WikipediaSignal> {
-  const key = term.toLowerCase().trim();
+export async function fetchWikipediaSignal(term: string, aliases: string[] = []): Promise<WikipediaSignal> {
+  const key = [term, ...aliases].join('|').toLowerCase().trim();
   const hit = cache.get(key);
   if (hit && Date.now() < hit.expiry) return hit.data;
 
@@ -38,10 +38,15 @@ export async function fetchWikipediaSignal(term: string): Promise<WikipediaSigna
     momentum: null,
     fetchedAt: new Date().toISOString(),
   };
-  if (key.length < 2) return empty;
+  if (term.trim().length < 2) return empty;
 
   try {
-    const title = await resolveArticleTitle(term);
+    // The name first; an alias only when the name resolves to nothing.
+    let title = await resolveArticleTitle(term);
+    for (const alias of aliases) {
+      if (title || alias.trim().length < 2) break;
+      title = await resolveArticleTitle(alias);
+    }
     if (!title) {
       // No article is a real observation: Wikipedia has nothing on it.
       const none: WikipediaSignal = { ...empty, level: 0 };

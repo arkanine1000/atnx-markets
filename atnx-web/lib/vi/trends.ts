@@ -115,44 +115,68 @@ async function fetchBatch(terms: string[], depth = 0): Promise<Map<string, Trend
       meta: {
         ratio_to_benchmark: Number(current.toFixed(3)),
         benchmark: BENCHMARK,
+        keyword: term,
       },
     });
   });
   return out;
 }
 
-// Scores many terms with as few requests as possible. Terms that fail
-// come back as "unknown" (null level) rather than being dropped.
-export async function fetchTrendsSignals(terms: string[]): Promise<Map<string, TrendsSignal>> {
+export interface TrendsQuery {
+  term: string;
+  aliases?: string[];
+}
+
+// Trends treats "a + b" as a OR b inside one keyword slot, so the name
+// and its aliases cost one slot together. Keyword length is limited, so
+// take aliases until the slot is full.
+const MAX_KEYWORD = 100;
+export function trendsKeyword({ term, aliases = [] }: TrendsQuery): string {
+  let kw = term.trim();
+  for (const a of aliases) {
+    const alias = a.trim();
+    if (!alias || alias.toLowerCase() === kw.toLowerCase()) continue;
+    const next = `${kw} + ${alias}`;
+    if (next.length > MAX_KEYWORD) break;
+    kw = next;
+  }
+  return kw;
+}
+
+// Scores many terms with as few requests as possible. Results are keyed
+// by the query's term. Terms that fail come back as "unknown" (null
+// level) rather than being dropped.
+export async function fetchTrendsSignals(queries: TrendsQuery[]): Promise<Map<string, TrendsSignal>> {
   const out = new Map<string, TrendsSignal>();
-  const pending: string[] = [];
-  for (const term of terms) {
-    const key = term.toLowerCase().trim();
+  const pending: { term: string; keyword: string }[] = [];
+  for (const q of queries) {
+    const keyword = trendsKeyword(q);
+    const key = keyword.toLowerCase();
     const hit = cache.get(key);
-    if (hit && Date.now() < hit.expiry) out.set(term, hit.data);
-    else if (key.length >= 2) pending.push(term);
-    else out.set(term, empty());
+    if (hit && Date.now() < hit.expiry) out.set(q.term, hit.data);
+    else if (q.term.trim().length >= 2) pending.push({ term: q.term, keyword });
+    else out.set(q.term, empty());
   }
 
   for (let i = 0; i < pending.length; i += BATCH) {
     const batch = pending.slice(i, i + BATCH);
     try {
-      const got = await fetchBatch(batch);
-      for (const term of batch) {
-        const sig = got.get(term) ?? empty();
-        if (sig.level !== null) cache.set(term.toLowerCase().trim(), { data: sig, expiry: Date.now() + CACHE_TTL });
+      const got = await fetchBatch(batch.map((b) => b.keyword));
+      for (const { term, keyword } of batch) {
+        const sig = got.get(keyword) ?? empty();
+        if (sig.level !== null) cache.set(keyword.toLowerCase(), { data: sig, expiry: Date.now() + CACHE_TTL });
         out.set(term, sig);
       }
     } catch (err) {
-      console.error(`[trends] batch failed (${batch.join(', ')}):`, err);
-      for (const term of batch) out.set(term, empty());
+      console.error(`[trends] batch failed (${batch.map((b) => b.keyword).join(', ')}):`, err);
+      for (const { term } of batch) out.set(term, empty());
     }
   }
   return out;
 }
 
-export async function fetchTrendsSignal(term: string): Promise<TrendsSignal> {
-  const got = await fetchTrendsSignals([term]);
+export async function fetchTrendsSignal(term: string, aliases: string[] = []): Promise<TrendsSignal> {
+  const got = await fetchTrendsSignals([{ term, aliases }]);
   return got.get(term) ?? empty();
 }
 

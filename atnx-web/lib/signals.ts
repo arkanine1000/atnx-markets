@@ -9,6 +9,7 @@ import {
   combine,
   FAST_SOURCES,
   isGenericTerm,
+  isSearchableAlias,
   SLOW_SOURCES,
   type Components,
   type Composite,
@@ -21,6 +22,10 @@ import { fetchWikipediaSignal } from './vi/wikipedia';
 
 export interface ScoreRequest {
   term: string;
+  // Other names people use for it (markets.aliases). Sources search for
+  // the name and its aliases together; a canonical meme title is rarely
+  // what a post actually says.
+  aliases?: string[];
   // Breakdown stored on the market from earlier passes, if any.
   stored?: Components | null;
 }
@@ -45,22 +50,22 @@ const FRESH_FOR: Record<Cadence, SourceName[]> = {
 // Scores many terms at once so Trends can batch them.
 export async function scoreTerms(requests: ScoreRequest[], cadence: Cadence): Promise<SignalResult[]> {
   const fresh = new Set(FRESH_FOR[cadence]);
-  const terms = requests.map((r) => r.term);
 
   const trendsMap: Map<string, TrendsSignal> = fresh.has('trends')
-    ? await fetchTrendsSignals(terms).catch(() => new Map())
+    ? await fetchTrendsSignals(requests.map((r) => ({ term: r.term, aliases: (r.aliases ?? []).filter(isSearchableAlias) }))).catch(() => new Map())
     : new Map();
 
   return Promise.all(
-    requests.map(async ({ term, stored }) => {
+    requests.map(async ({ term, stored, ...req }) => {
+      const aliases = (req.aliases ?? []).filter(isSearchableAlias);
       const components: Components = { ...(stored ?? {}) };
       const trends = trendsMap.get(term);
       if (trends) components.trends = trends;
 
       const [bluesky, gdelt, wikipedia] = await Promise.all([
-        fresh.has('bluesky') ? fetchBlueskySignal(term).catch(() => null) : null,
-        fresh.has('gdelt') ? fetchGdeltSignal(term).catch(() => null) : null,
-        fresh.has('wikipedia') ? fetchWikipediaSignal(term).catch(() => null) : null,
+        fresh.has('bluesky') ? fetchBlueskySignal(term, aliases).catch(() => null) : null,
+        fresh.has('gdelt') ? fetchGdeltSignal(term, aliases).catch(() => null) : null,
+        fresh.has('wikipedia') ? fetchWikipediaSignal(term, aliases).catch(() => null) : null,
       ]);
       if (bluesky) components.bluesky = bluesky;
       if (gdelt) components.gdelt = gdelt;
@@ -99,7 +104,7 @@ export async function scoreTerms(requests: ScoreRequest[], cadence: Cadence): Pr
 }
 
 // Single-term convenience for the capture path: every source, fresh.
-export async function composeVi({ term }: { term: string }): Promise<SignalResult> {
-  const [result] = await scoreTerms([{ term }], 'all');
+export async function composeVi({ term, aliases = [] }: { term: string; aliases?: string[] }): Promise<SignalResult> {
+  const [result] = await scoreTerms([{ term, aliases }], 'all');
   return result;
 }

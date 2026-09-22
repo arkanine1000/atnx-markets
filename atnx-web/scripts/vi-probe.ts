@@ -1,17 +1,20 @@
 // Scores terms through the real sources and prints the breakdown.
-//   npx tsx scripts/vi-probe.ts "iPhone Duo" "Taylor Swift" "The"
+//   npm run vi:probe -- "iPhone Duo" "Taylor Swift|iPhone Fold|foldable iPhone"
+// Aliases follow the name after "|".
 import { scoreTerms } from '../lib/signals';
 import { viTier } from '../lib/vi/score';
 
-const terms = process.argv.slice(2);
-if (terms.length === 0) {
+const args = process.argv.slice(2);
+const queries = args.map((a) => { const [term, ...aliases] = a.split('|').map((s) => s.trim()); return { term, aliases }; });
+const terms = queries.map((q) => q.term);
+if (queries.length === 0) {
   console.error('usage: npx tsx scripts/vi-probe.ts <term> [term...]');
   process.exit(1);
 }
 
 (async () => {
   const t0 = Date.now();
-  const results = await scoreTerms(terms.map((term) => ({ term })), 'all');
+  const results = await scoreTerms(queries, 'all');
   results.forEach((r, i) => {
     const c = r.composite;
     console.log(`\n${terms[i]}  →  VI ${r.score ?? 'n/a'}${c ? `  (${viTier(c.score).label}; level ${c.level}, momentum ${c.momentum}, ×${c.multiplier} from ${c.sourcesPresent.join('+') || 'nothing'})` : ''}`);
