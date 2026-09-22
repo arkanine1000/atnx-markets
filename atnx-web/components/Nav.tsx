@@ -132,7 +132,8 @@ export function Nav() {
     <>
       <header className="sticky top-0 z-40 -mx-4 px-4 mb-6 sm:mb-8 nav-blur border-b border-surface">
         <div className="h-14 sm:h-16 flex items-center justify-between gap-3">
-          <Link href="/" className="group shrink-0 flex items-center gap-2.5">
+          {/* The mark goes to Markets, the app's home, not the landing page. */}
+          <Link href="/app" className="group shrink-0 flex items-center gap-2.5">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={logoSrc}
