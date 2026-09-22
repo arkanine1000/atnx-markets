@@ -96,7 +96,7 @@ How a submission is decided, stage by stage, is in [`atnx-web/README.md`](atnx-w
 - **`AuthContext`** — `user`, `loading`, `openLoginModal`, `signInWithGoogle`. Subscribes to `onAuthStateChange` and auto-closes the modal when a session appears.
 - **`DemoContext`** — `positions`, `balance`, `openPosition`, `closePosition`. Refreshes when auth state flips.
 - **`LoginModal`** — Google-only right now. Backdrop-blurred. Escape-to-close.
-- **`Nav`** — Logo + ATNX wordmark, UserMenu, theme toggle on the far right. From `sm` up Markets, Portfolio and Leaderboard sit in a pill in the header and Create is a magenta + beside the avatar; on phones the tabs become a fixed bottom bar (Markets, the +, Leaderboard) and Portfolio moves into the UserMenu.
+- **`Nav`** — Logo + ATNX wordmark, UserMenu, theme toggle on the far right. From `sm` up Markets, Portfolio and Leaderboard sit in a pill in the header and Create is a pill beside the avatar with a magenta + and the word; on phones the tabs become a fixed bottom bar (Markets, the +, Leaderboard) and Portfolio moves into the UserMenu.
 - **`PortfolioMobile`**, **`charts/PortfolioSparkline`** — The phone portfolio: value tile, range tabs, positions card, fed by `/api/portfolio`.
 - **`Identicon`** — Generated avatar seeded by the account id: the ATNX eye, with an iris made of one ink under blocks of the other two in multiply blend, so overlaps print the secondaries; the gaze varies per account. Stands in for the handle in the header, on the leaderboard and on the settings page.
 - **`ShareButton`** — Native share sheet on phones (`navigator.share`), clipboard elsewhere; on every market page.

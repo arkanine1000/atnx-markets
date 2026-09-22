@@ -72,7 +72,7 @@ function PlusIcon({ size = 12 }: { size?: number }) {
         d="M8 3v10M3 8h10"
         fill="none"
         stroke="currentColor"
-        strokeWidth={2.2}
+        strokeWidth={2.6}
         strokeLinecap="round"
       />
     </svg>
@@ -170,20 +170,22 @@ export function Nav() {
           </nav>
 
           <div className="flex items-center gap-2 shrink-0">
-            {/* Create: the one action, as a magenta + beside the account,
-                the same button the phone bottom bar carries. */}
+            {/* Create: a YouTube-style pill beside the account, the + in
+                magenta on the dark surface and the word next to it. */}
             <Link
               href="/app/submit"
-              aria-label="Create"
               title="Create a market"
               aria-current={pathname === "/app/submit" ? "page" : undefined}
-              className={`hidden sm:inline-flex h-8 w-8 rounded-full items-center justify-center text-white transition-all ${
+              className={`hidden sm:inline-flex items-center gap-1.5 h-8 pl-2.5 pr-3.5 rounded-full border bg-surface text-xs font-bold text-primary transition-colors ${
                 pathname === "/app/submit"
-                  ? "bg-atnx-magenta-dim ring-2 ring-atnx-cyan/60 shadow-[0_0_20px_rgba(0,212,255,0.3)]"
-                  : "bg-atnx-magenta shadow-[0_0_18px_rgba(255,0,229,0.4)] hover:bg-atnx-magenta-dim hover:shadow-[0_0_24px_rgba(255,0,229,0.55)] active:scale-95"
+                  ? "border-atnx-magenta/70 shadow-[0_0_16px_rgba(255,0,229,0.25)]"
+                  : "border-surface hover:border-atnx-magenta/60"
               }`}
             >
-              <PlusIcon size={18} />
+              <span className="text-atnx-magenta light:text-atnx-magenta-light inline-flex">
+                <PlusIcon size={16} />
+              </span>
+              Create
             </Link>
             <UserMenu />
             {mounted && (
