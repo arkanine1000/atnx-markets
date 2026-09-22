@@ -10,35 +10,52 @@ const CACHE_TTL = 5 * 60 * 1000;
 // Pages of 100. Counting stops here; anything above is "a lot".
 const MAX_PAGES = 5;
 const COUNT_CAP = MAX_PAGES * 100;
+const MOMENTUM_MIN_DAY = 24;
 
 const cache = new Map<string, { data: SourceComponent; expiry: number }>();
 
 let session: { jwt: string; expiry: number } | null = null;
+// One login in flight at a time. Bluesky rate-limits createSession per
+// account, and failed logins count against a much smaller daily budget,
+// so a batch of markets must never each start their own.
+let login: Promise<string | null> | null = null;
 
 export function blueskyConfigured(): boolean {
   return !!(process.env.BLUESKY_IDENTIFIER && process.env.BLUESKY_APP_PASSWORD);
 }
 
+// A handle needs its domain; a bare account name gets the default one.
+function identifier(): string {
+  const id = (process.env.BLUESKY_IDENTIFIER ?? '').trim().replace(/^@/, '');
+  return id.includes('.') || id.includes('@') ? id : `${id}.bsky.social`;
+}
+
 async function getJwt(force = false): Promise<string | null> {
   if (!blueskyConfigured()) return null;
   if (!force && session && Date.now() < session.expiry) return session.jwt;
-  const res = await fetch(`${PDS}/xrpc/com.atproto.server.createSession`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'User-Agent': USER_AGENT },
-    body: JSON.stringify({
-      identifier: process.env.BLUESKY_IDENTIFIER,
-      password: process.env.BLUESKY_APP_PASSWORD,
-    }),
-    cache: 'no-store',
-  });
-  if (!res.ok) {
-    console.error(`[bluesky] createSession ${res.status}`);
-    return null;
+  if (!login) {
+    login = (async () => {
+      try {
+        const res = await fetch(`${PDS}/xrpc/com.atproto.server.createSession`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'User-Agent': USER_AGENT },
+          body: JSON.stringify({ identifier: identifier(), password: process.env.BLUESKY_APP_PASSWORD }),
+          cache: 'no-store',
+        });
+        if (!res.ok) {
+          console.error(`[bluesky] createSession ${res.status}: ${(await res.text()).slice(0, 120)}`);
+          return null;
+        }
+        const body = (await res.json()) as { accessJwt: string };
+        // Access tokens last ~2h; refresh well before that.
+        session = { jwt: body.accessJwt, expiry: Date.now() + 90 * 60 * 1000 };
+        return session.jwt;
+      } finally {
+        login = null;
+      }
+    })();
   }
-  const body = (await res.json()) as { accessJwt: string };
-  // Access tokens last ~2h; refresh well before that.
-  session = { jwt: body.accessJwt, expiry: Date.now() + 90 * 60 * 1000 };
-  return session.jwt;
+  return login;
 }
 
 // Counts matching posts since `since`, paging up to COUNT_CAP. Returns
@@ -111,10 +128,12 @@ export async function fetchBlueskySignal(term: string): Promise<SourceComponent>
     ]);
     if (day === null) return empty;
 
-    // Hourly rate now vs the average hourly rate over the day. With the
-    // 24h count capped, the ratio is a floor when the cap is hit.
+    // Hourly rate now vs the average hourly rate over the day. Below one
+    // post an hour most hours are empty and the ratio is noise, so only
+    // report momentum once the day count clears that bar. With the 24h
+    // count capped, the ratio is a floor when the cap is hit.
     const hourlyMean = day / 24;
-    const momentum = hour === null ? null : hourlyMean > 0 ? hour / hourlyMean : hour > 0 ? 10 : null;
+    const momentum = hour === null || day < MOMENTUM_MIN_DAY ? null : hour / hourlyMean;
 
     const result: SourceComponent = {
       source: 'bluesky',
