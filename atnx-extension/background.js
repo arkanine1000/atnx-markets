@@ -133,7 +133,20 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 });
 
+// Chrome terminates an extension service worker after 30 s without an
+// extension API call, and a pending fetch() does not count as activity. The
+// vision pipeline behind /api/captures regularly takes longer than that, so
+// without this the worker died mid-upload and the status stuck on ANALYZING.
+// Poking a trivial API every 20 s resets the idle clock until we release it.
+function keepAlive() {
+  const timer = setInterval(() => {
+    chrome.runtime.getPlatformInfo().catch(() => {});
+  }, 20_000);
+  return () => clearInterval(timer);
+}
+
 async function handleCapture(msg, tab) {
+  const release = keepAlive();
   try {
     // 1. Screenshot first, toast second — otherwise the "capturing" toast
     //    could land inside the crop.
@@ -205,6 +218,8 @@ async function handleCapture(msg, tab) {
     updateStatus('error');
     notifyTab(tab, 'error', err.message);
     resetStatusAfter(5000);
+  } finally {
+    release();
   }
 }
 
