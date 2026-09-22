@@ -1,5 +1,4 @@
 import { createClient } from "@/lib/supabase/server";
-import { Nav } from "@/components/Nav";
 import { SettingsForm } from "./SettingsForm";
 import { redirect } from "next/navigation";
 
@@ -18,8 +17,7 @@ export default async function SettingsPage() {
     .maybeSingle();
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-8 w-full">
-      <Nav />
+    <div className="max-w-2xl mx-auto w-full">
 
       <h1 className="text-xl font-bold text-primary mb-6">Settings</h1>
 

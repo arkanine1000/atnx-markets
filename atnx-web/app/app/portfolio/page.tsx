@@ -8,7 +8,6 @@ import {
   type Position,
 } from "@/context/DemoContext";
 import { useAuth } from "@/context/AuthContext";
-import { Nav } from "@/components/Nav";
 import { ClosePositionModal, DemoToast } from "@/components/Trading";
 import { Card, Chip, DeltaChip, EmptyState, StatTile } from "@/components/ui";
 import { timeAgo } from "@/lib/capture-view";
@@ -150,8 +149,7 @@ export default function PortfolioPage() {
 
   if (!authLoading && !user) {
     return (
-      <div className="max-w-6xl mx-auto px-4 pb-12 w-full">
-        <Nav />
+      <div>
         <EmptyState
           title="Sign in to view your portfolio"
           body="Balance, open positions and PnL are tied to your account."
@@ -170,9 +168,7 @@ export default function PortfolioPage() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto px-4 pb-12 w-full">
-      <Nav />
-
+    <div>
       <div className="mb-5">
         <h2 className="text-xl sm:text-2xl font-bold text-primary tracking-tight">
           Portfolio

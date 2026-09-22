@@ -415,6 +415,10 @@ export type Database = {
           similarity: number;
         }[];
       };
+      vi_history_series: {
+        Args: { market_ids: string[]; since: string; bucket_seconds: number };
+        Returns: { market_id: string; points: [number, number][] }[];
+      };
       is_admin: {
         Args: Record<string, never>;
         Returns: boolean;

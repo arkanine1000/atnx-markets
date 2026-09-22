@@ -18,7 +18,7 @@ const CONFIRM_COSINE = Number(process.env.CONFIRM_COSINE ?? 0.6);
 const CONFIRM_TRIGRAM = Number(process.env.CONFIRM_TRIGRAM ?? 0.35);
 import { normalizeSearchTerm } from './trends';
 import { composeVi } from './signals';
-import { addCapture, createMarket, DuplicateCaptureError, type Capture } from './store';
+import { addCapture, createMarket, DuplicateCaptureError, recordVi, type Capture } from './store';
 import { createAdminClient } from './supabase/admin';
 
 export type { VisionMediaType };
@@ -46,12 +46,17 @@ export interface ProcessCaptureResult {
   // submission answered this one.
   outcome: 'matched' | 'linked' | 'created' | 'created_review' | 'dedup';
   review: boolean;
+  // The market's VI as of the response. When viPending is true this is the
+  // value before this capture's reading: the sources are fetched after the
+  // response goes out, so a brand-new market answers 0 for a few seconds.
   vi: number;
+  viPending: boolean;
   source: string;
   analysis: VisionAnalysis;
-  // Present for created_review: one background retry with a wider candidate
-  // list. Route handlers pass it to after() from next/server.
-  retry?: () => Promise<void>;
+  // Work that runs after the response: the VI scoring and, for a
+  // created_review outcome, one retry with a wider candidate list. Route
+  // handlers pass it to after() from next/server.
+  background?: () => Promise<void>;
 }
 
 // Thrown when the model declines the submission. Routes turn this into a
@@ -164,6 +169,7 @@ export async function findByHash(hash: string): Promise<ProcessCaptureResult | n
     outcome: 'dedup',
     review: false,
     vi: Math.round(market?.current_vi ?? 0),
+    viPending: false,
     source: 'dedup',
     analysis,
   };
@@ -193,7 +199,9 @@ export async function findEarlierRejection(hash: string): Promise<RejectReason |
 // (Android share target). Order: exact dedup by hash, cheap retrieval on
 // the text we already have, one model call with those candidates, a
 // deterministic link check on the name the model proposed, then persist.
-// Auth must be established by the caller.
+// The VI sources (Trends, Bluesky, GDELT, Wikipedia) are the slowest step
+// and the user is not waiting on them, so they run after the response via
+// `result.background`. Auth must be established by the caller.
 export interface ProcessCaptureInput {
   // At least one of imageBase64 / text is required.
   imageBase64?: string;
@@ -371,9 +379,8 @@ export async function processCapture(opts: ProcessCaptureInput): Promise<Process
 
   const analysis = toVisionAnalysis(submission, matched);
 
-  const searchTerm = normalizeSearchTerm(analysis);
-  const signal = await composeVi({ term: searchTerm, aliases: await marketAliases(marketId, decision) });
-
+  // Persist unscored: the market keeps its current VI until the deferred
+  // scoring below records this capture's reading.
   const input: Capture = {
     id: crypto.randomUUID(),
     marketId: null,
@@ -383,10 +390,8 @@ export async function processCapture(opts: ProcessCaptureInput): Promise<Process
     screenshot: opts.imageBase64 ?? '',
     analysis,
     trends: null,
-    viralityScore: signal.score ?? 0,
-    scored: signal.score !== null,
-    components: signal.components,
-    seedSeries: signal.seedSeries,
+    viralityScore: 0,
+    scored: false,
   };
 
   let capture: Capture;
@@ -423,37 +428,70 @@ export async function processCapture(opts: ProcessCaptureInput): Promise<Process
     isNew,
     outcome,
     review,
-    // The market's score after this capture (smoothed), and which sources
-    // saw the term, e.g. "trends+wikipedia". "none" when nothing did.
-    vi: capture.viralityScore,
-    source: signal.composite?.sourcesPresent.join('+') || 'none',
+    // The market's VI before this capture's reading; the sources are
+    // fetched after the response.
+    vi: Math.round(capture.viralityScore),
+    viPending: true,
+    source: 'pending',
     analysis,
   };
 
-  if (review && createdMarketId && docEmbedding) {
-    const ctx: RetryContext = {
-      captureId: capture.id,
-      createdMarketId,
-      docEmbedding,
-      userId: opts.userId,
-      contentHash: hash,
-      imageBase64: opts.imageBase64,
-      mediaType: opts.mediaType,
-      text: modelText,
-      sourceUrl: opts.sourceUrl,
-      pageTitle: opts.pageTitle,
-    };
-    result.retry = () => retryLowConfidence(ctx);
-  }
+  const scoring: ScoringContext = {
+    marketId,
+    term: normalizeSearchTerm(analysis),
+    // Straight from the model for a market created just now; read from the
+    // row for an existing one (inside the background task, not here).
+    aliases: 'newMarket' in decision ? decision.newMarket.aliases : null,
+  };
+  const retry: RetryContext | null =
+    review && createdMarketId && docEmbedding
+      ? {
+          captureId: capture.id,
+          createdMarketId,
+          docEmbedding,
+          userId: opts.userId,
+          contentHash: hash,
+          imageBase64: opts.imageBase64,
+          mediaType: opts.mediaType,
+          text: modelText,
+          sourceUrl: opts.sourceUrl,
+          pageTitle: opts.pageTitle,
+        }
+      : null;
+
+  result.background = async () => {
+    // The retry may move the capture to an existing market; that market
+    // already has a score and the refresh keeps it fresh, so scoring the
+    // retired one would be wasted.
+    if (retry && (await retryLowConfidence(retry))) return;
+    await scoreMarketLater(scoring);
+  };
 
   return result;
 }
 
-// Aliases for the market a capture landed on: straight from the model for
-// a market created just now, from the row for an existing one.
-async function marketAliases(marketId: string, decision: { outcome: string }): Promise<string[]> {
-  const created = (decision as { newMarket?: { aliases?: string[] } }).newMarket;
-  if (created?.aliases) return created.aliases;
+interface ScoringContext {
+  marketId: string;
+  term: string;
+  aliases: string[] | null;
+}
+
+// Every VI source, fresh, then one vi_history point (seeded from the Trends
+// series on a market's first reading). Runs after the response. A failure
+// here costs nothing visible: the five-minute refresh scores every live
+// market, so the value lands on the next pass instead.
+async function scoreMarketLater(ctx: ScoringContext): Promise<void> {
+  try {
+    const aliases = ctx.aliases ?? (await marketAliases(ctx.marketId));
+    const signal = await composeVi({ term: ctx.term, aliases });
+    if (signal.score === null) return;
+    await recordVi(ctx.marketId, signal.score, signal.components, signal.seedSeries);
+  } catch (err) {
+    console.error('[capture] deferred VI scoring failed', (err as Error).message);
+  }
+}
+
+async function marketAliases(marketId: string): Promise<string[]> {
   const { data } = await createAdminClient().from('markets').select('aliases').eq('id', marketId).maybeSingle();
   return (data?.aliases as string[] | null) ?? [];
 }
@@ -475,14 +513,15 @@ interface RetryContext {
 // The candidate list is widened to twenty markets nearest the market that
 // was just created. If the model now matches one of them, the capture is
 // re-linked, the created market is soft-deleted, and both are logged.
-async function retryLowConfidence(ctx: RetryContext): Promise<void> {
+// Resolves true when the capture was re-linked.
+async function retryLowConfidence(ctx: RetryContext): Promise<boolean> {
   try {
     const wide = await retrieveCandidates({ embedding: ctx.docEmbedding, limit: 21 });
     const candidates = wide.candidates
       .filter((c) => c.id !== ctx.createdMarketId)
       .slice(0, 20)
       .map(({ id, name, entityType }) => ({ id, name, entityType }));
-    if (candidates.length === 0) return;
+    if (candidates.length === 0) return false;
 
     const retry = await analyzeSubmission({
       imageBase64: ctx.imageBase64,
@@ -496,7 +535,7 @@ async function retryLowConfidence(ctx: RetryContext): Promise<void> {
     const matched = retry.matched_market_id
       ? candidates.find((c) => c.id === retry.matched_market_id)
       : undefined;
-    if (!retry.admit || !matched) return;
+    if (!retry.admit || !matched) return false;
 
     const admin = createAdminClient();
     const now = new Date().toISOString();
@@ -538,8 +577,10 @@ async function retryLowConfidence(ctx: RetryContext): Promise<void> {
       submission: retry,
       extra: { retired_market_id: ctx.createdMarketId },
     });
+    return true;
   } catch (err) {
     console.error('[capture] low-confidence retry failed', (err as Error).message);
+    return false;
   }
 }
 

@@ -23,7 +23,7 @@
     <form id="urlForm">
       <label for="webAppUrl">Web App URL</label>
       <div class="input-row">
-        <input type="url" id="webAppUrl" placeholder="https://atnx.app" autocomplete="off" spellcheck="false">
+        <input type="url" id="webAppUrl" placeholder="https://www.atnx.app" autocomplete="off" spellcheck="false">
         <button type="submit" class="btn-small">Save</button>
       </div>
       <div id="urlStatus" class="status-text" aria-live="polite"></div>
@@ -45,9 +45,11 @@
         <span id="captureText">CAPTURE</span>
       </button>
       <div id="captureNote" class="note" hidden></div>
+      <!-- Shown while signed out: a capture would be analysed and then fail to save. -->
+      <div id="authNote" class="note auth-note" hidden></div>
     </section>
 
-    <!-- Stat tile: hero value + 7d delta + sparkline. Hidden until signed in. -->
+    <!-- Stat tile: hero value + range delta + chart. Hidden until signed in. -->
     <section id="valueTile" class="card tile" hidden>
       <div class="tile-head">
         <span class="tile-label">Portfolio value</span>
@@ -60,6 +62,12 @@
           <strong id="tipValue"></strong>
           <span id="tipTime"></span>
         </div>
+      </div>
+      <div id="rangeBar" class="range-bar" role="group" aria-label="Chart range">
+        <button type="button" class="range-btn" data-range="1d" aria-pressed="false">1D</button>
+        <button type="button" class="range-btn" data-range="1w" aria-pressed="true">1W</button>
+        <button type="button" class="range-btn" data-range="1m" aria-pressed="false">1M</button>
+        <button type="button" class="range-btn" data-range="all" aria-pressed="false">ALL</button>
       </div>
     </section>
 

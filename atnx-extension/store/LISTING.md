@@ -9,7 +9,7 @@ upload with `node package.mjs` (writes `dist/atnx-capture-v<version>.zip`).
    $5 registration). Verify the publisher email; it is shown on the listing.
 2. **Deploy the web app first.** The privacy policy lives at
    https://atnx.app/privacy and the reviewer will open it.
-3. `node package.mjs` → upload `dist/atnx-capture-v1.4.0.zip`.
+3. `node package.mjs` → upload `dist/atnx-capture-v1.5.0.zip`.
 4. Store listing tab: paste the text below; upload `store/screenshot-*.png`
    (1280×800) and `store/promo-small.png` (440×280).
 5. Privacy tab: single purpose, permission justifications, data disclosures,
@@ -94,7 +94,7 @@ current top markets.
 | `scripting` | Injects the drag-to-select overlay (`content.js`) into the active tab on demand. The extension declares no content scripts that run automatically. |
 | `storage` | Stores the user's web app URL, the side panel's expanded/collapsed state, and the last capture status. No browsing data is stored. |
 | `sidePanel` | The extension's UI is a side panel (portfolio, top markets, capture button) rather than a popup. |
-| Host permission `https://atnx.app/*` | The extension posts the captured image to atnx.app and reads the user's portfolio and the market list from it. Host access lets the user's atnx.app sign-in cookie accompany those requests even when third-party cookies are blocked. |
+| Host permission `https://*.atnx.app/*` | The extension posts the captured image to www.atnx.app and reads the user's portfolio and the market list from it. Host access lets the user's atnx.app sign-in cookie accompany those requests even when third-party cookies are blocked. The pattern covers the apex domain and the www host the site serves from; no other subdomains exist. |
 | Optional host permissions `http://*/*`, `https://*/*` | Only used if the user enters a self-hosted or local ATNX instance URL in settings. At that moment the extension requests access to that single origin (for example `http://localhost:3000/*`) via `permissions.request`; it never requests access to all sites. |
 
 **Remote code**

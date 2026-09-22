@@ -1,4 +1,9 @@
-const DEFAULT_WEB_APP_URL = 'https://atnx.app';
+// Production lives on the www host; the apex domain 307s there, and a
+// redirect target the extension held no host permission for is why v1.4
+// showed "Not signed in" to signed-in users. The manifest now grants
+// `*.atnx.app`, so both spellings work, but the default skips the hop.
+const DEFAULT_WEB_APP_URL = 'https://www.atnx.app';
+const LEGACY_WEB_APP_URL = /^https:\/\/atnx\.app\/*$/i;
 
 // Longest edge (in device pixels) of the uploaded crop. Vision models
 // downsample anything larger anyway, and Vercel rejects request bodies over
@@ -8,6 +13,14 @@ const DEFAULT_WEB_APP_URL = 'https://atnx.app';
 const MAX_UPLOAD_EDGE = 1080;
 const UPLOAD_MIME = 'image/jpeg';
 const UPLOAD_QUALITY = 0.85;
+
+// The web app's capture handler has a 60 s budget (maxDuration on
+// /api/captures). Give the upload a little longer than that, then give up
+// rather than leave the panel on ANALYZING… forever.
+const UPLOAD_TIMEOUT_MS = 75_000;
+// A busy status older than this is a worker that died mid-capture (Chrome
+// tears service workers down) — reset it so the button comes back.
+const BUSY_STALE_MS = 90_000;
 
 const BADGE = {
   capturing: { text: '…', color: '#FF00E5' },
@@ -21,10 +34,27 @@ const BADGE = {
 // chrome.storage.local quota; `apiKey` (v1.1) became unnecessary once vision
 // moved server-side in v1.2. Runs once per install/update instead of on every
 // service-worker wake.
-chrome.runtime.onInstalled.addListener(() => {
+chrome.runtime.onInstalled.addListener(async () => {
   chrome.storage.local.remove(['captures', 'apiKey']).catch(() => {});
+  // v1.4 saved the apex domain as the web app URL; fall back to the default
+  // so requests go straight to www instead of through a redirect.
+  const { webAppUrl } = await chrome.storage.local.get('webAppUrl');
+  if (LEGACY_WEB_APP_URL.test((webAppUrl || '').trim())) {
+    await chrome.storage.local.remove('webAppUrl').catch(() => {});
+  }
   updateStatus('ready');
 });
+
+// Runs every time the worker wakes: if the previous incarnation was torn
+// down while a capture was in flight, the stored status would stay busy and
+// the panel's button would stay disabled.
+chrome.storage.local
+  .get(['captureStatus', 'captureStatusAt'])
+  .then(({ captureStatus, captureStatusAt = 0 }) => {
+    const busy = captureStatus === 'capturing' || captureStatus === 'analyzing';
+    if (busy && Date.now() - captureStatusAt > BUSY_STALE_MS) updateStatus('ready');
+  })
+  .catch(() => {});
 
 // Clicking the toolbar icon opens the side panel (there is no popup).
 chrome.sidePanel
@@ -55,8 +85,24 @@ async function getActiveTab() {
 // content.js guards against double-injection, so a retry is always safe.
 // Resolves to { ok: true } or { ok: false, reason } so the side panel can
 // explain a failure inline.
+async function shortcutLabel() {
+  const commands = await chrome.commands.getAll().catch(() => []);
+  return commands.find((c) => c.name === 'activate-capture')?.shortcut || 'the capture shortcut';
+}
+
 async function activateTab(tab) {
   if (!tab?.id) return { ok: false, reason: 'No active tab' };
+  // Chrome grants activeTab for a toolbar click or the keyboard shortcut,
+  // not for a click inside the side panel, and revokes it when the tab
+  // navigates. tab.url is only exposed while the extension may act on the
+  // tab, so its absence means captureVisibleTab would fail — after the
+  // user has already dragged a selection. Say so up front instead.
+  if (!tab.url) {
+    return {
+      ok: false,
+      reason: `Chrome needs a nudge for this tab: press ${await shortcutLabel()} on the page, or click the ATNX toolbar icon`
+    };
+  }
   try {
     await chrome.tabs.sendMessage(tab.id, { action: 'activate-capture' });
     return { ok: true };
@@ -103,7 +149,20 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 });
 
+// Chrome terminates an extension service worker after 30 s without an
+// extension API call, and a pending fetch() does not count as activity. The
+// vision pipeline behind /api/captures regularly takes longer than that, so
+// without this the worker died mid-upload and the status stuck on ANALYZING.
+// Poking a trivial API every 20 s resets the idle clock until we release it.
+function keepAlive() {
+  const timer = setInterval(() => {
+    chrome.runtime.getPlatformInfo().catch(() => {});
+  }, 20_000);
+  return () => clearInterval(timer);
+}
+
 async function handleCapture(msg, tab) {
+  const release = keepAlive();
   try {
     // 1. Screenshot first, toast second — otherwise the "capturing" toast
     //    could land inside the crop.
@@ -137,7 +196,8 @@ async function handleCapture(msg, tab) {
       const res = await fetch(`${webAppUrl}/api/captures`, {
         method: 'POST',
         credentials: 'include',
-        body: form
+        body: form,
+        signal: AbortSignal.timeout(UPLOAD_TIMEOUT_MS)
       });
       if (res.status === 401) {
         persistFailed = `Sign in at ${hostOf(webAppUrl)} first`;
@@ -150,7 +210,9 @@ async function handleCapture(msg, tab) {
       }
     } catch (e) {
       console.warn('Could not send to web app:', e.message);
-      persistFailed = 'Web app unreachable — check URL in popup';
+      persistFailed = e.name === 'TimeoutError'
+        ? 'Analysis timed out — try a smaller selection'
+        : `Can't reach ${hostOf(webAppUrl)} — check the URL in the side panel settings`;
     }
 
     if (persistFailed) {
@@ -172,6 +234,8 @@ async function handleCapture(msg, tab) {
     updateStatus('error');
     notifyTab(tab, 'error', err.message);
     resetStatusAfter(5000);
+  } finally {
+    release();
   }
 }
 

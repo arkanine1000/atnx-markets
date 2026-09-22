@@ -6,6 +6,9 @@ import { corsHeaders, corsPreflight } from '@/lib/cors';
 // Auth comes from the Supabase cookie (attached cross-origin via
 // `credentials: 'include'`), so a signed-out caller gets 401 and the panel
 // shows a sign-in prompt instead. Mirrors what DemoContext loads client-side.
+//
+// `?range=1d|1w|1m|all` picks the history window (default 1w). The delta
+// fields describe the same window, so the tile's number and its chart agree.
 
 type PositionRow = {
   id: string;
@@ -45,6 +48,8 @@ export interface PortfolioPoint {
   value: number;
 }
 
+export type PortfolioRange = '1d' | '1w' | '1m' | 'all';
+
 export interface PortfolioResponse {
   handle: string | null;
   balanceUsd: number;
@@ -54,15 +59,34 @@ export interface PortfolioResponse {
   // Cash + open positions marked to market.
   totalValueUsd: number;
   positions: PortfolioPosition[];
-  // Portfolio value over the last HISTORY_DAYS, oldest first.
+  // Window the history and delta fields cover.
+  range: PortfolioRange;
+  // Portfolio value over the window, oldest first. The last point is `now`
+  // and equals totalValueUsd.
   history: PortfolioPoint[];
   changeUsd: number;
   changePercent: number;
 }
 
 const INITIAL_BALANCE = 10000;
-const HISTORY_DAYS = 7;
-const MAX_POINTS = 80;
+const DAY_MS = 86_400_000;
+const MAX_POINTS = 160;
+
+// Bucket widths are chosen so a full window is ~100–180 medians per market:
+// dense enough for a smooth line, sparse enough that one stray 5-minute
+// sample cannot draw a spike.
+const WINDOWS: Record<Exclude<PortfolioRange, 'all'>, { ms: number; bucketSeconds: number }> = {
+  '1d': { ms: DAY_MS, bucketSeconds: 15 * 60 },
+  '1w': { ms: 7 * DAY_MS, bucketSeconds: 60 * 60 },
+  '1m': { ms: 30 * DAY_MS, bucketSeconds: 4 * 60 * 60 },
+};
+
+function parseRange(value: string | null): PortfolioRange {
+  return value === '1d' || value === '1m' || value === 'all' ? value : '1w';
+}
+
+type ViPoint = { t: number; vi: number };
+type ViSeries = Map<string, ViPoint[]>;
 
 // Linear VI-based PnL, same math as calculatePnL in DemoContext and the
 // server-side close in actions/trading.ts.
@@ -82,18 +106,92 @@ function pnlFor(row: PositionRow) {
   };
 }
 
+// Median-per-bucket reduction, the same shape vi_history_series() returns.
+// Used on the raw-row fallback so both paths draw the same line.
+function bucketMedians(
+  rows: { market_id: string; vi: number; recorded_at: string }[],
+  bucketMs: number
+): ViSeries {
+  const buckets = new Map<string, Map<number, number[]>>();
+  for (const r of rows) {
+    const t = Math.floor(new Date(r.recorded_at).getTime() / bucketMs) * bucketMs;
+    const perMarket = buckets.get(r.market_id) ?? new Map<number, number[]>();
+    const list = perMarket.get(t) ?? [];
+    list.push(Number(r.vi));
+    perMarket.set(t, list);
+    buckets.set(r.market_id, perMarket);
+  }
+  const series: ViSeries = new Map();
+  for (const [marketId, perMarket] of buckets) {
+    const points = [...perMarket.entries()]
+      .map(([t, values]) => {
+        values.sort((a, b) => a - b);
+        const mid = values.length >> 1;
+        const vi = values.length % 2 ? values[mid] : (values[mid - 1] + values[mid]) / 2;
+        return { t, vi };
+      })
+      .sort((a, b) => a.t - b.t);
+    series.set(marketId, points);
+  }
+  return series;
+}
+
+async function loadViSeries(
+  admin: ReturnType<typeof createAdminClient>,
+  marketIds: string[],
+  since: Date,
+  bucketSeconds: number
+): Promise<ViSeries> {
+  const { data, error } = await admin.rpc('vi_history_series', {
+    market_ids: marketIds,
+    since: since.toISOString(),
+    bucket_seconds: bucketSeconds,
+  });
+  if (!error) {
+    const series: ViSeries = new Map();
+    for (const row of data ?? []) {
+      series.set(
+        row.market_id,
+        (row.points ?? []).map(([t, vi]) => ({ t: Number(t), vi: Number(vi) }))
+      );
+    }
+    return series;
+  }
+
+  // Migration 005 not applied yet: read the newest raw rows per market
+  // (PostgREST caps a select at 1,000 rows) and bucket them here.
+  console.warn('[portfolio GET] vi_history_series unavailable, using raw rows:', error.message);
+  const perMarket = await Promise.all(
+    marketIds.map((id) =>
+      admin
+        .from('vi_history')
+        .select('market_id, vi, recorded_at')
+        .eq('market_id', id)
+        .gte('recorded_at', since.toISOString())
+        .order('recorded_at', { ascending: false })
+        .limit(1000)
+    )
+  );
+  const rows = perMarket.flatMap(({ data: r }) => r ?? []);
+  return bucketMedians(rows, bucketSeconds * 1000);
+}
+
 // Reconstruct portfolio value over the window from each open position's
 // market VI history. Cash is held at its current level; a position not yet
 // opened at time t is counted as the cash it was bought with, so the curve is
-// continuous at the open. Closed trades inside the window are not replayed —
-// this is the equity curve of what the user holds now, not a full ledger.
+// continuous at the open. The final point is `now` and is marked with each
+// market's live current_vi, so the curve ends exactly on totalValueUsd.
+// Closed trades inside the window are not replayed — this is the equity
+// curve of what the user holds now, not a full ledger.
 function buildHistory(
   balanceUsd: number,
   positions: PositionRow[],
-  viRows: { market_id: string; vi: number; recorded_at: string }[],
+  series: ViSeries,
+  start: Date,
   now: Date
 ): PortfolioPoint[] {
-  const start = new Date(now.getTime() - HISTORY_DAYS * 86_400_000);
+  const startMs = start.getTime();
+  const nowMs = now.getTime();
   if (positions.length === 0) {
     return [
       { t: start.toISOString(), value: balanceUsd },
@@ -101,18 +199,12 @@ function buildHistory(
     ];
   }
 
-  const byMarket = new Map<string, { t: number; vi: number }[]>();
-  for (const r of viRows) {
-    const list = byMarket.get(r.market_id) ?? [];
-    list.push({ t: new Date(r.recorded_at).getTime(), vi: r.vi });
-    byMarket.set(r.market_id, list);
+  const times = new Set<number>([startMs, nowMs]);
+  for (const list of series.values()) {
+    for (const p of list) times.add(p.t);
   }
-  for (const list of byMarket.values()) list.sort((a, b) => a.t - b.t);
-
-  const times = new Set<number>([start.getTime(), now.getTime()]);
-  for (const r of viRows) times.add(new Date(r.recorded_at).getTime());
   for (const p of positions) times.add(new Date(p.opened_at).getTime());
-  let grid = [...times].filter((t) => t >= start.getTime()).sort((a, b) => a - b);
+  let grid = [...times].filter((t) => t >= startMs && t <= nowMs).sort((a, b) => a - b);
 
   // Keep the payload small: thin evenly but always keep the endpoints.
   if (grid.length > MAX_POINTS) {
@@ -120,8 +212,12 @@ function buildHistory(
     grid = Array.from({ length: MAX_POINTS }, (_, i) => grid[Math.round(i * step)]);
   }
 
+  // Step function: the last bucket at or before t. Before the first bucket
+  // the position is worth what it was bought at; at `now` it is worth what
+  // the market says right now.
   const viAt = (p: PositionRow, t: number) => {
-    const list = byMarket.get(p.market_id);
+    if (t >= nowMs) return p.market?.current_vi ?? p.entry_vi;
+    const list = series.get(p.market_id);
     let vi = p.entry_vi;
     if (list) {
       for (const pt of list) {
@@ -148,6 +244,7 @@ function buildHistory(
 
 export async function GET(request: Request) {
   const headers = corsHeaders(request);
+  const range = parseRange(new URL(request.url).searchParams.get('range'));
 
   const supabase = await createClient();
   const {
@@ -186,12 +283,27 @@ export async function GET(request: Request) {
     const openPositions = pos ?? [];
     const marketIds = [...new Set(openPositions.map((p) => p.market_id))];
     const now = new Date();
-    const since = new Date(now.getTime() - HISTORY_DAYS * 86_400_000).toISOString();
+
+    // "All" runs from the account's first day (or its oldest open position,
+    // whichever is earlier), never less than a day so the chart has width.
+    let start: Date;
+    let bucketSeconds: number;
+    if (range === 'all') {
+      const candidates = [new Date(user.created_at).getTime(), now.getTime() - DAY_MS];
+      for (const p of openPositions) candidates.push(new Date(p.opened_at).getTime());
+      start = new Date(Math.min(...candidates.filter((t) => Number.isFinite(t))));
+      // ~150 buckets across the span, in whole quarter-hours, at least 15 min.
+      const span = now.getTime() - start.getTime();
+      bucketSeconds = Math.max(15 * 60, Math.ceil(span / 150 / 900_000) * 900);
+    } else {
+      start = new Date(now.getTime() - WINDOWS[range].ms);
+      bucketSeconds = WINDOWS[range].bucketSeconds;
+    }
 
     // Thumbnails and VI history are shared market data (no user scoping), so
     // read them via the admin client like the rest of the market views.
     const admin = createAdminClient();
-    const [{ data: imgRows }, { data: viRows }] = marketIds.length
+    const [{ data: imgRows }, series] = marketIds.length
       ? await Promise.all([
           admin
             .from('captures')
@@ -200,14 +312,9 @@ export async function GET(request: Request) {
             .is('deleted_at', null)
             .not('image_url', 'is', null)
             .order('created_at', { ascending: false }),
-          admin
-            .from('vi_history')
-            .select('market_id, vi, recorded_at')
-            .in('market_id', marketIds)
-            .gte('recorded_at', since)
-            .order('recorded_at', { ascending: true }),
+          loadViSeries(admin, marketIds, start, bucketSeconds),
         ])
-      : [{ data: [] }, { data: [] }];
+      : [{ data: [] }, new Map() as ViSeries];
 
     // Newest capture per market is the first row we see for it.
     const imageByMarket = new Map<string, string>();
@@ -242,12 +349,7 @@ export async function GET(request: Request) {
     const totalValueUsd =
       balanceUsd + positions.reduce((sum, p) => sum + p.valueUsd, 0);
 
-    const history = buildHistory(
-      balanceUsd,
-      openPositions,
-      (viRows ?? []) as { market_id: string; vi: number; recorded_at: string }[],
-      now
-    );
+    const history = buildHistory(balanceUsd, openPositions, series, start, now);
     const first = history[0]?.value ?? totalValueUsd;
     const changeUsd = totalValueUsd - first;
 
@@ -259,6 +361,7 @@ export async function GET(request: Request) {
       unrealizedPnlUsd,
       totalValueUsd,
       positions,
+      range,
       history,
       changeUsd,
       changePercent: first > 0 ? (changeUsd / first) * 100 : 0,

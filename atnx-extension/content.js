@@ -393,13 +393,28 @@
     }, 300);
   }
 
+  // A busy toast only ever goes away when the worker sends the next status.
+  // If the worker is torn down mid-capture that message never comes, so the
+  // busy toasts fall back to an error on their own (the upload itself gives
+  // up at 75 s).
+  const BUSY_TOAST_MS = 100_000;
+  let busyToastTimer = null;
+
   function handleStatusUpdate(status, detail) {
+    clearTimeout(busyToastTimer);
+    busyToastTimer = null;
     switch (status) {
       case 'capturing':
-        showToast({ title: 'CAPTURED', subtitle: 'Processing screenshot...', spinner: true });
-        break;
       case 'analyzing':
-        showToast({ title: 'ANALYZING', subtitle: 'AI is identifying the content...', spinner: true });
+        showToast(
+          status === 'capturing'
+            ? { title: 'CAPTURED', subtitle: 'Processing screenshot...', spinner: true }
+            : { title: 'ANALYZING', subtitle: 'AI is identifying the content...', spinner: true }
+        );
+        busyToastTimer = setTimeout(
+          () => handleStatusUpdate('error', 'Analysis timed out — try again'),
+          BUSY_TOAST_MS
+        );
         break;
       case 'done':
         showToast({
