@@ -42,6 +42,11 @@ const LINKS: NavLink[] = [
     label: "Portfolio",
     match: (p: string) => p === "/app/portfolio",
   },
+  {
+    href: "/app/leaderboard",
+    label: "Leaderboard",
+    match: (p: string) => p === "/app/leaderboard",
+  },
 ];
 
 function PlusIcon() {
@@ -87,7 +92,8 @@ export function Nav() {
             height={32}
             className="w-8 h-8 rounded-md shrink-0 object-contain"
           />
-          <div className="text-lg font-bold text-primary tracking-[0.2em] leading-none group-hover:text-atnx-cyan transition-colors">
+          {/* Four tabs need the room on phones; the mark alone says ATNX. */}
+          <div className="hidden sm:block text-lg font-bold text-primary tracking-[0.2em] leading-none group-hover:text-atnx-cyan transition-colors">
             ATNX
           </div>
         </Link>
@@ -103,7 +109,7 @@ export function Nav() {
                 key={l.href}
                 href={l.href}
                 aria-current={active ? "page" : undefined}
-                className={`inline-flex items-center gap-1 px-3.5 py-1.5 rounded-full font-bold transition-colors ${
+                className={`inline-flex items-center gap-1 px-2.5 sm:px-3.5 py-1.5 rounded-full font-bold whitespace-nowrap transition-colors ${
                   active
                     ? "bg-atnx-magenta text-white shadow-[0_0_16px_rgba(255,0,229,0.25)]"
                     : "text-secondary hover:text-primary"
