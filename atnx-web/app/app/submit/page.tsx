@@ -6,13 +6,24 @@ import { SubmitForm } from "./SubmitForm";
 // for everyone else when the extension or share sheet is not at hand. The
 // route stays /app/submit (the extension and share flow link to it); the
 // tab and the heading say Create.
-export default async function SubmitPage() {
+//
+// The Android share target lands here with ?url=, ?text= and ?notice= when
+// it could not finish on its own (a site that blocks link previews, or text
+// the model turned away), so the person only has to add a screenshot.
+export default async function SubmitPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   if (!user) redirect("/?redirect=/app/submit");
+
+  const params = await searchParams;
+  const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? "";
 
   return (
     <div className="max-w-2xl mx-auto w-full">
@@ -22,7 +33,11 @@ export default async function SubmitPage() {
         belongs to, a new market, or a reason it was turned away.
       </p>
 
-      <SubmitForm />
+      <SubmitForm
+        initialUrl={first(params.url)}
+        initialText={first(params.text)}
+        notice={first(params.notice)}
+      />
     </div>
   );
 }

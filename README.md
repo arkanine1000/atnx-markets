@@ -62,7 +62,7 @@ How a submission is decided, stage by stage, is in [`atnx-web/README.md`](atnx-w
 | `/app/portfolio` | ❌ | Open + closed positions, realized PnL, sim balance |
 | `/app/settings` | ❌ | Profile management (handle, email) |
 | `/admin` | admins only | Moderation: markets, captures in review (low-confidence creates), audit log |
-| `/share` | ❌ | Android share-target POST (image or link) → same pipeline → redirect to the market |
+| `/share` | ❌ | Android share-target POST (image, link, or text) → same pipeline → redirect to the market. A link whose site blocks previews (Facebook, Instagram, TikTok) is tried from its caption, and failing that lands on `/app/submit` prefilled so one screenshot finishes it |
 | `/auth/callback` | — | OAuth return path; exchanges code → session, ensures `user_profiles` / `sim_balances` rows |
 
 ### API
@@ -85,7 +85,7 @@ How a submission is decided, stage by stage, is in [`atnx-web/README.md`](atnx-w
 - **`trends.ts`** — Google Trends (7d interest), virality score = 0.35 × current + 0.30 × momentum + 0.20 × spike + 0.15 × consistency, all × 10. `normalizeSearchTerm` strips separators so titles like `Foo / Bar` don't tank queries.
 - **`wikipedia.ts`** — OpenSearch → per-article-daily pageviews (30d, 2-day lag). Score = `log10(peak + 10) × 200 − 200`. User-Agent required by Wikimedia. 1h cache.
 - **`store.ts`** — `createMarket` (unique normalised name; re-selects on conflict), `addCapture`, `recordVi`, `getCaptures`, `getMarketDetail`.
-- **`og.ts`** — Fetches a link's `og:image` and title for URL submissions and the share target.
+- **`og.ts`** — Fetches a link's preview image and title for URL submissions and the share target: YouTube thumbnails directly, TikTok via oEmbed or the page's hydration JSON, everything else from `og:image` with a browser user agent first and Facebook's crawler user agent second (Facebook, Instagram and Threads are tried crawler-first). Login walls and placeholder logos count as no image.
 - **`trends-cache.ts`** — 5 min in-memory cache keyed by lowercased term.
 - **`capture-view.ts`** — UI helpers (`timeAgo`, `sentimentColor`, deterministic 24h % ticker).
 - **`supabase/cookie-options.ts`** — Forces `SameSite=None; Secure` so the extension can attach the auth cookie on cross-origin fetches.

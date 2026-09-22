@@ -7,6 +7,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 // uploads small and matches what the extension sends.
 const MAX_EDGE = 1080;
 const JPEG_QUALITY = 0.85;
+// When the browser cannot decode the picked file at all, it is sent as-is
+// and the server-side model gets to try. Vercel rejects bodies over 4.5 MB.
+const MAX_RAW_BYTES = 4 * 1024 * 1024;
+const IMAGE_EXT = /\.(png|jpe?g|webp|gif|heic|heif|avif|bmp)$/i;
 
 type Outcome = "matched" | "linked" | "created" | "created_review" | "dedup";
 
@@ -28,17 +32,85 @@ interface FailureResponse {
 
 type Result = SuccessResponse | FailureResponse;
 
-async function resizeImage(file: File): Promise<Blob> {
-  const bitmap = await createImageBitmap(file);
-  const scale = Math.min(1, MAX_EDGE / Math.max(bitmap.width, bitmap.height));
-  const w = Math.max(1, Math.round(bitmap.width * scale));
-  const h = Math.max(1, Math.round(bitmap.height * scale));
-  const canvas = new OffscreenCanvas(w, h);
+function drawScaled(
+  source: ImageBitmap | HTMLImageElement,
+  width: number,
+  height: number,
+): Promise<Blob> {
+  const scale = Math.min(1, MAX_EDGE / Math.max(width, height));
+  const w = Math.max(1, Math.round(width * scale));
+  const h = Math.max(1, Math.round(height * scale));
+  if (typeof OffscreenCanvas !== "undefined") {
+    const canvas = new OffscreenCanvas(w, h);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("Canvas unavailable");
+    ctx.drawImage(source, 0, 0, w, h);
+    return canvas.convertToBlob({ type: "image/jpeg", quality: JPEG_QUALITY });
+  }
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Canvas unavailable");
-  ctx.drawImage(bitmap, 0, 0, w, h);
-  bitmap.close();
-  return canvas.convertToBlob({ type: "image/jpeg", quality: JPEG_QUALITY });
+  ctx.drawImage(source, 0, 0, w, h);
+  return new Promise((resolve, reject) =>
+    canvas.toBlob(
+      (b) => (b ? resolve(b) : reject(new Error("Canvas encode failed"))),
+      "image/jpeg",
+      JPEG_QUALITY,
+    ),
+  );
+}
+
+// createImageBitmap is the fast path. Some Android builds refuse files the
+// <img> decoder is fine with (the gallery hands over odd JPEG variants and
+// files with a stale MIME type), so that is the second try.
+async function resizeViaBitmap(file: File): Promise<Blob> {
+  const bitmap = await createImageBitmap(file);
+  try {
+    return await drawScaled(bitmap, bitmap.width, bitmap.height);
+  } finally {
+    bitmap.close();
+  }
+}
+
+function resizeViaImageElement(file: File): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      drawScaled(img, img.naturalWidth, img.naturalHeight)
+        .then(resolve, reject)
+        .finally(() => URL.revokeObjectURL(objectUrl));
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error("Image element could not decode the file"));
+    };
+    img.src = objectUrl;
+  });
+}
+
+// The upload for a picked file: resized JPEG when the browser can decode
+// it, the untouched file when it cannot but the size allows, else an error
+// the person can act on.
+async function prepareUpload(file: File): Promise<{ blob: Blob; name: string }> {
+  try {
+    return { blob: await resizeViaBitmap(file), name: "upload.jpg" };
+  } catch {
+    // fall through
+  }
+  try {
+    return { blob: await resizeViaImageElement(file), name: "upload.jpg" };
+  } catch {
+    // fall through
+  }
+  if (file.size <= MAX_RAW_BYTES) {
+    return { blob: file, name: file.name || "upload" };
+  }
+  throw new Error(
+    "This image could not be read by the browser and is too large to send as-is. Take a screenshot of it and try again.",
+  );
 }
 
 function outcomeLine(r: SuccessResponse): string {
@@ -54,15 +126,25 @@ function outcomeLine(r: SuccessResponse): string {
   }
 }
 
-export function SubmitForm() {
+interface SubmitFormProps {
+  // Prefill from the Android share target when it could not finish on its
+  // own; see app/share/route.ts.
+  initialUrl?: string;
+  initialText?: string;
+  notice?: string;
+}
+
+export function SubmitForm({ initialUrl = "", initialText = "", notice = "" }: SubmitFormProps) {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
-  const [url, setUrl] = useState("");
-  const [text, setText] = useState("");
+  const [url, setUrl] = useState(initialUrl);
+  const [text, setText] = useState(initialText);
   const [busy, setBusy] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [result, setResult] = useState<Result | null>(null);
+  const [noticeDismissed, setNoticeDismissed] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const showNotice = Boolean(notice) && !noticeDismissed && !result;
 
   useEffect(() => {
     if (!file) {
@@ -74,8 +156,13 @@ export function SubmitForm() {
     return () => URL.revokeObjectURL(objectUrl);
   }, [file]);
 
+  // Android pickers sometimes hand over a file with an empty MIME type; the
+  // extension is the tie-breaker there.
   const takeFile = useCallback((f: File | null | undefined) => {
-    if (!f || !f.type.startsWith("image/")) return;
+    if (!f) return;
+    const looksLikeImage =
+      f.type.startsWith("image/") || (!f.type && IMAGE_EXT.test(f.name));
+    if (!looksLikeImage) return;
     setFile(f);
     setResult(null);
   }, []);
@@ -105,8 +192,8 @@ export function SubmitForm() {
     try {
       const form = new FormData();
       if (file) {
-        const blob = await resizeImage(file);
-        form.set("image", blob, "upload.jpg");
+        const { blob, name } = await prepareUpload(file);
+        form.set("image", blob, name);
         if (text.trim()) form.set("pageContext", text.trim());
         if (url.trim()) form.set("sourceUrl", url.trim());
       } else if (url.trim()) {
@@ -134,6 +221,23 @@ export function SubmitForm() {
 
   return (
     <form onSubmit={submit} className="space-y-4">
+      {showNotice && (
+        <div
+          role="status"
+          className="flex items-start gap-3 rounded-xl border border-atnx-cyan/40 bg-atnx-cyan/10 px-4 py-3 text-sm text-primary"
+        >
+          <span className="flex-1 break-words">{notice}</span>
+          <button
+            type="button"
+            onClick={() => setNoticeDismissed(true)}
+            className="text-secondary hover:text-primary shrink-0 cursor-pointer"
+            aria-label="Dismiss"
+          >
+            {"✕"}
+          </button>
+        </div>
+      )}
+
       <div
         onDragOver={(e) => {
           e.preventDefault();
@@ -189,9 +293,11 @@ export function SubmitForm() {
           </div>
         ) : (
           <>
-            <div className="text-sm font-bold text-primary">Drop a screenshot</div>
+            <div className="text-sm font-bold text-primary">
+              {showNotice ? "Add a screenshot" : "Drop a screenshot"}
+            </div>
             <div className="text-xs text-tertiary mt-1">
-              or click to choose, or paste an image anywhere on this page
+              or tap to choose, or paste an image anywhere on this page
             </div>
           </>
         )}
@@ -211,7 +317,7 @@ export function SubmitForm() {
           className="mt-1 w-full rounded-xl border border-surface bg-surface px-3 py-2 text-sm text-primary placeholder:text-tertiary focus:outline-none focus:border-atnx-cyan"
         />
         <span className="block text-xs text-tertiary mt-1">
-          X, TikTok and Instagram block link previews. For those, paste a screenshot.
+          X, TikTok, Instagram and Facebook usually block link previews. For those, add a screenshot.
         </span>
       </label>
 

@@ -20,7 +20,8 @@ export const maxDuration = 60;
 
 // Hosts that block server-side fetches. When the OG fetch fails for one of
 // these, the answer is "paste a screenshot", not an error.
-const SCREENSHOT_ONLY_HOSTS = /(^|\.)(x\.com|twitter\.com|tiktok\.com|instagram\.com|threads\.net)$/i;
+const SCREENSHOT_ONLY_HOSTS =
+  /(^|\.)(x\.com|twitter\.com|tiktok\.com|instagram\.com|threads\.net|threads\.com|facebook\.com|fb\.com|fb\.watch)$/i;
 
 function successBody(result: Awaited<ReturnType<typeof processCapture>>) {
   return {
