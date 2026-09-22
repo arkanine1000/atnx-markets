@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { scoreTerms } from '@/lib/signals';
 import { recordVi } from '@/lib/store';
 import type { Components } from '@/lib/vi/score';
+import { normalizeSearchTerm } from '@/lib/vi/trends';
 
 // Fast refresh, every 5 minutes (vercel.json). Re-reads the fast sources
 // (Google Trends, Bluesky) for every live market, combines them with the
@@ -46,7 +47,7 @@ export async function runRefresh(request: Request, cadence: 'fast' | 'slow') {
     const batch = markets.slice(i, i + batchSize);
     const results = await scoreTerms(
       batch.map((m) => ({
-        term: m.entity_name,
+        term: normalizeSearchTerm({ name: m.entity_name }),
         aliases: (m.aliases as string[] | null) ?? [],
         stored: (m.vi_components as Components | null) ?? null,
       })),

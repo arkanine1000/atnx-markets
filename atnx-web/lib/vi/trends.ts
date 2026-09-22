@@ -182,22 +182,15 @@ export async function fetchTrendsSignal(term: string, aliases: string[] = []): P
   return got.get(term) ?? empty();
 }
 
-// Turns a model-proposed market name into a query the sources can use.
-// Unchanged from the single-source version: strips quotes, flattens title
-// punctuation, and trims long names to three descriptive words.
+// Turns a market name into the phrase the sources search for: quotes
+// stripped, title punctuation ("/", "|", ":") flattened to spaces. Every
+// path that scores a market must use this, so the capture and the cron
+// query the same string. The old version also cut long names to three
+// words; with aliases carrying the short forms that only produced
+// generic phrases ("Incidental 49A Real" for a five-word title).
 export function normalizeSearchTerm(analysis: { name?: string } | null | undefined): string {
   let term = analysis?.name || '';
   term = term.replace(/["“”'‘’]/g, '');
   term = term.replace(/[\/|:;,\-–—•·_]+/g, ' ');
-  term = term.replace(/\s+/g, ' ').trim();
-  const words = term.split(' ').filter(Boolean);
-  if (words.length > 4) {
-    const stopWords = new Set([
-      'the', 'a', 'an', 'of', 'and', 'in', 'on', 'at', 'for', 'to', 'is',
-      'was', 'by', 'with', 'as', 'that', 'this', 'from',
-    ]);
-    const kept = words.filter((w) => !stopWords.has(w.toLowerCase()));
-    term = (kept.length > 0 ? kept : words).slice(0, 3).join(' ');
-  }
-  return term.trim();
+  return term.replace(/\s+/g, ' ').trim();
 }
