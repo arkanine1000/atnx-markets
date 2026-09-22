@@ -280,9 +280,12 @@ export function ViChart({
             interval="preserveStartEnd"
             height={28}
           />
+          {/* Anchored at zero: the Virality Index is a level on a 0 to
+              1000 scale, and a domain fitted to the data draws a steady
+              438 along the bottom edge as if the market were dead. */}
           <YAxis
             orientation="right"
-            domain={["auto", "auto"]}
+            domain={[0, "auto"]}
             tick={{ fill: t.tick, fontSize: 11, fontFamily: "inherit" }}
             tickLine={false}
             axisLine={false}
