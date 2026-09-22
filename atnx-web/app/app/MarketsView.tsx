@@ -12,9 +12,13 @@ import { useSearchParams } from "next/navigation";
 import { MarketCard, MarketRow } from "@/components/MarketCard";
 import { FeaturedHero } from "@/components/FeaturedHero";
 import { EmptyState, Segmented } from "@/components/ui";
+import { startPolling } from "@/lib/poll";
 import type { Capture } from "@/lib/store";
 
-const POLL_MS = 5000;
+// A new VI point lands every five minutes; thirty seconds is plenty to
+// catch a fresh capture. Behind it the server memoizes the feed for 15 s,
+// so several tabs cost one database read per window.
+const POLL_MS = 30_000;
 
 function ShareErrorBanner() {
   const searchParams = useSearchParams();
@@ -146,45 +150,30 @@ export function MarketsView({ initialCaptures }: { initialCaptures: Capture[] })
   const view = useSyncExternalStore<ViewMode>(subscribeView, readView, () => "grid");
   // Body of the last feed we rendered. A poll that returns the same bytes
   // is dropped before setState, so forty sparklines are not redrawn for
-  // nothing every five seconds.
+  // nothing every thirty seconds.
   const lastBody = useRef<string | null>(null);
 
-  // Poll while the tab is visible; pick up straight away when it comes back.
+  // Poll while the tab is visible, backing off while the API is failing.
+  // The first fetch waits a full interval: the page arrived with the feed
+  // in it, unless the server render failed, in which case fetch now.
   useEffect(() => {
-    let timer: ReturnType<typeof setInterval> | null = null;
-    let cancelled = false;
-
     async function fetchCaptures() {
-      try {
-        const res = await fetch("/api/captures");
-        const body = await res.text();
-        if (cancelled || body === lastBody.current) return;
-        const data = JSON.parse(body);
-        if (Array.isArray(data.captures)) {
-          lastBody.current = body;
-          setCaptures(data.captures);
-        }
-      } catch {
-        // Silently retry on next poll
+      const res = await fetch("/api/captures");
+      if (!res.ok) throw new Error(`feed ${res.status}`);
+      const body = await res.text();
+      if (body === lastBody.current) return;
+      const data = JSON.parse(body);
+      if (Array.isArray(data.captures)) {
+        lastBody.current = body;
+        setCaptures(data.captures);
       }
     }
-
-    function schedule() {
-      if (timer) clearInterval(timer);
-      timer = null;
-      if (document.visibilityState === "visible") {
-        fetchCaptures();
-        timer = setInterval(fetchCaptures, POLL_MS);
-      }
-    }
-
-    schedule();
-    document.addEventListener("visibilitychange", schedule);
-    return () => {
-      cancelled = true;
-      if (timer) clearInterval(timer);
-      document.removeEventListener("visibilitychange", schedule);
-    };
+    return startPolling(fetchCaptures, {
+      intervalMs: POLL_MS,
+      immediate: initialCaptures.length === 0,
+    });
+    // initialCaptures is the server render; it does not change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const groups = useMemo(() => groupByMarket(captures), [captures]);
@@ -215,7 +204,7 @@ export function MarketsView({ initialCaptures }: { initialCaptures: Capture[] })
               <span className="relative inline-flex h-2 w-2 rounded-full bg-atnx-cyan" />
             </span>
             {groups.length} live {groups.length === 1 ? "market" : "markets"},
-            refreshed every 5s
+            refreshed every 30s
           </p>
         </div>
 

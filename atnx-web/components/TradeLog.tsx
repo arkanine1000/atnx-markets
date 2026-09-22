@@ -2,7 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { timeAgo } from "@/lib/capture-view";
+import { startPolling } from "@/lib/poll";
 import type { TradeLogEvent } from "@/lib/store";
+
+const POLL_MS = 30_000;
 
 interface Props {
   marketId: string;
@@ -22,26 +25,16 @@ function formatPnl(pnl: number): string {
 export function TradeLog({ marketId, initialEvents }: Props) {
   const [events, setEvents] = useState<TradeLogEvent[]>(initialEvents);
 
+  // The page arrives with the log in it; poll from a full interval on,
+  // only while visible, backing off while the API is failing.
   useEffect(() => {
-    let cancelled = false;
-
     async function fetchEvents() {
-      try {
-        const res = await fetch(`/api/markets/${marketId}/trades`);
-        const data = await res.json();
-        if (!cancelled && Array.isArray(data.events)) {
-          setEvents(data.events);
-        }
-      } catch {
-        // Silently retry on next poll
-      }
+      const res = await fetch(`/api/markets/${marketId}/trades`);
+      if (!res.ok) throw new Error(`trades ${res.status}`);
+      const data = await res.json();
+      if (Array.isArray(data.events)) setEvents(data.events);
     }
-
-    const interval = setInterval(fetchEvents, 5000);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
+    return startPolling(fetchEvents, { intervalMs: POLL_MS });
   }, [marketId]);
 
   if (events.length === 0) {

@@ -1,6 +1,11 @@
 // Next.js 16 renamed `middleware` to `proxy`. Same semantics.
-// This file refreshes the Supabase auth cookie on every request and gates
+// This file refreshes the Supabase auth cookie on page requests and gates
 // access to protected app routes.
+//
+// It does not run for /api: those handlers check the user themselves when
+// they need one (captures POST, portfolio) or take a bearer token (cron),
+// and the public feed needs no user at all. Running here too meant every
+// dashboard poll cost a round trip to Supabase Auth before it started.
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 import { crossOriginCookieOptions } from '@/lib/supabase/cookie-options';
@@ -29,12 +34,6 @@ export async function proxy(request: NextRequest) {
     }
   );
 
-  // IMPORTANT: do not put any code between createServerClient and getUser —
-  // the cookie refresh happens as a side effect of this call.
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
   const path = request.nextUrl.pathname;
   // Guests can browse the dashboard, market detail, and portfolio (the
   // portfolio page renders its own login prompt). Only explicit user-specific
@@ -44,11 +43,26 @@ export async function proxy(request: NextRequest) {
     path.startsWith('/admin') || path.startsWith('/app/settings');
   const isAuthCallback = path.startsWith('/auth/callback');
 
-  if (isProtected && !user && !isAuthCallback) {
-    const url = request.nextUrl.clone();
-    url.pathname = '/';
-    url.searchParams.set('redirect', path);
-    return NextResponse.redirect(url);
+  // IMPORTANT: do not put any code between createServerClient and this
+  // block — the cookie refresh happens as a side effect of these calls.
+  //
+  // A protected route asks Supabase Auth who the user is (a network call,
+  // the only answer worth gating on). Everywhere else the proxy only has
+  // to keep the session cookie fresh, and getSession() does that without
+  // a network call unless the token has actually expired. Nothing here
+  // reads the session it returns.
+  if (isProtected && !isAuthCallback) {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      const url = request.nextUrl.clone();
+      url.pathname = '/';
+      url.searchParams.set('redirect', path);
+      return NextResponse.redirect(url);
+    }
+  } else {
+    await supabase.auth.getSession();
   }
 
   return response;
@@ -56,6 +70,6 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!api/|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 };

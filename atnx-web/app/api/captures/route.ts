@@ -159,9 +159,10 @@ export async function POST(request: Request) {
 }
 
 // The feed is the same for every viewer and the dashboard polls it every
-// five seconds, so let the CDN answer the polls: fresh for 5 s, served
-// stale for up to 25 s more while one request refreshes it.
-const FEED_CACHE = 'public, s-maxage=5, stale-while-revalidate=25';
+// thirty seconds, so let the CDN answer the polls: fresh for 15 s, served
+// stale for up to 45 s more while one request refreshes it. Behind that,
+// getCaptures() shares one database read across callers for the same 15 s.
+const FEED_CACHE = 'public, s-maxage=15, stale-while-revalidate=45';
 
 export async function GET(request: Request) {
   const headers = corsHeaders(request);

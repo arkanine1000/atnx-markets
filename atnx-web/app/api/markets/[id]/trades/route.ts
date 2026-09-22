@@ -10,7 +10,12 @@ export async function GET(
   const { id } = await params;
   try {
     const events = await getMarketTradeLog(id);
-    return NextResponse.json({ events });
+    // Public and polled every thirty seconds by every viewer of the market;
+    // let the CDN answer within that window.
+    return NextResponse.json(
+      { events },
+      { headers: { 'Cache-Control': 'public, s-maxage=15, stale-while-revalidate=45' } }
+    );
   } catch (err) {
     console.error('[markets/[id]/trades GET] failed', err);
     return NextResponse.json(

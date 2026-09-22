@@ -6,6 +6,7 @@ import { useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { Card, DeltaChip, EmptyState, StatTile } from "@/components/ui";
 import { STARTING_BALANCE, type LeaderboardRow } from "@/lib/leaderboard";
+import { startPolling } from "@/lib/poll";
 
 const REFRESH_MS = 30_000;
 const SHOW = 100;
@@ -93,22 +94,10 @@ export function LeaderboardView({ rows }: { rows: LeaderboardRow[] }) {
 
   // Re-render from the server while the tab is visible so the marks move
   // with the VI. router.refresh() keeps the header and scroll position.
-  useEffect(() => {
-    let timer: ReturnType<typeof setInterval> | null = null;
-    function schedule() {
-      if (timer) clearInterval(timer);
-      timer = null;
-      if (document.visibilityState === "visible") {
-        timer = setInterval(() => router.refresh(), REFRESH_MS);
-      }
-    }
-    schedule();
-    document.addEventListener("visibilitychange", schedule);
-    return () => {
-      if (timer) clearInterval(timer);
-      document.removeEventListener("visibilitychange", schedule);
-    };
-  }, [router]);
+  useEffect(
+    () => startPolling(async () => router.refresh(), { intervalMs: REFRESH_MS }),
+    [router]
+  );
 
   const top = rows.slice(0, SHOW);
   const mine = user ? rows.find((r) => r.userId === user.id) ?? null : null;

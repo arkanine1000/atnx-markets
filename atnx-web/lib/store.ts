@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createAdminClient } from './supabase/admin';
+import { forget, memo } from './memo';
 import type { TrendsResult } from './trends';
 import type { Database, Json } from './supabase/database';
 import { smooth, type Components } from './vi/score';
@@ -218,11 +219,21 @@ type SeriesMap = Map<string, SeriesPoint[]>;
 
 const DAY_MS = 86_400_000;
 
+// PostgREST's code for a function it cannot find: migration 005 has not
+// been applied. Every other error is the database itself answering badly.
+export const RPC_MISSING = 'PGRST202';
+
 // VI history for many markets in one round trip: vi_history_series()
 // (migration 005) returns one median per bucket, packed as JSON per market,
 // so neither the number of markets nor the length of the window runs into
-// PostgREST's 1,000-row cap. Before the migration is applied it falls back
-// to one query per market for the newest rows.
+// PostgREST's 1,000-row cap.
+//
+// This is one database call per request, whatever happens. If the function
+// is missing it is one raw-row query for every market at once instead; if
+// the database fails, the answer is "no history" and the caller renders
+// without sparklines. It used to re-ask with one query per market on any
+// error, which turned every failed call under load into twenty more calls
+// and is what took the project down at three users.
 async function getViSeries(
   marketIds: string[],
   { days, bucketSeconds, fallbackRows }: { days: number; bucketSeconds: number; fallbackRows: number }
@@ -246,23 +257,32 @@ async function getViSeries(
     }
     return series;
   }
+  if (error.code !== RPC_MISSING) {
+    console.warn('[store] vi_history_series failed, rendering without history:', error.message);
+    return series;
+  }
 
-  console.warn('[store] vi_history_series unavailable, using raw rows:', error.message);
-  await Promise.all(
-    marketIds.map(async (id) => {
-      const { data: rows } = await supabase
-        .from('vi_history')
-        .select('vi, recorded_at')
-        .eq('market_id', id)
-        .gte('recorded_at', since)
-        .order('recorded_at', { ascending: false })
-        .limit(fallbackRows);
-      series.set(
-        id,
-        (rows ?? []).reverse().map((r) => ({ date: r.recorded_at as string, value: Number(r.vi) }))
-      );
-    })
-  );
+  console.warn('[store] vi_history_series missing (apply supabase/005), using raw rows');
+  const { data: rows, error: rowsErr } = await supabase
+    .from('vi_history')
+    .select('market_id, vi, recorded_at')
+    .in('market_id', marketIds)
+    .gte('recorded_at', since)
+    .order('recorded_at', { ascending: false })
+    .limit(Math.min(1000, fallbackRows * marketIds.length));
+  if (rowsErr) {
+    console.warn('[store] vi_history read failed, rendering without history:', rowsErr.message);
+    return series;
+  }
+  // Newest first from the query; each market keeps its newest fallbackRows,
+  // then flips to oldest first for the chart.
+  for (const r of rows ?? []) {
+    const list = series.get(r.market_id) ?? [];
+    if (list.length >= fallbackRows) continue;
+    list.push({ date: r.recorded_at as string, value: Number(r.vi) });
+    series.set(r.market_id, list);
+  }
+  for (const list of series.values()) list.reverse();
   return series;
 }
 
@@ -413,6 +433,9 @@ export async function addCapture(
     .update({ total_captures: (market.total_captures ?? 0) + 1 })
     .eq('id', market.id);
 
+  // The submitter is about to look at the feed; let it show this capture.
+  forget(feedKey(50));
+
   return {
     capture: {
       ...input,
@@ -456,12 +479,22 @@ function rowToCapture(
 // enough for the shape and small enough to poll.
 const FEED_SERIES = { days: 7, bucketSeconds: 2 * 60 * 60, fallbackRows: 84 };
 
+// The feed is the same for every viewer and a new VI point lands every five
+// minutes, so every caller within this window (the server render, the
+// dashboard tabs' polls, the extension panel) shares one read.
+const FEED_TTL_MS = 15_000;
+const feedKey = (limit: number) => `captures:${limit}`;
+
 // The capture feed, newest first. Two round trips regardless of size: the
 // rows, then one bucketed history call for every market in them. The
 // history rides on the newest capture of each market only; the dashboard
 // groups by market and reads it from that one, and repeating it on every
 // older capture of the same market would multiply the payload.
-export async function getCaptures(limit = 50): Promise<Capture[]> {
+export function getCaptures(limit = 50): Promise<Capture[]> {
+  return memo(feedKey(limit), FEED_TTL_MS, () => loadCaptures(limit));
+}
+
+async function loadCaptures(limit: number): Promise<Capture[]> {
   const supabase = createAdminClient();
 
   const { data, error } = await supabase

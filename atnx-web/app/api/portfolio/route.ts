@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { RPC_MISSING } from '@/lib/store';
 import { corsHeaders, corsPreflight } from '@/lib/cors';
 
 // Read-only portfolio snapshot for the Chrome extension's side panel.
@@ -158,22 +159,25 @@ async function loadViSeries(
     return series;
   }
 
-  // Migration 005 not applied yet: read the newest raw rows per market
-  // (PostgREST caps a select at 1,000 rows) and bucket them here.
-  console.warn('[portfolio GET] vi_history_series unavailable, using raw rows:', error.message);
-  const perMarket = await Promise.all(
-    marketIds.map((id) =>
-      admin
-        .from('vi_history')
-        .select('market_id, vi, recorded_at')
-        .eq('market_id', id)
-        .gte('recorded_at', since.toISOString())
-        .order('recorded_at', { ascending: false })
-        .limit(1000)
-    )
-  );
-  const rows = perMarket.flatMap(({ data: r }) => r ?? []);
-  return bucketMedians(rows, bucketSeconds * 1000);
+  // A database error is an error: the panel keeps its last good chart
+  // rather than drawing a wrong one, and nothing here asks again. (It used
+  // to fall back to one query per market on any error, which multiplied
+  // every failure under load.)
+  if (error.code !== RPC_MISSING) throw new Error(`vi_history_series: ${error.message}`);
+
+  // Migration 005 not applied yet: one query for the newest raw rows across
+  // every open position's market (PostgREST caps a select at 1,000 rows),
+  // bucketed here.
+  console.warn('[portfolio GET] vi_history_series missing (apply supabase/005), using raw rows');
+  const { data: rows, error: rowsErr } = await admin
+    .from('vi_history')
+    .select('market_id, vi, recorded_at')
+    .in('market_id', marketIds)
+    .gte('recorded_at', since.toISOString())
+    .order('recorded_at', { ascending: false })
+    .limit(1000);
+  if (rowsErr) throw new Error(`vi_history: ${rowsErr.message}`);
+  return bucketMedians(rows ?? [], bucketSeconds * 1000);
 }
 
 // Reconstruct portfolio value over the window from each open position's

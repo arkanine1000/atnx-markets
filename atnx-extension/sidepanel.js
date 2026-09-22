@@ -7,6 +7,9 @@ const STALE_STATUS_MS = 10_000;
 // (the upload itself gives up at 75 s); show the button again.
 const BUSY_STALE_MS = 90_000;
 const REFRESH_MS = 30_000;
+// While the web app is failing, the wait between refreshes doubles up to
+// this, so an outage is not met with a steady stream of retries.
+const MAX_REFRESH_MS = 5 * 60_000;
 // After the user clicks "Sign in" we poll faster for a few minutes so the
 // panel flips to signed-in as soon as the web app tab finishes.
 const SIGNIN_POLL_MS = 3_000;
@@ -664,6 +667,9 @@ function setSignedOut(base) {
   );
 }
 
+// Resolves true when the web app answered properly (signed out counts:
+// that is an answer), false when it could not be reached or errored, which
+// slows the refresh timer down.
 async function loadPortfolio() {
   const range = chartRange;
   let res;
@@ -673,26 +679,26 @@ async function loadPortfolio() {
   } catch {
     valueTile.hidden = true;
     portfolioEl.replaceChildren(placeholder(`Can't reach ${hostOf(await getWebAppUrl())}`));
-    return;
+    return false;
   }
 
   if (res.status === 401) {
     setSignedOut(base);
-    return;
+    return true;
   }
   if (!res.ok) {
     valueTile.hidden = true;
     portfolioEl.replaceChildren(placeholder(
       res.status === 404 ? 'Portfolio needs a newer web app build' : `Portfolio unavailable (${res.status})`
     ));
-    return;
+    return false;
   }
 
   const data = await readJson(res);
   if (!data || !Array.isArray(data.positions)) {
     valueTile.hidden = true;
     portfolioEl.replaceChildren(placeholder(`Unexpected response from ${hostOf(base)}`));
-    return;
+    return false;
   }
 
   signedIn = true;
@@ -701,7 +707,7 @@ async function loadPortfolio() {
   portfolioCache.set(range, data);
   // The user switched range while this request was in flight; the newer
   // request will draw the tile.
-  if (range !== chartRange) return;
+  if (range !== chartRange) return true;
 
   renderTile(data);
 
@@ -737,6 +743,7 @@ async function loadPortfolio() {
   }
 
   portfolioEl.replaceChildren(toggle, list);
+  return true;
 }
 
 // /api/captures returns the capture feed newest-first; the dashboard groups
@@ -768,6 +775,7 @@ function marketRow(c, base, rank) {
   return row;
 }
 
+// Same contract as loadPortfolio: true when the web app answered.
 async function loadMarkets() {
   let res;
   let base;
@@ -776,26 +784,26 @@ async function loadMarkets() {
   } catch {
     marketsEl.replaceChildren(placeholder(`Can't reach ${hostOf(await getWebAppUrl())}`));
     marketsMeta.textContent = '';
-    return;
+    return false;
   }
   if (!res.ok) {
     marketsEl.replaceChildren(placeholder(`Markets unavailable (${res.status})`));
     marketsMeta.textContent = '';
-    return;
+    return false;
   }
 
   const data = await readJson(res);
   if (!data || !Array.isArray(data.captures)) {
     marketsEl.replaceChildren(placeholder(`Unexpected response from ${hostOf(base)}`));
     marketsMeta.textContent = '';
-    return;
+    return false;
   }
   const top = topMarkets(data.captures);
   marketsMeta.textContent = top.length ? 'VI Score' : '';
 
   if (top.length === 0) {
     marketsEl.replaceChildren(placeholder('No markets yet — capture something to spawn one'));
-    return;
+    return true;
   }
   marketsEl.replaceChildren(
     ...top.map((c, i) => {
@@ -805,7 +813,12 @@ async function loadMarkets() {
       return row;
     })
   );
+  return true;
 }
+
+// Wait until the next automatic refresh: REFRESH_MS while the web app is
+// answering, doubling towards MAX_REFRESH_MS while it is not.
+let refreshDelay = REFRESH_MS;
 
 let refreshing = false;
 async function refreshData() {
@@ -814,7 +827,8 @@ async function refreshData() {
   refreshBtn.classList.add('spinning');
   document.body.classList.add('refreshing');
   try {
-    await Promise.all([loadPortfolio(), loadMarkets()]);
+    const ok = await Promise.all([loadPortfolio(), loadMarkets()]);
+    refreshDelay = ok.every(Boolean) ? REFRESH_MS : Math.min(MAX_REFRESH_MS, refreshDelay * 2);
   } finally {
     refreshing = false;
     refreshBtn.classList.remove('spinning');
@@ -824,18 +838,21 @@ async function refreshData() {
 
 refreshBtn.addEventListener('click', refreshData);
 
-// Poll while the panel is visible; stop when it is hidden.
+// Poll while the panel is visible; stop when it is hidden. One timer at a
+// time, re-armed after each refresh with the current delay.
 let timer = null;
 function schedule() {
-  clearInterval(timer);
+  clearTimeout(timer);
   timer = null;
-  if (document.visibilityState === 'visible') {
-    timer = setInterval(refreshData, REFRESH_MS);
-  }
+  if (document.visibilityState !== 'visible') return;
+  timer = setTimeout(async () => {
+    await refreshData();
+    schedule();
+  }, refreshDelay);
 }
 document.addEventListener('visibilitychange', () => {
-  schedule();
   if (document.visibilityState === 'visible') refreshData();
+  schedule();
 });
 
 // --- Init ---

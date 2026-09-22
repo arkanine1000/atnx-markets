@@ -56,7 +56,7 @@ How a submission is decided, stage by stage, is in [`atnx-web/README.md`](atnx-w
 | Path | Guest? | What it does |
 | --- | --- | --- |
 | `/` | ✅ | Landing splash with "Launch App" |
-| `/app` | ✅ | Dashboard — every market as a card, sorted by VI / newest / category, refreshes every 5s |
+| `/app` | ✅ | Dashboard — every market as a card, sorted by VI / newest / category, refreshes every 30s |
 | `/app/markets/[id]` | ✅ | Market detail — hero card, 7-day VI sparkline, evidence strip of all captures, Trade button |
 | `/app/submit` | ❌ | Web entry: drop or paste a screenshot, or give a link or a line of text; shows which market it landed on |
 | `/app/portfolio` | ❌ | Open + closed positions, realized PnL, sim balance |
