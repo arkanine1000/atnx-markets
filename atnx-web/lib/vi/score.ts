@@ -6,8 +6,9 @@
 //   level     0-1000  how much attention it has right now
 //   momentum  ratio   current window vs the term's own 7-14 day baseline
 //                     (the Hype Ratio: 1 = normal, 3 = 3x baseline, cap 10)
-// The composite weights the sources that actually returned data, then
-// scales by how many independent sources see the term at all.
+// The composite weights the sources that actually returned data, scales
+// the level by momentum (0.65x at a collapse, 1x steady, 1.35x at a 10x
+// spike), then by how many independent sources see the term at all.
 
 export type SourceName = 'trends' | 'bluesky' | 'gdelt' | 'wikipedia';
 
@@ -91,8 +92,13 @@ export function combine(components: Components): Composite | null {
     );
   }
 
+  // Momentum scales the level rather than adding to it: a steady 1x leaves
+  // the level alone, 10x lifts it by a third, 0.1x cuts it by a third. An
+  // additive term gave every market seen by one source a floor of ~140
+  // (0.35 x 500 x 0.8) whatever its size.
   const multiplier = PRESENCE[Math.min(4, seeing.length)];
-  const score = clamp(Math.round((LEVEL_SHARE * level + MOMENTUM_SHARE * momentum) * multiplier));
+  const momentumFactor = LEVEL_SHARE + MOMENTUM_SHARE * (momentum / 500);
+  const score = clamp(Math.round(level * momentumFactor * multiplier));
 
   return {
     score,

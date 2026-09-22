@@ -89,11 +89,15 @@ export async function fetchWikipediaSignal(term: string, aliases: string[] = [])
   }
 }
 
+// OpenSearch is a prefix/fuzzy search: "ATNX" returns "ATX", "Goonmobile"
+// returns "GEO-Mobile Radio Interface". Only a title that is the term
+// itself (case, punctuation and a disambiguation suffix aside) counts as
+// the term's article; anything else is a different subject's pageviews.
 async function resolveArticleTitle(term: string): Promise<string | null> {
   const params = new URLSearchParams({
     action: 'opensearch',
     search: term,
-    limit: '1',
+    limit: '5',
     namespace: '0',
     format: 'json',
   });
@@ -102,7 +106,20 @@ async function resolveArticleTitle(term: string): Promise<string | null> {
   });
   if (!res.ok) return null;
   const body = (await res.json()) as [string, string[], string[], string[]];
-  return body?.[1]?.[0] ?? null;
+  const want = normalizeTitle(term);
+  for (const title of body?.[1] ?? []) {
+    const got = normalizeTitle(title.replace(/\s*\([^)]*\)\s*$/, ''));
+    if (got === want) return title;
+  }
+  return null;
+}
+
+function normalizeTitle(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[‘’'"“”]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
 }
 
 async function fetchDailyPageviews(title: string): Promise<{ date: string; views: number }[]> {
