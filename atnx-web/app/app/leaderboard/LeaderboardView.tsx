@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { Card, DeltaChip, EmptyState, StatTile, compactUsd } from "@/components/ui";
+import { Identicon } from "@/components/Identicon";
 import { STARTING_BALANCE, type LeaderboardRow } from "@/lib/leaderboard";
 import { startPolling } from "@/lib/poll";
 
@@ -53,9 +54,7 @@ function Row({ row, me }: { row: LeaderboardRow; me: boolean }) {
       }`}
     >
       <RankBadge rank={row.rank} />
-      <div className="h-8 w-8 shrink-0 rounded-full bg-elevated border border-surface inline-flex items-center justify-center text-xs font-bold text-secondary uppercase">
-        {row.handle.trim().charAt(0) || "?"}
-      </div>
+      <Identicon seed={row.userId} size={32} className="border border-surface" />
       <div className="min-w-0 flex-1">
         <div className="text-sm font-bold text-primary truncate flex items-center gap-2">
           <span className="truncate">@{row.handle}</span>

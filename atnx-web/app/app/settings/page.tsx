@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { SettingsForm } from "./SettingsForm";
+import { Identicon } from "@/components/Identicon";
 import { redirect } from "next/navigation";
 
 export default async function SettingsPage() {
@@ -22,6 +23,19 @@ export default async function SettingsPage() {
       <h1 className="text-xl font-bold text-primary mb-6">Settings</h1>
 
       <div className="bg-surface border border-surface rounded-lg p-6">
+        <div className="flex items-center gap-4 mb-6 pb-6 border-b border-surface">
+          <Identicon seed={user.id} size={64} className="border-2 border-surface" />
+          <div className="min-w-0">
+            <div className="text-sm font-bold text-primary truncate">
+              {profile?.handle ? `@${profile.handle}` : "Your account"}
+            </div>
+            <div className="text-xs text-tertiary mt-0.5">
+              Your face on the leaderboard and in the header, drawn from your
+              account in the three inks. It stays the same if you change your
+              handle.
+            </div>
+          </div>
+        </div>
         <SettingsForm
           userId={user.id}
           email={profile?.email ?? user.email ?? null}

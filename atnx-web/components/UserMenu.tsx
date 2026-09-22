@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { signOut } from "@/app/actions/auth";
 import { useAuth } from "@/context/AuthContext";
+import { Identicon } from "@/components/Identicon";
 
 export function UserMenu() {
   const { user, loading, openLoginModal } = useAuth();
@@ -58,23 +59,36 @@ export function UserMenu() {
     );
   }
 
-  // Authenticated but profile still loading — keep the slot stable.
-  if (!handle) return null;
-
+  // The generated face stands in for the handle: it is seeded by the
+  // account id, so it is ready before the profile loads and survives a
+  // rename. The handle itself heads the menu.
+  const name = handle ? `@${handle}` : "Account";
   return (
     <div className="relative" ref={rootRef}>
       <button
         onClick={() => setOpen((v) => !v)}
-        className="text-xs px-3 py-1.5 rounded border border-surface bg-surface text-atnx-cyan hover:border-atnx-cyan/50 cursor-pointer transition-colors font-mono whitespace-nowrap"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`${name} menu`}
+        title={name}
+        className={`h-8 w-8 rounded-full border-2 cursor-pointer transition-colors ${
+          open ? "border-atnx-cyan" : "border-surface hover:border-atnx-cyan/60"
+        }`}
       >
-        {handle}
+        <Identicon seed={user.id} size={28} />
       </button>
 
       {open && (
         <div
-          className="absolute right-0 mt-1 w-44 bg-elevated border border-surface rounded-md shadow-lg z-50 py-1"
+          className="absolute right-0 mt-1 w-48 bg-elevated border border-surface rounded-md shadow-lg z-50 py-1"
           role="menu"
         >
+          <div className="flex items-center gap-2.5 px-3 py-2 border-b border-surface mb-1">
+            <Identicon seed={user.id} size={24} />
+            <span className="text-xs font-bold text-atnx-cyan light:text-atnx-cyan-light truncate">
+              {name}
+            </span>
+          </div>
           {/* Portfolio is not in the phone bottom bar, so it lives here on
               phones. From sm up the header pill has it already. */}
           <Link
