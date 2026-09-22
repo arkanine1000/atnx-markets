@@ -5,8 +5,7 @@ text that people submit. Next.js App Router on Vercel, Supabase for the
 database, auth and storage, and the Vercel AI Gateway for the vision model
 and embeddings.
 
-Read `AGENTS.md` before touching Next.js code. This version has breaking
-changes; the docs that match it are in `node_modules/next/dist/docs/`.
+Read `AGENTS.md` before touching Next.js code. 
 
 ## Run it
 
