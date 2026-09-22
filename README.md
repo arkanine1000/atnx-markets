@@ -38,9 +38,9 @@ atnx/
                    │                                        └──────────────────────┘
                    │ Vercel AI Gateway: Gemini Flash (vision), Cohere Embed v4 (text)
                    │
-                   │ composeVi = max(Trends, Wikipedia)
+                   │ composeVi = weighted level+momentum, 4 sources
                    ▼
-          Google Trends · Wikipedia
+   Google Trends · Bluesky · GDELT · Wikipedia
                    ▲
                    │ /api/markets/refresh every 5 min (Vercel Cron)
 ```
@@ -72,7 +72,8 @@ How a submission is decided, stage by stage, is in [`atnx-web/README.md`](atnx-w
 | `POST /api/captures` | Ingest for the extension and the web form. Multipart with `image`, `url`, or `text`. Hash dedup → candidate retrieval → one model call → link check → route (matched / linked / created / rejected) → upload, record VI, write audit row. Rejections are 422 with a reason; X/TikTok/Instagram links that cannot be fetched return `needs_image` |
 | `GET /api/captures` | Dashboard feed (grouped by market, latest first); also feeds the extension side panel's top markets |
 | `GET /api/portfolio` | Extension side panel: handle, sim balance, realized/unrealized PnL, total value, open positions (with latest capture thumbnail), and a 7-day portfolio-value series rebuilt from each open position's `vi_history` (401 when signed out) |
-| `GET /api/markets/refresh` | Cron-only; re-runs `composeVi` for every live market, applies ±1.5% jitter, appends `vi_history` |
+| `GET /api/markets/refresh` | Cron-only, every 5 min; re-reads the fast VI sources (Google Trends, Bluesky) for every live market, combines them with the stored slow readings, appends an EMA-smoothed point to `vi_history` |
+| `GET /api/markets/refresh-slow` | Cron-only, hourly; same for the slow sources (GDELT, Wikipedia) |
 
 ### Key libraries (`atnx-web/lib/`)
 
@@ -80,7 +81,7 @@ How a submission is decided, stage by stage, is in [`atnx-web/README.md`](atnx-w
 - **`vlm.ts`** — The one model call, through Vercel AI Gateway (Gemini Flash for images, Flash-Lite for text, thinking off). Output validated against a per-request zod schema: admit / reject reason, matched candidate id, or a new market with name, type, category (ten fixed values) and aliases.
 - **`embed.ts`**, **`retrieve.ts`** — Cohere Embed v4 text embeddings (512 dims) and the two retrieval queries (cosine on `markets.embedding`, trigram on names and aliases).
 - **`route.ts`** — Deterministic routing table on the model output and retrieval scores; writes `submission_decisions`.
-- **`signals.ts`** — `composeVi({ term })` runs Trends + Wikipedia in parallel, returns the highest score and which source won.
+- **`signals.ts`** — `scoreTerms(requests, cadence)` scores markets across four sources and combines them with `vi/score.ts`: each source gives an absolute level (0–1000) and a momentum ratio against the term's own baseline; the composite is 0.65·level + 0.35·momentum, weighted over the sources that answered, times a presence multiplier (0.8 for one source up to 1.2 for all four). Sources live in `vi/trends.ts` (co-queried against a benchmark keyword so scores compare across markets), `vi/bluesky.ts`, `vi/gdelt.ts`, `vi/wikipedia.ts`. `npm run vi:probe "term"` prints the breakdown.
 - **`trends.ts`** — Google Trends (7d interest), virality score = 0.35 × current + 0.30 × momentum + 0.20 × spike + 0.15 × consistency, all × 10. `normalizeSearchTerm` strips separators so titles like `Foo / Bar` don't tank queries.
 - **`wikipedia.ts`** — OpenSearch → per-article-daily pageviews (30d, 2-day lag). Score = `log10(peak + 10) × 200 − 200`. User-Agent required by Wikimedia. 1h cache.
 - **`store.ts`** — `createMarket` (unique normalised name; re-selects on conflict), `addCapture`, `recordVi`, `getCaptures`, `getMarketDetail`.
@@ -186,7 +187,10 @@ Env vars:
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | client + server | Anon key for browser auth |
 | `SUPABASE_SERVICE_ROLE_KEY` | server only | Admin client, bypasses RLS |
 | `AI_GATEWAY_API_KEY` | server only, local | Vercel AI Gateway. Not needed on Vercel itself (OIDC) |
-| `CRON_SECRET` | server only | Bearer token Vercel sends to `/api/markets/refresh` |
+| `CRON_SECRET` | server only | Bearer token Vercel sends to `/api/markets/refresh` and `/refresh-slow` |
+| `BLUESKY_IDENTIFIER` | server only | Bluesky handle for the post-search VI source (source is skipped when unset) |
+| `BLUESKY_APP_PASSWORD` | server only | App password for that account |
+| `VI_TRENDS_BENCHMARK` | server only | Optional; anchor keyword for Google Trends, default `sudoku` |
 
 Optional overrides (model ids, link and confirm thresholds) and the `EVAL_*` variables for the eval script are listed in `atnx-web/.env.local.example`.
 

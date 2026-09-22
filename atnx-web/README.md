@@ -81,7 +81,7 @@ ignores for Gemini 3.x (measured: 18 s and truncated JSON versus 2.6 s).
 - `app/` routes. `app/app/` is the signed-in product; `app/app/submit/` is
   the web entry form; `app/admin/` is the moderation dashboard.
 - `lib/` server code. `capture.ts`, `vlm.ts`, `embed.ts`, `retrieve.ts`,
-  `route.ts`, `store.ts` are the submission path; `signals.ts`, `trends.ts`,
-  `wikipedia.ts` compute the virality index.
+  `route.ts`, `store.ts` are the submission path; `signals.ts` and `vi/`
+  compute the virality index.
 - `components/` shared UI. `supabase/` schema. `scripts/` eval and seeding.
 - `../atnx-extension/` is the Chrome extension that posts to `/api/captures`.

@@ -1,0 +1,174 @@
+// Pure scoring math for the Virality Index. No I/O here so it can be probed
+// and reasoned about in isolation (scripts/vi-probe.ts).
+//
+// Every source reports two things about a term, each with an absolute
+// meaning that does not depend on the term's own history:
+//   level     0-1000  how much attention it has right now
+//   momentum  ratio   current window vs the term's own 7-14 day baseline
+//                     (the Hype Ratio: 1 = normal, 3 = 3x baseline, cap 10)
+// The composite weights the sources that actually returned data, then
+// scales by how many independent sources see the term at all.
+
+export type SourceName = 'trends' | 'bluesky' | 'gdelt' | 'wikipedia';
+
+export interface SourceComponent {
+  source: SourceName;
+  // null when the source had no data for this term (unknown, not zero).
+  level: number | null;
+  // null when there is no baseline to compare against.
+  momentum: number | null;
+  fetchedAt: string;
+  // Small, source-specific facts for display and debugging.
+  meta?: Record<string, string | number | null>;
+}
+
+export type Components = Partial<Record<SourceName, SourceComponent>>;
+
+export const WEIGHTS: Record<SourceName, number> = {
+  trends: 0.35,
+  bluesky: 0.25,
+  gdelt: 0.2,
+  wikipedia: 0.2,
+};
+
+// Which sources the fast (5 min) and slow (hourly) refresh paths own.
+export const FAST_SOURCES: SourceName[] = ['trends', 'bluesky'];
+export const SLOW_SOURCES: SourceName[] = ['gdelt', 'wikipedia'];
+
+const LEVEL_SHARE = 0.65;
+const MOMENTUM_SHARE = 0.35;
+export const MOMENTUM_CAP = 10;
+
+// Presence multiplier: the doc's cross-platform confirmation. One source
+// seeing a term is weak evidence; all four is strong.
+const PRESENCE: Record<number, number> = { 0: 0, 1: 0.8, 2: 0.95, 3: 1.05, 4: 1.2 };
+
+export const clamp = (x: number, lo = 0, hi = 1000) => Math.max(lo, Math.min(hi, x));
+
+// Maps a hype ratio to 0-1000: 0.1x -> 0, 1x -> 500, 10x -> 1000. Log
+// scale so a halving hurts as much as a doubling helps.
+export function momentumScore(ratio: number): number {
+  const r = Math.max(0.1, Math.min(MOMENTUM_CAP, ratio));
+  return clamp(Math.round(500 + 500 * Math.log10(r)));
+}
+
+export interface Composite {
+  score: number;
+  level: number;
+  momentum: number;
+  sourcesPresent: SourceName[];
+  multiplier: number;
+}
+
+// Null when no source has data. Callers must keep the last known score in
+// that case rather than writing a zero.
+export function combine(components: Components): Composite | null {
+  // "Known" sources answered; "seeing" sources found any attention at all.
+  // A known zero counts against the level but earns no momentum credit and
+  // no presence credit: nothing is happening there.
+  const known = (Object.values(components) as SourceComponent[]).filter(
+    (c): c is SourceComponent => !!c && c.level !== null
+  );
+  if (known.length === 0) return null;
+  const seeing = known.filter((c) => (c.level as number) > 0);
+
+  const wsum = known.reduce((s, c) => s + WEIGHTS[c.source], 0);
+  const level = known.reduce((s, c) => s + (WEIGHTS[c.source] / wsum) * (c.level as number), 0);
+
+  if (seeing.length === 0) {
+    return { score: 0, level: 0, momentum: 0, sourcesPresent: [], multiplier: 0 };
+  }
+
+  const withMomentum = seeing.filter((c) => c.momentum !== null);
+  let momentum: number;
+  if (withMomentum.length === 0) {
+    momentum = 500; // seen, but no baseline anywhere: assume steady
+  } else {
+    const mw = withMomentum.reduce((s, c) => s + WEIGHTS[c.source], 0);
+    momentum = withMomentum.reduce(
+      (s, c) => s + (WEIGHTS[c.source] / mw) * momentumScore(c.momentum as number),
+      0
+    );
+  }
+
+  const multiplier = PRESENCE[Math.min(4, seeing.length)];
+  const score = clamp(Math.round((LEVEL_SHARE * level + MOMENTUM_SHARE * momentum) * multiplier));
+
+  return {
+    score,
+    level: Math.round(level),
+    momentum: Math.round(momentum),
+    sourcesPresent: seeing.map((c) => c.source),
+    multiplier,
+  };
+}
+
+// Exponential smoothing with a fixed half-life, applied on the stored
+// series. Replaces the jitter: the chart breathes because the score is
+// converging on the latest reading, not because we added noise.
+export const EMA_HALF_LIFE_MS = 2 * 60 * 60 * 1000;
+
+export function smooth(prev: number | null, prevAt: string | null, raw: number, now = Date.now()): number {
+  if (prev === null || prevAt === null) return raw;
+  const dt = Math.max(0, now - new Date(prevAt).getTime());
+  const alpha = 1 - Math.pow(2, -dt / EMA_HALF_LIFE_MS);
+  return Math.round(prev + (raw - prev) * alpha);
+}
+
+// The six tiers from the design doc.
+export interface Tier {
+  label: string;
+  min: number;
+}
+export const TIERS: Tier[] = [
+  { label: 'Mega-viral', min: 851 },
+  { label: 'Highly viral', min: 651 },
+  { label: 'Viral', min: 451 },
+  { label: 'Trending', min: 251 },
+  { label: 'Moderate', min: 101 },
+  { label: 'Minimal', min: 0 },
+];
+export function viTier(score: number): Tier {
+  return TIERS.find((t) => score >= t.min) ?? TIERS[TIERS.length - 1];
+}
+
+// Shared helper: ratio of the latest full window to the mean of the prior
+// ones. Null when the prior mean is zero (nothing to compare against).
+export function ratioToBaseline(current: number, prior: number[]): number | null {
+  const kept = prior.filter((v) => Number.isFinite(v));
+  if (kept.length === 0) return null;
+  const mean = kept.reduce((a, b) => a + b, 0) / kept.length;
+  if (mean <= 0) return current > 0 ? MOMENTUM_CAP : null;
+  return current / mean;
+}
+
+export function median(xs: number[]): number {
+  if (xs.length === 0) return 0;
+  const s = [...xs].sort((a, b) => a - b);
+  const mid = Math.floor(s.length / 2);
+  return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+}
+
+// Terms that are one common word ("The", "Cat") score huge on search and
+// social by accident. A single token only counts on those sources when an
+// encyclopedic source resolved it to an article of the same name.
+export function isGenericTerm(term: string, wikipediaTitle: string | null): boolean {
+  const tokens = term.trim().split(/\s+/).filter(Boolean);
+  if (tokens.length >= 2) return false;
+  // Function words have Wikipedia articles too ("The"), so an article match
+  // is not enough on its own.
+  if (tokens.length === 0 || FUNCTION_WORDS.has(tokens[0].toLowerCase())) return true;
+  if (!wikipediaTitle) return true;
+  return wikipediaTitle.trim().toLowerCase() !== term.trim().toLowerCase();
+}
+
+const FUNCTION_WORDS = new Set([
+  'the', 'a', 'an', 'and', 'or', 'but', 'of', 'in', 'on', 'at', 'to', 'for',
+  'by', 'with', 'from', 'as', 'is', 'was', 'are', 'were', 'be', 'been', 'it',
+  'its', 'this', 'that', 'these', 'those', 'he', 'she', 'they', 'we', 'you',
+  'i', 'me', 'my', 'your', 'his', 'her', 'their', 'our', 'not', 'no', 'yes',
+  'so', 'if', 'then', 'than', 'too', 'very', 'can', 'will', 'just', 'now',
+  'new', 'one', 'all', 'any', 'some', 'more', 'most', 'other', 'such', 'what',
+  'which', 'who', 'when', 'where', 'why', 'how', 'up', 'down', 'out', 'over',
+  'meme', 'memes', 'trend', 'trending', 'viral', 'video', 'image', 'photo',
+]);

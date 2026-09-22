@@ -1,28 +1,25 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { composeVi } from '@/lib/signals';
+import { scoreTerms } from '@/lib/signals';
 import { recordVi } from '@/lib/store';
+import type { Components } from '@/lib/vi/score';
 
-// Vercel cron calls this endpoint every 5 minutes (see vercel.json). It
-// re-fetches Google Trends for every live market, applies a small jitter so
-// identical GT values still show micro-movement, and appends a new vi_history
-// row via the same write path captures use.
+// Fast refresh, every 5 minutes (vercel.json). Re-reads the fast sources
+// (Google Trends, Bluesky) for every live market, combines them with the
+// stored slow-source readings, and appends a smoothed point to vi_history.
+// The hourly sibling in ../refresh-slow owns GDELT and Wikipedia.
 export const dynamic = 'force-dynamic';
-export const maxDuration = 60;
+export const maxDuration = 120;
 
-// ±1.5% uniform jitter. Just enough to make the sparkline breathe between
-// Google Trends refreshes — not so much that it drowns real movement.
-const JITTER_PCT = 0.015;
-
-// Keep Google Trends happy. Too many parallel calls get rate-limited fast.
-const CONCURRENCY = 4;
-
-function applyJitter(score: number): number {
-  const jitter = 1 + (Math.random() * 2 - 1) * JITTER_PCT;
-  return Math.max(0, Math.min(10_000, Math.round(score * jitter)));
-}
+// Bluesky calls per market run in parallel across this many markets.
+// Trends batches four markets per request on its own.
+const CONCURRENCY = 8;
 
 export async function GET(request: Request) {
+  return runRefresh(request, 'fast');
+}
+
+export async function runRefresh(request: Request, cadence: 'fast' | 'slow') {
   const secret = process.env.CRON_SECRET;
   const auth = request.headers.get('authorization');
   if (!secret || auth !== `Bearer ${secret}`) {
@@ -32,51 +29,44 @@ export async function GET(request: Request) {
   const supabase = createAdminClient();
   const { data: markets, error } = await supabase
     .from('markets')
-    .select('id, entity_name, current_vi')
+    .select('id, entity_name, vi_components')
     .is('deleted_at', null);
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
   if (!markets || markets.length === 0) {
-    return NextResponse.json({ refreshed: 0, skipped: 0, total: 0 });
+    return NextResponse.json({ cadence, refreshed: 0, skipped: 0, total: 0 });
   }
 
   let refreshed = 0;
   let skipped = 0;
+  const batchSize = cadence === 'fast' ? CONCURRENCY : markets.length;
 
-  for (let i = 0; i < markets.length; i += CONCURRENCY) {
-    const batch = markets.slice(i, i + CONCURRENCY);
-    const results = await Promise.all(
-      batch.map(async (market) => {
+  for (let i = 0; i < markets.length; i += batchSize) {
+    const batch = markets.slice(i, i + batchSize);
+    const results = await scoreTerms(
+      batch.map((m) => ({ term: m.entity_name, stored: (m.vi_components as Components | null) ?? null })),
+      cadence
+    );
+    await Promise.all(
+      batch.map(async (market, k) => {
+        const result = results[k];
         try {
-          const signal = await composeVi({ term: market.entity_name });
-          // score === 0 means every source we tried (Google Trends,
-          // Wikipedia) gave us nothing. Skip rather than tank the market's
-          // VI to zero — the last known value stays.
-          if (signal.score === 0) {
-            return false;
+          // Null means no source knows the term right now. Keep the last
+          // value rather than writing a zero.
+          if (result.score === null) {
+            skipped++;
+            return;
           }
-          const nextVi = applyJitter(signal.score);
-          // Pass [] so recordVi doesn't re-seed vi_history — we only want
-          // the fresh point appended.
-          await recordVi(market.id, nextVi, []);
-          return true;
+          await recordVi(market.id, result.score, result.components, []);
+          refreshed++;
         } catch (err) {
-          console.error(
-            `[markets/refresh] ${market.entity_name} failed:`,
-            err
-          );
-          return false;
+          console.error(`[markets/refresh:${cadence}] ${market.entity_name} failed:`, err);
+          skipped++;
         }
       })
     );
-    refreshed += results.filter(Boolean).length;
-    skipped += results.filter((r) => !r).length;
   }
 
-  return NextResponse.json({
-    refreshed,
-    skipped,
-    total: markets.length,
-  });
+  return NextResponse.json({ cadence, refreshed, skipped, total: markets.length });
 }

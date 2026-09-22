@@ -1,6 +1,7 @@
 "use client";
 
 import type { HTMLAttributes, ReactNode } from "react";
+import { viTier } from "@/lib/vi/score";
 
 // Small presentational primitives shared across the /app section.
 // Brand rule of thumb: cyan = up / long, magenta = down / short, yellow = the
@@ -114,7 +115,7 @@ export function ScoreBadge({
   return (
     <span
       className={`inline-flex items-center justify-center rounded-lg border border-atnx-yellow/25 bg-atnx-yellow/10 text-atnx-yellow light:text-atnx-yellow-light font-mono font-bold tabular-nums ${sz} ${className}`}
-      title="Virality Index"
+      title={`Virality Index · ${viTier(value).label}`}
     >
       {value}
     </span>

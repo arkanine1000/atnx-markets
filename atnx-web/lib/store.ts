@@ -1,7 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createAdminClient } from './supabase/admin';
 import type { TrendsResult } from './trends';
-import type { Database } from './supabase/database';
+import type { Database, Json } from './supabase/database';
+import { smooth, type Components } from './vi/score';
 
 type DbClient = SupabaseClient<Database>;
 
@@ -30,6 +31,12 @@ export interface Capture {
   };
   trends: TrendsResult | null;
   viralityScore: number;
+  // Write-side only: the per-source breakdown behind viralityScore and a
+  // Trends series on the VI axis to seed a new market's history. Null
+  // score means no source knew the term; nothing is recorded then.
+  components?: Components;
+  seedSeries?: { date: string; value: number }[];
+  scored?: boolean;
 }
 
 export type MarketRow = {
@@ -156,42 +163,54 @@ export async function createMarket(input: CreateMarketInput): Promise<CreateMark
   return { market: existing as MarketRow, created: false };
 }
 
-export async function recordVi(marketId: string, vi: number, dataPoints: TrendsResult['dataPoints']) {
+// Records a fresh composite reading for a market. The stored value is an
+// EMA of readings (2h half-life) so the chart moves as the score converges
+// rather than by injected noise; the raw reading is kept beside it.
+// Returns the smoothed value that was written.
+export async function recordVi(
+  marketId: string,
+  rawVi: number,
+  components: Components,
+  seedSeries: { date: string; value: number }[]
+): Promise<number> {
   const supabase = createAdminClient();
 
-  // If this is the first capture for the market and Google Trends gave us a
-  // seed series, backfill vi_history so the sparkline is meaningful immediately.
+  const { data: market, error: readErr } = await supabase
+    .from('markets')
+    .select('current_vi, vi_last_updated')
+    .eq('id', marketId)
+    .single();
+  if (readErr) throw readErr;
+
+  // First capture of a market: backfill vi_history with the Trends series
+  // (already on the VI axis) so the sparkline has a shape immediately.
   const { count } = await supabase
     .from('vi_history')
     .select('id', { count: 'exact', head: true })
     .eq('market_id', marketId);
+  const firstWrite = (count ?? 0) === 0;
 
-  // Google Trends points are relative interest on a 0-100 axis where 100 is
-  // the term's own weekly peak; vi_history is on the 0-1000 VI axis. Scale
-  // the series so its peak lands on the composite score, which keeps the
-  // shape without mixing two scales in one series.
-  const peak = Math.max(0, ...dataPoints.map((p) => p.value));
-  if ((count ?? 0) === 0 && dataPoints.length > 0 && peak > 0) {
-    const seedRows = dataPoints.map((p) => ({
-      market_id: marketId,
-      vi: Math.round((vi * p.value) / peak),
-      recorded_at: p.date,
-    }));
+  if (firstWrite && seedSeries.some((p) => p.value > 0)) {
+    const seedRows = seedSeries.map((p) => ({ market_id: marketId, vi: p.value, raw_vi: p.value, recorded_at: p.date }));
     const { error: seedErr } = await supabase.from('vi_history').insert(seedRows);
     if (seedErr) throw seedErr;
   }
 
-  // Always append the latest scored point so each capture leaves a trace.
+  const prev = firstWrite ? null : Number(market.current_vi);
+  const vi = smooth(prev, firstWrite ? null : (market.vi_last_updated as string | null), rawVi);
+
   const { error: insertErr } = await supabase
     .from('vi_history')
-    .insert({ market_id: marketId, vi });
+    .insert({ market_id: marketId, vi, raw_vi: rawVi });
   if (insertErr) throw insertErr;
 
   const { error: updateErr } = await supabase
     .from('markets')
-    .update({ current_vi: vi, vi_last_updated: new Date().toISOString() })
+    .update({ current_vi: vi, vi_components: components as unknown as Json, vi_last_updated: new Date().toISOString() })
     .eq('id', marketId);
   if (updateErr) throw updateErr;
+
+  return vi;
 }
 
 async function buildTrendsView(
@@ -331,9 +350,12 @@ export async function addCapture(
     throw error;
   }
 
-  const vi = input.viralityScore;
-  const seedPoints = input.trends?.dataPoints ?? [];
-  await recordVi(market.id, vi, seedPoints);
+  // No source knew the term: leave the market unscored (current_vi stays
+  // as it was) rather than writing a zero the chart would then show.
+  let vi = Number(market.current_vi ?? 0);
+  if (input.scored !== false) {
+    vi = await recordVi(market.id, input.viralityScore, input.components ?? {}, input.seedSeries ?? []);
+  }
 
   await admin
     .from('markets')
