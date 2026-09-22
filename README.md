@@ -98,7 +98,7 @@ How a submission is decided, stage by stage, is in [`atnx-web/README.md`](atnx-w
 - **`LoginModal`** — Google-only right now. Backdrop-blurred. Escape-to-close.
 - **`Nav`** — Logo + ATNX wordmark, UserMenu, theme toggle on the far right. From `sm` up the four tabs sit in a pill in the header; on phones they become a fixed bottom bar (Markets, a round + for Create, Leaderboard) and Portfolio moves into the UserMenu.
 - **`PortfolioMobile`**, **`charts/PortfolioSparkline`** — The phone portfolio: value tile, range tabs, positions card, fed by `/api/portfolio`.
-- **`Identicon`** — Generated avatar seeded by the account id: one ink fills the disc, blocks in the other two inks lie over it in multiply blend, so overlaps print the secondaries. Stands in for the handle in the header, on the leaderboard and on the settings page.
+- **`Identicon`** — Generated avatar seeded by the account id: the ATNX eye, with an iris made of one ink under blocks of the other two in multiply blend, so overlaps print the secondaries; the gaze varies per account. Stands in for the handle in the header, on the leaderboard and on the settings page.
 - **`ShareButton`** — Native share sheet on phones (`navigator.share`), clipboard elsewhere; on every market page.
 - **`Trading/*`** — `TradeModal`, `ClosePositionModal`, `TrendSparkline` (entry marker), `DemoToast`, `getTrendIndicator`.
 - **`ThemeToggle`** — `next-themes`, class-based dark/light.
