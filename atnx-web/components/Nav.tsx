@@ -150,7 +150,7 @@ export function Nav() {
             aria-label="App"
             className="hidden sm:inline-flex items-center gap-0.5 p-1 rounded-full bg-surface border border-surface text-xs"
           >
-            {LINKS.map((l) => {
+            {LINKS.filter((l) => !l.plus).map((l) => {
               const active = l.match(pathname);
               return (
                 <Link
@@ -163,7 +163,6 @@ export function Nav() {
                       : "text-secondary hover:text-primary"
                   }`}
                 >
-                  {l.plus && <PlusIcon />}
                   {l.label}
                 </Link>
               );
@@ -171,6 +170,21 @@ export function Nav() {
           </nav>
 
           <div className="flex items-center gap-2 shrink-0">
+            {/* Create: the one action, as a magenta + beside the account,
+                the same button the phone bottom bar carries. */}
+            <Link
+              href="/app/submit"
+              aria-label="Create"
+              title="Create a market"
+              aria-current={pathname === "/app/submit" ? "page" : undefined}
+              className={`hidden sm:inline-flex h-8 w-8 rounded-full items-center justify-center text-white transition-all ${
+                pathname === "/app/submit"
+                  ? "bg-atnx-magenta-dim ring-2 ring-atnx-cyan/60 shadow-[0_0_20px_rgba(0,212,255,0.3)]"
+                  : "bg-atnx-magenta shadow-[0_0_18px_rgba(255,0,229,0.4)] hover:bg-atnx-magenta-dim hover:shadow-[0_0_24px_rgba(255,0,229,0.55)] active:scale-95"
+              }`}
+            >
+              <PlusIcon size={18} />
+            </Link>
             <UserMenu />
             {mounted && (
               <button
