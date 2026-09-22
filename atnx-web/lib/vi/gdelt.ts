@@ -6,6 +6,8 @@ import { clamp, ratioToBaseline, type SourceComponent } from './score';
 
 const API = 'https://api.gdeltproject.org/api/v2/doc/doc';
 const MIN_GAP_MS = 5_200;
+const RETRIES_429 = 2;
+const BACKOFF_MS = 10_000;
 const CACHE_TTL = 60 * 60 * 1000;
 const USER_AGENT = 'ATNX/1.0 (attention-exchange; contact@atnx.app)';
 
@@ -63,12 +65,20 @@ export async function fetchGdeltSignal(term: string, aliases: string[] = []): Pr
   });
 
   try {
-    const res = await scheduled(() =>
-      fetch(`${API}?${params}`, { headers: { 'User-Agent': USER_AGENT }, cache: 'no-store' })
-    );
-    if (!res.ok) {
-      // 429 is the only common failure; do not cache it, retry next pass.
-      console.error(`[gdelt] ${res.status} for "${term}"`);
+    // The per-IP limit is shared with whoever else is behind the same
+    // egress address, so a 429 can arrive even at our own 5 s spacing.
+    // Back off and retry a few times; the slow route has the budget.
+    let res: Response | null = null;
+    for (let attempt = 0; attempt <= RETRIES_429; attempt++) {
+      if (attempt > 0) await new Promise((r) => setTimeout(r, BACKOFF_MS * attempt));
+      res = await scheduled(() =>
+        fetch(`${API}?${params}`, { headers: { 'User-Agent': USER_AGENT }, cache: 'no-store' })
+      );
+      if (res.status !== 429) break;
+    }
+    if (!res || !res.ok) {
+      // Not cached: the next pass tries again.
+      console.error(`[gdelt] ${res?.status ?? 'no response'} for "${term}"`);
       return empty;
     }
     const text = await res.text();
