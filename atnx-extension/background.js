@@ -1,4 +1,9 @@
-const DEFAULT_WEB_APP_URL = 'https://atnx.app';
+// Production lives on the www host; the apex domain 307s there, and a
+// redirect target the extension held no host permission for is why v1.4
+// showed "Not signed in" to signed-in users. The manifest now grants
+// `*.atnx.app`, so both spellings work, but the default skips the hop.
+const DEFAULT_WEB_APP_URL = 'https://www.atnx.app';
+const LEGACY_WEB_APP_URL = /^https:\/\/atnx\.app\/*$/i;
 
 // Longest edge (in device pixels) of the uploaded crop. Vision models
 // downsample anything larger anyway, and Vercel rejects request bodies over
@@ -21,8 +26,14 @@ const BADGE = {
 // chrome.storage.local quota; `apiKey` (v1.1) became unnecessary once vision
 // moved server-side in v1.2. Runs once per install/update instead of on every
 // service-worker wake.
-chrome.runtime.onInstalled.addListener(() => {
+chrome.runtime.onInstalled.addListener(async () => {
   chrome.storage.local.remove(['captures', 'apiKey']).catch(() => {});
+  // v1.4 saved the apex domain as the web app URL; fall back to the default
+  // so requests go straight to www instead of through a redirect.
+  const { webAppUrl } = await chrome.storage.local.get('webAppUrl');
+  if (LEGACY_WEB_APP_URL.test((webAppUrl || '').trim())) {
+    await chrome.storage.local.remove('webAppUrl').catch(() => {});
+  }
   updateStatus('ready');
 });
 
@@ -150,7 +161,7 @@ async function handleCapture(msg, tab) {
       }
     } catch (e) {
       console.warn('Could not send to web app:', e.message);
-      persistFailed = 'Web app unreachable — check URL in popup';
+      persistFailed = `Can't reach ${hostOf(webAppUrl)} — check the URL in the side panel settings`;
     }
 
     if (persistFailed) {

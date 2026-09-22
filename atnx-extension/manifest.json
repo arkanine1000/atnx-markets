@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "name": "ATNX Capture",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Capture any part of a page, let AI identify it, and trade its Virality Index on ATNX.",
-  "homepage_url": "https://atnx.app",
+  "homepage_url": "https://www.atnx.app",
   "minimum_chrome_version": "116",
   "icons": {
     "16": "icons/icon16.png",
@@ -18,7 +18,7 @@
     "sidePanel"
   ],
   "host_permissions": [
-    "https://atnx.app/*"
+    "https://*.atnx.app/*"
   ],
   "optional_host_permissions": [
     "http://*/*",

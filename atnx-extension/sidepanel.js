@@ -1,7 +1,39 @@
-const DEFAULT_WEB_APP_URL = 'https://atnx.app';
+// Production lives on the www host (the apex domain redirects there), and
+// the manifest grants `*.atnx.app`, so either spelling works — but the
+// default skips the redirect.
+const DEFAULT_WEB_APP_URL = 'https://www.atnx.app';
 const STALE_STATUS_MS = 10_000;
 const REFRESH_MS = 30_000;
+// After the user clicks "Sign in" we poll faster for a few minutes so the
+// panel flips to signed-in as soon as the web app tab finishes.
+const SIGNIN_POLL_MS = 3_000;
+const SIGNIN_POLL_TICKS = 60;
 const TOP_MARKETS = 5;
+
+// Chart ranges: query value → tab label, delta wording, tooltip time format.
+const RANGES = {
+  '1d': {
+    label: '1D',
+    delta: '24h',
+    time: new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit' })
+  },
+  '1w': {
+    label: '1W',
+    delta: '7d',
+    time: new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+  },
+  '1m': {
+    label: '1M',
+    delta: '30d',
+    time: new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' })
+  },
+  all: {
+    label: 'ALL',
+    delta: 'all time',
+    time: new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  }
+};
+const DEFAULT_RANGE = '1w';
 
 const $ = (id) => document.getElementById(id);
 
@@ -135,7 +167,7 @@ urlForm.addEventListener('submit', async (e) => {
   }
 
   // Host permission for the web app keeps the auth cookie flowing even when
-  // third-party cookies are blocked. atnx.app is granted at install; any
+  // third-party cookies are blocked. *.atnx.app is granted at install; any
   // other origin (e.g. localhost) is requested here, inside the click.
   let granted = true;
   try {
@@ -151,6 +183,7 @@ urlForm.addEventListener('submit', async (e) => {
     granted ? 'URL saved' : 'Saved, but site access denied — captures may not authenticate',
     granted ? 'saved' : 'error'
   );
+  portfolioCache.clear();
   refreshData();
 });
 
@@ -169,6 +202,7 @@ $('openDashboard').addEventListener('click', async (e) => {
 const captureBtn = $('captureBtn');
 const captureText = $('captureText');
 const captureNote = $('captureNote');
+const authNote = $('authNote');
 
 captureBtn.addEventListener('click', async () => {
   captureNote.hidden = true;
@@ -217,7 +251,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if ('captureStatus' in changes) loadStatus();
 });
 
-// --- Value tile: hero number + 7d delta + sparkline ---
+// --- Value tile: hero number + range delta + chart ---
 
 const valueTile = $('valueTile');
 const tileValue = $('tileValue');
@@ -227,25 +261,74 @@ const chartSvg = $('chartSvg');
 const chartTip = $('chartTip');
 const tipValue = $('tipValue');
 const tipTime = $('tipTime');
+const rangeBar = $('rangeBar');
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const CHART_H = 72;
 const PAD_Y = 6;
-const timeFmt = new Intl.DateTimeFormat('en-US', {
-  month: 'short',
-  day: 'numeric',
-  hour: 'numeric',
-  minute: '2-digit'
-});
+const UP = '#00D4FF';
+const DOWN = '#FF00E5';
+// The y-axis never spans less than this share of the portfolio, so a $20
+// wobble on $10k reads as a ripple rather than a cliff.
+const MIN_SPAN_RATIO = 0.02;
 
+let chartRange = DEFAULT_RANGE;
 let chartSeries = [];
 let chartPoints = []; // [{x, y, t, value}] in SVG px
 let chartHover = -1;
+let chartColor = UP;
 
 function svgEl(tag, attrs) {
   const node = document.createElementNS(SVG_NS, tag);
   for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, String(v));
   return node;
+}
+
+const px = (n) => n.toFixed(1);
+
+// Monotone cubic interpolation (Fritsch–Carlson). Rounds the corners
+// between samples without overshooting: the curve stays inside each pair of
+// neighbouring values, so smoothing never invents a peak or a dip.
+function monotonePath(pts) {
+  const n = pts.length;
+  if (n < 3) return pts.map((p, i) => `${i ? 'L' : 'M'}${px(p.x)},${px(p.y)}`).join(' ');
+
+  const dx = [];
+  const slope = [];
+  for (let i = 0; i < n - 1; i++) {
+    dx[i] = pts[i + 1].x - pts[i].x;
+    slope[i] = dx[i] > 0 ? (pts[i + 1].y - pts[i].y) / dx[i] : 0;
+  }
+  const tangent = new Array(n);
+  tangent[0] = slope[0];
+  tangent[n - 1] = slope[n - 2];
+  for (let i = 1; i < n - 1; i++) {
+    tangent[i] = slope[i - 1] * slope[i] <= 0 ? 0 : (slope[i - 1] + slope[i]) / 2;
+  }
+  for (let i = 0; i < n - 1; i++) {
+    if (slope[i] === 0) {
+      tangent[i] = 0;
+      tangent[i + 1] = 0;
+      continue;
+    }
+    const a = tangent[i] / slope[i];
+    const b = tangent[i + 1] / slope[i];
+    const s = a * a + b * b;
+    if (s > 9) {
+      const k = 3 / Math.sqrt(s);
+      tangent[i] = k * a * slope[i];
+      tangent[i + 1] = k * b * slope[i];
+    }
+  }
+
+  let d = `M${px(pts[0].x)},${px(pts[0].y)}`;
+  for (let i = 0; i < n - 1; i++) {
+    const h = dx[i] / 3;
+    d += ` C${px(pts[i].x + h)},${px(pts[i].y + h * tangent[i])}`
+      + ` ${px(pts[i + 1].x - h)},${px(pts[i + 1].y - h * tangent[i + 1])}`
+      + ` ${px(pts[i + 1].x)},${px(pts[i + 1].y)}`;
+  }
+  return d;
 }
 
 function renderChart() {
@@ -256,13 +339,25 @@ function renderChart() {
   chartSvg.replaceChildren();
 
   const values = chartSeries.map((p) => p.value);
+  const first = values[0];
+  const lastValue = values[values.length - 1];
   let min = Math.min(...values);
   let max = Math.max(...values);
-  if (max - min < 1e-9) {
-    // Flat series: draw it through the middle rather than dividing by zero.
-    min -= 1;
-    max += 1;
+  const floor = Math.max(Math.abs(lastValue) * MIN_SPAN_RATIO, 1);
+  if (max - min < floor) {
+    const mid = (max + min) / 2;
+    min = mid - floor / 2;
+    max = mid + floor / 2;
   }
+  // A little headroom so the line never kisses the tile edge.
+  const pad = (max - min) * 0.08;
+  min -= pad;
+  max += pad;
+
+  // One series, so colour carries polarity only: cyan when the window ends
+  // higher than it starts, magenta when lower (the app's up/down pair).
+  chartColor = lastValue >= first ? UP : DOWN;
+
   const t0 = new Date(chartSeries[0].t).getTime();
   const t1 = new Date(chartSeries[chartSeries.length - 1].t).getTime();
   const span = Math.max(1, t1 - t0);
@@ -277,39 +372,39 @@ function renderChart() {
     };
   });
 
-  const line = chartPoints.map((p, i) => `${i ? 'L' : 'M'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+  const line = monotonePath(chartPoints);
   const last = chartPoints[chartPoints.length - 1];
 
-  // Area wash: series hue at ~10% opacity fading to nothing.
+  // Area wash: series hue at ~18% opacity fading to nothing.
   const defs = svgEl('defs', {});
   const grad = svgEl('linearGradient', { id: 'sparkFill', x1: 0, y1: 0, x2: 0, y2: 1 });
-  grad.appendChild(svgEl('stop', { offset: '0%', 'stop-color': '#00D4FF', 'stop-opacity': 0.18 }));
-  grad.appendChild(svgEl('stop', { offset: '100%', 'stop-color': '#00D4FF', 'stop-opacity': 0 }));
+  grad.appendChild(svgEl('stop', { offset: '0%', 'stop-color': chartColor, 'stop-opacity': 0.18 }));
+  grad.appendChild(svgEl('stop', { offset: '100%', 'stop-color': chartColor, 'stop-opacity': 0 }));
   defs.appendChild(grad);
   chartSvg.appendChild(defs);
 
   chartSvg.appendChild(svgEl('path', {
-    d: `${line} L${last.x.toFixed(1)},${h} L${chartPoints[0].x.toFixed(1)},${h} Z`,
+    d: `${line} L${px(last.x)},${h} L${px(chartPoints[0].x)},${h} Z`,
     fill: 'url(#sparkFill)'
+  }));
+  // Hairline at the window's starting value so the reader sees above/below
+  // at a glance. Drawn under the line.
+  const y0 = chartPoints[0].y;
+  chartSvg.appendChild(svgEl('line', {
+    x1: 0, x2: w, y1: px(y0), y2: px(y0),
+    stroke: '#2A2A2A', 'stroke-width': 1, 'stroke-dasharray': '3 3'
   }));
   chartSvg.appendChild(svgEl('path', {
     d: line,
     fill: 'none',
-    stroke: '#00D4FF',
+    stroke: chartColor,
     'stroke-width': 2,
     'stroke-linejoin': 'round',
     'stroke-linecap': 'round'
   }));
-  // Hairline baseline at the window's starting value so the reader sees
-  // above/below at a glance.
-  const y0 = chartPoints[0].y;
-  chartSvg.appendChild(svgEl('line', {
-    x1: 0, x2: w, y1: y0.toFixed(1), y2: y0.toFixed(1),
-    stroke: '#2A2A2A', 'stroke-width': 1
-  }));
   // End marker with a surface ring.
   chartSvg.appendChild(svgEl('circle', { cx: last.x, cy: last.y, r: 5.5, fill: '#141414' }));
-  chartSvg.appendChild(svgEl('circle', { cx: last.x, cy: last.y, r: 4, fill: '#00D4FF' }));
+  chartSvg.appendChild(svgEl('circle', { cx: last.x, cy: last.y, r: 4, fill: chartColor }));
 
   // Crosshair layer (hidden until hover/focus).
   const cross = svgEl('g', { id: 'cross', visibility: 'hidden' });
@@ -335,7 +430,7 @@ function showHover(i) {
   cross.querySelector('#crossDot').setAttribute('cy', p.y);
 
   tipValue.textContent = usd.format(p.value);
-  tipTime.textContent = timeFmt.format(new Date(p.t));
+  tipTime.textContent = RANGES[chartRange].time.format(new Date(p.t));
   chartTip.hidden = false;
   // Keep the tooltip inside the tile.
   const w = chartEl.clientWidth;
@@ -384,13 +479,35 @@ chartEl.addEventListener('keydown', (e) => {
 });
 new ResizeObserver(() => renderChart()).observe(chartEl);
 
+// --- Range tabs ---
+
+function syncRangeBar() {
+  for (const btn of rangeBar.querySelectorAll('.range-btn')) {
+    btn.setAttribute('aria-pressed', String(btn.dataset.range === chartRange));
+  }
+}
+
+rangeBar.addEventListener('click', (e) => {
+  const btn = e.target.closest('.range-btn');
+  if (!btn || !RANGES[btn.dataset.range] || btn.dataset.range === chartRange) return;
+  chartRange = btn.dataset.range;
+  chrome.storage.local.set({ chartRange });
+  syncRangeBar();
+  hideHover();
+  // Show the last good render for this range immediately, then refresh it.
+  const cached = portfolioCache.get(chartRange);
+  if (cached) renderTile(cached);
+  refreshData();
+});
+
 function renderTile(data) {
   valueTile.hidden = false;
   tileValue.textContent = usd.format(data.totalValueUsd);
   const dir = data.changeUsd >= 0 ? 'up' : 'down';
+  const range = RANGES[data.range] ? data.range : chartRange;
   tileDelta.className = `tile-delta ${dir}`;
   tileDelta.textContent =
-    `${signed(data.changeUsd, (x) => usdCompact.format(x))} (${signed(data.changePercent, (x) => x.toFixed(1))}%) 7d`;
+    `${signed(data.changeUsd, (x) => usdCompact.format(x))} (${signed(data.changePercent, (x) => x.toFixed(1))}%) ${RANGES[range].delta}`;
   chartEl.setAttribute(
     'aria-label',
     `Portfolio value ${usd.format(data.totalValueUsd)}, ${tileDelta.textContent}`
@@ -407,15 +524,17 @@ const marketsMeta = $('marketsMeta');
 const handleChip = $('handleChip');
 const refreshBtn = $('refreshBtn');
 
+// Last good payload per range, so switching tabs is instant and a failed
+// refresh never blanks a chart that was fine a moment ago.
+const portfolioCache = new Map();
+let signedIn = false;
+
 function setHandle(handle) {
   handleChip.textContent = handle ? `@${handle}` : 'Not signed in';
   handleChip.className = handle ? 'handle' : 'handle muted';
 }
 
 let portfolioOpen = false;
-chrome.storage.local.get('portfolioOpen').then(({ portfolioOpen: v }) => {
-  portfolioOpen = Boolean(v);
-});
 
 async function fetchJson(path) {
   const base = await getWebAppUrl();
@@ -478,11 +597,54 @@ function setPortfolioOpen(open) {
   if (list) list.hidden = !open;
 }
 
+// Signing in happens in a web app tab; poll quickly for a few minutes so the
+// panel notices without the user having to hit refresh.
+let signinPoll = null;
+function watchForSignIn() {
+  clearInterval(signinPoll);
+  let ticks = 0;
+  signinPoll = setInterval(() => {
+    if (signedIn || ++ticks > SIGNIN_POLL_TICKS) {
+      clearInterval(signinPoll);
+      signinPoll = null;
+      return;
+    }
+    refreshData();
+  }, SIGNIN_POLL_MS);
+}
+
+async function openSignIn(base) {
+  watchForSignIn();
+  await openTab(`${base}/app/portfolio`);
+}
+
+function setSignedOut(base) {
+  signedIn = false;
+  setHandle(null);
+  valueTile.hidden = true;
+  portfolioCache.clear();
+
+  authNote.replaceChildren(el('span', '', 'Sign in to save your captures'));
+  const btn = el('button', 'btn-small', 'Sign in');
+  btn.type = 'button';
+  btn.addEventListener('click', () => openSignIn(base));
+  authNote.appendChild(btn);
+  authNote.hidden = false;
+
+  portfolioEl.replaceChildren(
+    placeholder(`Sign in at ${hostOf(base)} to see your balance and positions`, {
+      label: 'Sign in',
+      onClick: () => openSignIn(base)
+    })
+  );
+}
+
 async function loadPortfolio() {
+  const range = chartRange;
   let res;
   let base;
   try {
-    ({ res, base } = await fetchJson('/api/portfolio'));
+    ({ res, base } = await fetchJson(`/api/portfolio?range=${range}`));
   } catch {
     valueTile.hidden = true;
     portfolioEl.replaceChildren(placeholder(`Can't reach ${hostOf(await getWebAppUrl())}`));
@@ -490,14 +652,7 @@ async function loadPortfolio() {
   }
 
   if (res.status === 401) {
-    setHandle(null);
-    valueTile.hidden = true;
-    portfolioEl.replaceChildren(
-      placeholder(`Sign in at ${hostOf(base)} to see your balance and positions`, {
-        label: 'Sign in',
-        onClick: () => openTab(`${base}/app/portfolio`)
-      })
-    );
+    setSignedOut(base);
     return;
   }
   if (!res.ok) {
@@ -515,7 +670,13 @@ async function loadPortfolio() {
     return;
   }
 
+  signedIn = true;
+  authNote.hidden = true;
   setHandle(data.handle);
+  portfolioCache.set(range, data);
+  // The user switched range while this request was in flight; the newer
+  // request will draw the tile.
+  if (range !== chartRange) return;
 
   renderTile(data);
 
@@ -530,15 +691,10 @@ async function loadPortfolio() {
       data.unrealizedPnlUsd >= 0 ? 'up' : 'down')
   );
   toggle.appendChild(stat('Open', String(data.positions.length)));
-  const chev = document.createElementNS(SVG_NS, 'svg');
-  chev.setAttribute('viewBox', '0 0 24 24');
-  chev.setAttribute('width', '16');
-  chev.setAttribute('height', '16');
-  chev.setAttribute('class', 'chevron');
-  chev.setAttribute('aria-hidden', 'true');
+  const chev = svgEl('svg', { class: 'chevron', viewBox: '0 0 24 24', width: 16, height: 16, 'aria-hidden': 'true' });
   chev.appendChild(svgEl('path', {
-    d: 'M6 9l6 6 6-6', fill: 'none', stroke: 'currentColor',
-    'stroke-width': 2.2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round'
+    d: 'M6 9l6 6 6-6', fill: 'none', stroke: 'currentColor', 'stroke-width': 2.2,
+    'stroke-linecap': 'round', 'stroke-linejoin': 'round'
   }));
   toggle.appendChild(chev);
   toggle.addEventListener('click', () => setPortfolioOpen(!portfolioOpen));
@@ -659,7 +815,16 @@ document.addEventListener('visibilitychange', () => {
 
 // --- Init ---
 
-loadSettings();
-loadStatus();
-refreshData();
-schedule();
+async function init() {
+  const saved = await chrome.storage.local.get(['chartRange', 'portfolioOpen']);
+  if (RANGES[saved.chartRange]) chartRange = saved.chartRange;
+  portfolioOpen = Boolean(saved.portfolioOpen);
+  syncRangeBar();
+
+  loadSettings();
+  loadStatus();
+  refreshData();
+  schedule();
+}
+
+init();

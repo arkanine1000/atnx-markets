@@ -323,6 +323,31 @@ main {
   padding: 8px 10px;
 }
 
+.note[hidden] {
+  display: none;
+}
+
+.auth-note {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.auth-note .btn-small {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  font-size: 11px;
+  border-color: var(--yellow);
+  color: var(--yellow);
+}
+
+.auth-note .btn-small:hover,
+.auth-note .btn-small:focus-visible {
+  background: var(--yellow);
+  color: var(--bg);
+}
+
 /* --- Value tile + sparkline --- */
 
 .tile {
@@ -409,6 +434,39 @@ main {
 
 .chart-tip span {
   color: var(--muted);
+}
+
+/* Range tabs under the chart: 1D · 1W · 1M · ALL. */
+.range-bar {
+  display: flex;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.range-btn {
+  flex: 1;
+  padding: 5px 0;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  transition: color 0.12s, background 0.12s, border-color 0.12s;
+}
+
+.range-btn:hover,
+.range-btn:focus-visible {
+  color: var(--text);
+  background: var(--surface-2);
+  outline: none;
+}
+
+.range-btn[aria-pressed="true"] {
+  color: var(--text);
+  background: var(--surface-2);
+  border-color: var(--line);
 }
 
 /* --- Portfolio --- */
