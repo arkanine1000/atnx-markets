@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
-import { Card, DeltaChip, EmptyState, StatTile } from "@/components/ui";
+import { Card, DeltaChip, EmptyState, StatTile, compactUsd } from "@/components/ui";
 import { STARTING_BALANCE, type LeaderboardRow } from "@/lib/leaderboard";
 import { startPolling } from "@/lib/poll";
 
@@ -68,6 +68,7 @@ function Row({ row, me }: { row: LeaderboardRow; me: boolean }) {
         <div className="text-xs text-tertiary truncate">
           {row.totalTrades} {row.totalTrades === 1 ? "trade" : "trades"}
           {row.openPositions > 0 && ` · ${row.openPositions} open`}
+          {row.volumeUsd > 0 && ` · ${compactUsd(row.volumeUsd)} vol`}
         </div>
       </div>
       <div className="hidden md:block w-24 text-right font-mono text-xs tabular-nums">
@@ -103,7 +104,8 @@ export function LeaderboardView({ rows }: { rows: LeaderboardRow[] }) {
   const mine = user ? rows.find((r) => r.userId === user.id) ?? null : null;
   const pinned = mine && mine.rank > SHOW ? mine : null;
   const leader = rows[0];
-  const inProfit = rows.filter((r) => r.equity > STARTING_BALANCE).length;
+  const totalVolume = rows.reduce((sum, r) => sum + r.volumeUsd, 0);
+  const totalTrades = rows.reduce((sum, r) => sum + r.totalTrades, 0);
 
   return (
     <div>
@@ -117,17 +119,20 @@ export function LeaderboardView({ rows }: { rows: LeaderboardRow[] }) {
         </p>
       </div>
 
+      {/* Phones show two tiles: the field and where you stand. */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
         <StatTile label="Traders" value={rows.length} sub="with at least one trade" />
         <StatTile
-          label="In profit"
-          value={inProfit}
-          sub={rows.length ? `${Math.round((inProfit / rows.length) * 100)}% of the field` : "—"}
+          label="Volume"
+          value={compactUsd(totalVolume)}
+          sub={`${totalTrades} ${totalTrades === 1 ? "trade" : "trades"} · simulated USDC`}
+          className="hidden md:block"
         />
         <StatTile
           label="Leader"
           value={leader ? `@${leader.handle}` : "—"}
           sub={leader ? <DeltaChip value={leader.returnPct} /> : undefined}
+          className="hidden md:block"
         />
         <StatTile
           label="Your rank"

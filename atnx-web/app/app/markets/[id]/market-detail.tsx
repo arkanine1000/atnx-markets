@@ -13,7 +13,7 @@ import {
 } from "@/components/charts/ViArea";
 import { TradePanel } from "@/components/TradePanel";
 import { TradeLog } from "@/components/TradeLog";
-import { Card, Chip, DeltaChip, Segmented, hostOf } from "@/components/ui";
+import { Card, Chip, DeltaChip, Segmented, compactUsd, hostOf } from "@/components/ui";
 import { useDemoContext } from "@/context/DemoContext";
 import { mock24hChange, sentimentColor, timeAgo } from "@/lib/capture-view";
 import type { Capture, MarketRow, TradeLogEvent } from "@/lib/store";
@@ -25,6 +25,9 @@ interface Props {
   captures: Capture[];
   trends: TrendsResult | null;
   initialTradeLog: TradeLogEvent[];
+  // Simulated USDC traded on this market and the number of trade legs.
+  volumeUsd?: number;
+  tradeCount?: number;
 }
 
 type Tab = "pulse" | "activity" | "overview";
@@ -70,6 +73,8 @@ export function MarketDetailClient({
   captures,
   trends,
   initialTradeLog,
+  volumeUsd = 0,
+  tradeCount = 0,
 }: Props) {
   const { positions } = useDemoContext();
   const [selectedIdx, setSelectedIdx] = useState(0);
@@ -163,6 +168,18 @@ export function MarketDetailClient({
                         ? ""
                         : "s"}
                     </span>
+                    {volumeUsd > 0 && (
+                      <span
+                        className="text-[11px] text-tertiary"
+                        title={`${tradeCount} trade ${tradeCount === 1 ? "leg" : "legs"}, simulated USDC`}
+                      >
+                        {"· "}
+                        <span className="text-secondary font-mono tabular-nums">
+                          {compactUsd(volumeUsd)}
+                        </span>{" "}
+                        vol
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -386,6 +403,8 @@ export function MarketDetailClient({
                               : undefined,
                           ],
                           ["Source", hostOf(selected.pageUrl)],
+                          ["Volume", compactUsd(volumeUsd)],
+                          ["Trades", tradeCount],
                         ]
                           .filter(([, v]) => v !== undefined && v !== "")
                           .map(([k, v]) => (

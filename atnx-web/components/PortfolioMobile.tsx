@@ -177,7 +177,9 @@ export function PortfolioMobile({
   refreshKey?: string;
 }) {
   const [range, setRange] = useState<PortfolioRange>("1w");
-  const [open, setOpen] = useState(false);
+  // Positions are what the page is for: open by default, collapsed only
+  // when the person has folded it.
+  const [open, setOpen] = useState(true);
   const [data, setData] = useState<PortfolioResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -190,7 +192,7 @@ export function PortfolioMobile({
   // defaults, so the first client render must match it).
   useEffect(() => {
     setRange(readStored(RANGE_KEY, (v): v is PortfolioRange => v in RANGES, "1w"));
-    setOpen(readStored(OPEN_KEY, (v): v is "1" | "0" => v === "1" || v === "0", "0") === "1");
+    setOpen(readStored(OPEN_KEY, (v): v is "1" | "0" => v === "1" || v === "0", "1") === "1");
   }, []);
 
   const load = useCallback(async (r: PortfolioRange) => {

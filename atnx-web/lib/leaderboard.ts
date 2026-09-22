@@ -15,6 +15,9 @@ export interface LeaderboardRow {
   unrealizedPnl: number;
   openPositions: number;
   totalTrades: number;
+  // Simulated USDC this account has traded: every open and every close at
+  // its size.
+  volumeUsd: number;
 }
 
 type BalanceRow = {
@@ -53,7 +56,7 @@ function positionValue(p: OpenPositionRow): { value: number; pnl: number } {
 // is per-user under RLS.
 export async function getLeaderboard(): Promise<LeaderboardRow[]> {
   const admin = createAdminClient();
-  const [balances, positions, profiles] = await Promise.all([
+  const [balances, positions, traded, profiles] = await Promise.all([
     admin
       .from('sim_balances')
       .select('user_id, balance_usd, total_pnl_realized, total_trades')
@@ -63,14 +66,25 @@ export async function getLeaderboard(): Promise<LeaderboardRow[]> {
       .select('user_id, direction, size_usd, entry_vi, leverage, market:markets(current_vi)')
       .eq('status', 'open')
       .returns<OpenPositionRow[]>(),
+    // Every position, open or closed, for volume: one leg per position
+    // plus one per close, at size.
+    admin.from('positions').select('user_id, size_usd, status'),
     admin.from('user_profiles').select('id, handle'),
   ]);
   if (balances.error) throw balances.error;
   if (positions.error) throw positions.error;
+  if (traded.error) throw traded.error;
   if (profiles.error) throw profiles.error;
 
   const handles = new Map<string, string>();
   for (const p of profiles.data ?? []) handles.set(p.id, p.handle);
+
+  const volume = new Map<string, number>();
+  for (const p of traded.data ?? []) {
+    const size = Number(p.size_usd) || 0;
+    const legs = p.status === 'closed' ? 2 : 1;
+    volume.set(p.user_id, (volume.get(p.user_id) ?? 0) + size * legs);
+  }
 
   const open = new Map<string, { value: number; pnl: number; count: number }>();
   for (const p of positions.data ?? []) {
@@ -97,6 +111,7 @@ export async function getLeaderboard(): Promise<LeaderboardRow[]> {
       unrealizedPnl: o?.pnl ?? 0,
       openPositions: o?.count ?? 0,
       totalTrades,
+      volumeUsd: volume.get(b.user_id) ?? 0,
     });
   }
 

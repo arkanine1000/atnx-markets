@@ -228,6 +228,15 @@ export function EmptyState({
   );
 }
 
+/** Dollars for a label: $980, $2.4k, $12k, $1.2M. */
+export function compactUsd(n: number): string {
+  const abs = Math.abs(n);
+  const sign = n < 0 ? "-" : "";
+  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(abs >= 10_000_000 ? 0 : 1)}M`;
+  if (abs >= 1000) return `${sign}$${(abs / 1000).toFixed(abs >= 10_000 ? 0 : 1)}k`;
+  return `${sign}$${Math.round(abs)}`;
+}
+
 export function hostOf(url: string): string {
   try {
     return new URL(url).hostname.replace(/^www\./, "");

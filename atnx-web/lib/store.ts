@@ -530,6 +530,30 @@ export interface MarketDetail {
   latest: Capture;
   captures: Capture[];
   trends: TrendsResult | null;
+  // Simulated USDC traded on this market: every open and every close
+  // counts once, at its size (leverage not multiplied in).
+  volumeUsd: number;
+  tradeCount: number;
+}
+
+// Volume and trade count from the positions on record. Supabase/007 keeps
+// markets.total_volume_usd current for the same figure; aggregating here
+// keeps the page right before that file is applied.
+export function tradeVolume(
+  positions: { size_usd: number; status: string }[]
+): { volumeUsd: number; tradeCount: number } {
+  let volumeUsd = 0;
+  let tradeCount = 0;
+  for (const p of positions) {
+    const size = Number(p.size_usd) || 0;
+    volumeUsd += size;
+    tradeCount += 1;
+    if (p.status === 'closed') {
+      volumeUsd += size;
+      tradeCount += 1;
+    }
+  }
+  return { volumeUsd, tradeCount };
 }
 
 export async function getMarketDetail(
@@ -563,10 +587,12 @@ export async function getMarketDetail(
   // Ninety days at half-hour medians for the long ranges, with the newest
   // raw readings (about a day at the five-minute cadence) on top so 1H and
   // 4H still have every sample.
-  const [bucketed, recent] = await Promise.all([
+  const [bucketed, recent, traded] = await Promise.all([
     getViSeries([market.id], { days: 90, bucketSeconds: 30 * 60, fallbackRows: 1000 }),
     getRecentViRows(market.id, 300),
+    supabase.from('positions').select('size_usd, status').eq('market_id', market.id),
   ]);
+  if (traded.error) throw traded.error;
   const recentStart = recent[0]?.date ?? '';
   const points = [
     ...(bucketed.get(market.id) ?? []).filter((p) => !recentStart || p.date < recentStart),
@@ -580,6 +606,7 @@ export async function getMarketDetail(
     latest: captures[0],
     captures,
     trends,
+    ...tradeVolume(traded.data ?? []),
   };
 }
 

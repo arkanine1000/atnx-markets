@@ -35,6 +35,7 @@ Supabase SQL editor, in order:
 | `004_vi_components.sql` | `markets.vi_components` (per-source VI breakdown) and `vi_history.raw_vi`. |
 | `005_vi_history_series.sql` | `vi_history_series()`: bucketed, median-per-bucket VI history packed as JSON per market, for the portfolio chart's 1D/1W/1M/ALL ranges. Until it is applied the endpoint falls back to the newest 1,000 raw rows per market. |
 | `006_trading_integrity.sql` | Trading and profile hardening: `open_position()` / `close_position()` do the accounting atomically and validate size and leverage; users can no longer write `positions` or `sim_balances` directly; `user_profiles.role` changes need an admin; profiles are readable by their owner and admins only. **The trading actions require this migration.** |
+| `007_trade_volume.sql` | Trade volume: `open_position()` / `close_position()` add each trade's size to `markets.total_volume_usd` (every open and every close counts once, at size), and the column is backfilled from `positions`. The market page and the leaderboard aggregate `positions` themselves, so they show volume with or without this file. |
 
 After a migration, update `lib/supabase/database.ts` by hand to match. After
 `001`, run `npm run backfill:embeddings` once so markets that predate it get a

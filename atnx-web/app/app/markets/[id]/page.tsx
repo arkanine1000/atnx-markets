@@ -22,6 +22,8 @@ export default async function MarketPage({
       captures={detail.captures}
       trends={detail.trends}
       initialTradeLog={tradeLog}
+      volumeUsd={detail.volumeUsd}
+      tradeCount={detail.tradeCount}
     />
   );
 }
