@@ -85,8 +85,24 @@ async function getActiveTab() {
 // content.js guards against double-injection, so a retry is always safe.
 // Resolves to { ok: true } or { ok: false, reason } so the side panel can
 // explain a failure inline.
+async function shortcutLabel() {
+  const commands = await chrome.commands.getAll().catch(() => []);
+  return commands.find((c) => c.name === 'activate-capture')?.shortcut || 'the capture shortcut';
+}
+
 async function activateTab(tab) {
   if (!tab?.id) return { ok: false, reason: 'No active tab' };
+  // Chrome grants activeTab for a toolbar click or the keyboard shortcut,
+  // not for a click inside the side panel, and revokes it when the tab
+  // navigates. tab.url is only exposed while the extension may act on the
+  // tab, so its absence means captureVisibleTab would fail — after the
+  // user has already dragged a selection. Say so up front instead.
+  if (!tab.url) {
+    return {
+      ok: false,
+      reason: `Chrome needs a nudge for this tab: press ${await shortcutLabel()} on the page, or click the ATNX toolbar icon`
+    };
+  }
   try {
     await chrome.tabs.sendMessage(tab.id, { action: 'activate-capture' });
     return { ok: true };
