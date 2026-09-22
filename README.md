@@ -62,7 +62,7 @@ How a submission is decided, stage by stage, is in [`atnx-web/README.md`](atnx-w
 | `/app/portfolio` | ❌ | Open + closed positions, realized PnL, sim balance |
 | `/app/settings` | ❌ | Profile management (handle, email) |
 | `/admin` | admins only | Moderation: markets, captures in review (low-confidence creates), audit log |
-| `/share` | ❌ | Android share-target POST (image, link, or text) → same pipeline → redirect to the market. A link whose site blocks previews (Facebook, Instagram, TikTok) is tried from its caption, and failing that lands on `/app/submit` prefilled so one screenshot finishes it |
+| `/share` | ❌ | Android share-target POST (image, link, or text) → same pipeline → redirect to the market. The service worker (`public/sw.js`) rewrites a shared screenshot to a 1080 px JPEG on the way in, since raw phone screenshots exceed Vercel's 4.5 MB body limit. A link whose site blocks previews (Facebook, Instagram, TikTok) is tried from its caption, and failing that lands on `/app/submit` prefilled so one screenshot finishes it |
 | `/auth/callback` | — | OAuth return path; exchanges code → session, ensures `user_profiles` / `sim_balances` rows |
 
 ### API
