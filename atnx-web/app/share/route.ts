@@ -14,7 +14,8 @@ import type { VisionMediaType } from '@/lib/vlm';
 //   2. Link share (Twitter, TikTok, IG, YouTube, etc): only `url`/`text`
 //      present — we scrape og:image and feed that through the same pipeline.
 
-// Bounds the model call plus, when scheduled, the after() retry.
+// Bounds the model call plus the after() work (VI scoring, and the retry
+// for a low-confidence create).
 export const maxDuration = 60;
 
 function firstUrl(text: string | null | undefined): string | undefined {
@@ -112,7 +113,7 @@ export async function POST(request: Request) {
       userId: user.id,
     });
 
-    if (result.retry) after(result.retry);
+    if (result.background) after(result.background);
 
     const target = result.marketId
       ? new URL(`/app/markets/${result.marketId}`, request.url)

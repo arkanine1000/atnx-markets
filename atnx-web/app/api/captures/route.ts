@@ -13,7 +13,9 @@ import { fetchImageFromUrl, OgFetchError } from '@/lib/og';
 import { createClient } from '@/lib/supabase/server';
 import { corsHeaders, corsPreflight } from '@/lib/cors';
 
-// Bounds the model call plus, when scheduled, the after() retry.
+// Bounds the model call plus the after() work (VI scoring, and the retry
+// for a low-confidence create). The response itself goes out as soon as the
+// capture is identified and saved.
 export const maxDuration = 60;
 
 // Hosts that block server-side fetches. When the OG fetch fails for one of
@@ -29,6 +31,9 @@ function successBody(result: Awaited<ReturnType<typeof processCapture>>) {
     outcome: result.outcome,
     review: result.review,
     vi: result.vi,
+    // True when the VI sources are still being fetched after this response;
+    // the market's score lands a few seconds later.
+    viPending: result.viPending,
     source: result.source,
   };
 }
@@ -135,7 +140,7 @@ export async function POST(request: Request) {
     }
 
     const result = await processCapture(input);
-    if (result.retry) after(result.retry);
+    if (result.background) after(result.background);
 
     return Response.json(successBody(result), { headers });
   } catch (err) {

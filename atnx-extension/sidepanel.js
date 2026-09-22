@@ -222,6 +222,8 @@ const BUSY = { capturing: 'CAPTURING…', analyzing: 'ANALYZING…' };
 
 let lastStatus = 'ready';
 let busyTimer = null;
+let viTimer = null;
+const VI_FOLLOWUP_MS = 20_000;
 
 function renderStatus({ captureStatus = 'ready', captureStatusAt = 0 }) {
   let status = captureStatus;
@@ -252,8 +254,14 @@ function renderStatus({ captureStatus = 'ready', captureStatusAt = 0 }) {
     captureNote.hidden = false;
   }
 
-  // A finished capture changes the market list, so pull fresh data.
-  if (status === 'done' && lastStatus !== 'done') refreshData();
+  // A finished capture changes the market list, so pull fresh data. The
+  // server scores the market's VI after it answers, so pull once more a
+  // little later to pick that up.
+  if (status === 'done' && lastStatus !== 'done') {
+    refreshData();
+    clearTimeout(viTimer);
+    viTimer = setTimeout(refreshData, VI_FOLLOWUP_MS);
+  }
   lastStatus = status;
 }
 
