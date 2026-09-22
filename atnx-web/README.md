@@ -32,6 +32,8 @@ Supabase SQL editor, in order:
 | `001_dedup_and_embedding.sql` | `captures.content_hash` with a unique index (exact dedup), `markets.embedding vector(512)`, retrieval functions. |
 | `002_taxonomy_and_audit.sql` | `markets.category`, `aliases`, `wikidata_qid`; unique normalised name; `submission_decisions` audit table. Check for duplicate names first (query in the file header). |
 | `003_alias_matching.sql` | Name retrieval also scores each market's aliases. |
+| `004_vi_components.sql` | `markets.vi_components` (per-source VI breakdown) and `vi_history.raw_vi`. |
+| `005_vi_history_series.sql` | `vi_history_series()`: bucketed, median-per-bucket VI history packed as JSON per market, for the portfolio chart's 1D/1W/1M/ALL ranges. Until it is applied the endpoint falls back to the newest 1,000 raw rows per market. |
 
 After a migration, update `lib/supabase/database.ts` by hand to match. After
 `001`, run `npm run backfill:embeddings` once so markets that predate it get a
