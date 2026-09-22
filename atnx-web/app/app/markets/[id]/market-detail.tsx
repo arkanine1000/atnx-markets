@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useCallback, useMemo, useState } from "react";
-import { Nav } from "@/components/Nav";
 import { DemoToast, getTrendIndicator } from "@/components/Trading";
 import {
   ViChart,
@@ -81,9 +80,7 @@ export function MarketDetailClient({
   );
 
   return (
-    <div className="max-w-6xl mx-auto px-4 pb-12 w-full">
-      <Nav />
-
+    <div>
       <Link
         href="/app"
         className="inline-flex items-center gap-1.5 text-xs text-secondary hover:text-atnx-cyan transition-colors mb-4"

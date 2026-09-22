@@ -17,7 +17,15 @@ function useMounted() {
   );
 }
 
-const LINKS = [
+interface NavLink {
+  href: string;
+  label: string;
+  // Leading "+" for the create action, the convention modern apps use.
+  plus?: boolean;
+  match: (p: string) => boolean;
+}
+
+const LINKS: NavLink[] = [
   {
     href: "/app",
     label: "Markets",
@@ -25,7 +33,8 @@ const LINKS = [
   },
   {
     href: "/app/submit",
-    label: "Submit",
+    label: "Create",
+    plus: true,
     match: (p: string) => p === "/app/submit",
   },
   {
@@ -34,6 +43,26 @@ const LINKS = [
     match: (p: string) => p === "/app/portfolio",
   },
 ];
+
+function PlusIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width={12}
+      height={12}
+      aria-hidden="true"
+      className="shrink-0"
+    >
+      <path
+        d="M8 3v10M3 8h10"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={2.2}
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
 
 export function Nav() {
   const pathname = usePathname();
@@ -74,12 +103,13 @@ export function Nav() {
                 key={l.href}
                 href={l.href}
                 aria-current={active ? "page" : undefined}
-                className={`px-3.5 py-1.5 rounded-full font-bold transition-colors ${
+                className={`inline-flex items-center gap-1 px-3.5 py-1.5 rounded-full font-bold transition-colors ${
                   active
                     ? "bg-atnx-magenta text-white shadow-[0_0_16px_rgba(255,0,229,0.25)]"
                     : "text-secondary hover:text-primary"
                 }`}
               >
+                {l.plus && <PlusIcon />}
                 {l.label}
               </Link>
             );

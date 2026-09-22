@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { Nav } from "@/components/Nav";
 import { MarketCard, MarketRow } from "@/components/MarketCard";
 import { FeaturedHero } from "@/components/FeaturedHero";
 import { EmptyState, Segmented } from "@/components/ui";
@@ -151,9 +150,7 @@ export default function Home() {
   );
 
   return (
-    <div className="max-w-6xl mx-auto px-4 pb-12 w-full">
-      <Nav />
-
+    <div>
       <Suspense fallback={null}>
         <ShareErrorBanner />
       </Suspense>
