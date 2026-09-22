@@ -166,10 +166,15 @@ export async function recordVi(marketId: string, vi: number, dataPoints: TrendsR
     .select('id', { count: 'exact', head: true })
     .eq('market_id', marketId);
 
-  if ((count ?? 0) === 0 && dataPoints.length > 0) {
+  // Google Trends points are relative interest on a 0-100 axis where 100 is
+  // the term's own weekly peak; vi_history is on the 0-1000 VI axis. Scale
+  // the series so its peak lands on the composite score, which keeps the
+  // shape without mixing two scales in one series.
+  const peak = Math.max(0, ...dataPoints.map((p) => p.value));
+  if ((count ?? 0) === 0 && dataPoints.length > 0 && peak > 0) {
     const seedRows = dataPoints.map((p) => ({
       market_id: marketId,
-      vi: p.value,
+      vi: Math.round((vi * p.value) / peak),
       recorded_at: p.date,
     }));
     const { error: seedErr } = await supabase.from('vi_history').insert(seedRows);
