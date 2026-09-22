@@ -60,8 +60,13 @@ form) and `/share` (Android share target) call it.
    text-only model call is shown the candidates and decides.
 5. Route (`lib/route.ts`): rejected, matched, linked, created, or created
    with a review flag when the model's confidence was low. Every decision is
-   written to `submission_decisions`. Low-confidence creates get one
-   background retry with a wider candidate list.
+   written to `submission_decisions`. The capture is saved and the response
+   goes out here, with `viPending: true`.
+6. After the response (`after()` from `next/server`): a low-confidence
+   create gets one retry with a wider candidate list, then the market is
+   scored from every VI source (`lib/signals.ts`) and one `vi_history`
+   point is recorded. If this is cut off, the five-minute refresh scores
+   the market on its next pass.
 
 Model ids and link thresholds can be overridden per environment; see
 `.env.local.example`. Thinking is turned off with Gemini's own provider
