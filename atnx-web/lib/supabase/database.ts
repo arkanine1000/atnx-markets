@@ -30,6 +30,7 @@ export type Database = {
           thumbnail_url: string | null;
           current_vi: number;
           vi_last_updated: string | null;
+          vi_components: Json | null;
           phase: number;
           is_graduated: boolean;
           total_captures: number;
@@ -55,6 +56,7 @@ export type Database = {
           thumbnail_url?: string | null;
           current_vi?: number;
           vi_last_updated?: string | null;
+          vi_components?: Json | null;
           phase?: number;
           is_graduated?: boolean;
           total_captures?: number;
@@ -80,6 +82,7 @@ export type Database = {
           thumbnail_url?: string | null;
           current_vi?: number;
           vi_last_updated?: string | null;
+          vi_components?: Json | null;
           phase?: number;
           is_graduated?: boolean;
           total_captures?: number;
@@ -156,18 +159,21 @@ export type Database = {
           id: number;
           market_id: string;
           vi: number;
+          raw_vi: number | null;
           recorded_at: string;
         };
         Insert: {
           id?: number;
           market_id: string;
           vi: number;
+          raw_vi?: number | null;
           recorded_at?: string;
         };
         Update: {
           id?: number;
           market_id?: string;
           vi?: number;
+          raw_vi?: number | null;
           recorded_at?: string;
         };
         Relationships: [

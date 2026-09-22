@@ -3,6 +3,10 @@
     {
       "path": "/api/markets/refresh",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/markets/refresh-slow",
+      "schedule": "7 * * * *"
     }
   ]
 }

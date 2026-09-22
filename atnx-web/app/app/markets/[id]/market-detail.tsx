@@ -17,6 +17,7 @@ import { useDemoContext } from "@/context/DemoContext";
 import { mock24hChange, sentimentColor, timeAgo } from "@/lib/capture-view";
 import type { Capture, MarketRow, TradeLogEvent } from "@/lib/store";
 import type { TrendsResult } from "@/lib/trends";
+import { viTier } from "@/lib/vi/score";
 
 interface Props {
   market: MarketRow;
@@ -127,6 +128,9 @@ export function MarketDetailClient({
                 <div className="flex sm:justify-end items-baseline gap-2">
                   <span className="text-4xl font-bold text-atnx-yellow light:text-atnx-yellow-light leading-none">
                     {viralityScore}
+                  </span>
+                  <span className="text-[11px] uppercase tracking-[0.12em] text-secondary">
+                    {viTier(viralityScore).label}
                   </span>
                 </div>
                 <div className="flex sm:justify-end items-center gap-2 mt-2">

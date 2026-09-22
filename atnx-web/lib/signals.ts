@@ -1,41 +1,105 @@
-// Composite VI dispatcher. Runs the available signal sources in parallel and
-// returns the strongest score. We MAX rather than weighted-average because
-// each source is an independent attention signal — a viral Wikipedia article
-// shouldn't be dragged down just because Google Trends is quiet for that term.
-import { fetchTrendsData, type TrendsResult } from './trends';
-import { fetchWikipediaSignal, type WikipediaResult } from './wikipedia';
+// Composite VI dispatcher. Four sources, each reporting an absolute level
+// and a momentum ratio, combined by lib/vi/score.ts.
+//
+// Two refresh cadences share one stored breakdown per market
+// (markets.vi_components): the fast path (every 5 min) re-fetches Trends
+// and Bluesky and reuses the stored GDELT and Wikipedia readings; the slow
+// path (hourly) does the reverse. A fresh capture fetches everything.
+import {
+  combine,
+  FAST_SOURCES,
+  isGenericTerm,
+  SLOW_SOURCES,
+  type Components,
+  type Composite,
+  type SourceName,
+} from './vi/score';
+import { fetchTrendsSignals, type TrendsSignal } from './vi/trends';
+import { fetchBlueskySignal } from './vi/bluesky';
+import { fetchGdeltSignal } from './vi/gdelt';
+import { fetchWikipediaSignal } from './vi/wikipedia';
 
-export interface SignalInput {
+export interface ScoreRequest {
   term: string;
+  // Breakdown stored on the market from earlier passes, if any.
+  stored?: Components | null;
 }
 
 export interface SignalResult {
-  score: number;
-  trends: TrendsResult | null;
-  wikipedia: WikipediaResult | null;
-  source: 'trends' | 'wikipedia' | 'none';
+  // Null when no source has data. Callers keep the last known value.
+  score: number | null;
+  composite: Composite | null;
+  components: Components;
+  // Trends series on the VI axis, for seeding a new market's sparkline.
+  seedSeries: { date: string; value: number }[];
 }
 
-// The third source, a score read off the screenshot by the vision model
-// (view counts, platform list, a free-text "virality" judgement), was
-// removed: it let the same screenshot move the price on every resubmit and
-// had no external referent. Only measured attention counts now.
-export async function composeVi({ term }: SignalInput): Promise<SignalResult> {
-  const runTrends = term.length > 1
-    ? fetchTrendsData(term).catch(() => null)
-    : Promise.resolve(null);
-  const runWiki = term.length > 1
-    ? fetchWikipediaSignal(term).catch(() => null)
-    : Promise.resolve(null);
+export type Cadence = 'fast' | 'slow' | 'all';
 
-  const [trends, wikipedia] = await Promise.all([runTrends, runWiki]);
+const FRESH_FOR: Record<Cadence, SourceName[]> = {
+  fast: FAST_SOURCES,
+  slow: SLOW_SOURCES,
+  all: [...FAST_SOURCES, ...SLOW_SOURCES],
+};
 
-  const trendsScore = trends?.viralityScore ?? 0;
-  const wikiScore = wikipedia?.score ?? 0;
+// Scores many terms at once so Trends can batch them.
+export async function scoreTerms(requests: ScoreRequest[], cadence: Cadence): Promise<SignalResult[]> {
+  const fresh = new Set(FRESH_FOR[cadence]);
+  const terms = requests.map((r) => r.term);
 
-  const score = Math.max(trendsScore, wikiScore);
-  const source: SignalResult['source'] =
-    score === 0 ? 'none' : score === trendsScore ? 'trends' : 'wikipedia';
+  const trendsMap: Map<string, TrendsSignal> = fresh.has('trends')
+    ? await fetchTrendsSignals(terms).catch(() => new Map())
+    : new Map();
 
-  return { score, trends, wikipedia, source };
+  return Promise.all(
+    requests.map(async ({ term, stored }) => {
+      const components: Components = { ...(stored ?? {}) };
+      const trends = trendsMap.get(term);
+      if (trends) components.trends = trends;
+
+      const [bluesky, gdelt, wikipedia] = await Promise.all([
+        fresh.has('bluesky') ? fetchBlueskySignal(term).catch(() => null) : null,
+        fresh.has('gdelt') ? fetchGdeltSignal(term).catch(() => null) : null,
+        fresh.has('wikipedia') ? fetchWikipediaSignal(term).catch(() => null) : null,
+      ]);
+      if (bluesky) components.bluesky = bluesky;
+      if (gdelt) components.gdelt = gdelt;
+      if (wikipedia) components.wikipedia = wikipedia;
+
+      // A source that answered "unknown" this pass must not erase a real
+      // earlier reading; keep the stored one.
+      for (const name of Object.keys(components) as SourceName[]) {
+        const c = components[name];
+        if (c && c.level === null && stored?.[name]?.level != null) components[name] = stored[name];
+      }
+
+      // Single common words score big on search and social by accident.
+      // Only count those sources when Wikipedia knows the term by that name.
+      const wikiTitle = (components.wikipedia?.meta?.title as string | undefined) ?? null;
+      if (isGenericTerm(term, wikiTitle)) {
+        delete components.trends;
+        delete components.bluesky;
+      }
+
+      const composite = combine(components);
+      const seedSeries = trends?.series ?? [];
+      // Persist only the breakdown; the series is for seeding and would
+      // bloat the row.
+      const persisted: Components = {};
+      for (const name of Object.keys(components) as SourceName[]) {
+        const c = components[name];
+        if (!c) continue;
+        const { source, level, momentum, fetchedAt, meta } = c;
+        persisted[name] = { source, level, momentum, fetchedAt, meta };
+      }
+
+      return { score: composite?.score ?? null, composite, components: persisted, seedSeries };
+    })
+  );
+}
+
+// Single-term convenience for the capture path: every source, fresh.
+export async function composeVi({ term }: { term: string }): Promise<SignalResult> {
+  const [result] = await scoreTerms([{ term }], 'all');
+  return result;
 }

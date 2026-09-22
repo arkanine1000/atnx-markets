@@ -382,8 +382,11 @@ export async function processCapture(opts: ProcessCaptureInput): Promise<Process
     pageTitle: opts.pageTitle ?? '',
     screenshot: opts.imageBase64 ?? '',
     analysis,
-    trends: signal.trends,
-    viralityScore: signal.score,
+    trends: null,
+    viralityScore: signal.score ?? 0,
+    scored: signal.score !== null,
+    components: signal.components,
+    seedSeries: signal.seedSeries,
   };
 
   let capture: Capture;
@@ -420,8 +423,10 @@ export async function processCapture(opts: ProcessCaptureInput): Promise<Process
     isNew,
     outcome,
     review,
-    vi: signal.score,
-    source: signal.source,
+    // The market's score after this capture (smoothed), and which sources
+    // saw the term, e.g. "trends+wikipedia". "none" when nothing did.
+    vi: capture.viralityScore,
+    source: signal.composite?.sourcesPresent.join('+') || 'none',
     analysis,
   };
 
