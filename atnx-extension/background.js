@@ -163,6 +163,10 @@ function keepAlive() {
 
 async function handleCapture(msg, tab) {
   const release = keepAlive();
+  // A reset armed by the previous capture would otherwise fire mid-flight
+  // and show "ready" while this one is still uploading.
+  clearTimeout(resetTimer);
+  resetTimer = null;
   try {
     // 1. Screenshot first, toast second — otherwise the "capturing" toast
     //    could land inside the crop.

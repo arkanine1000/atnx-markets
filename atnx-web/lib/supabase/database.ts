@@ -419,6 +419,14 @@ export type Database = {
         Args: { market_ids: string[]; since: string; bucket_seconds: number };
         Returns: { market_id: string; points: [number, number][] }[];
       };
+      open_position: {
+        Args: { p_market_id: string; p_direction: 'long' | 'short'; p_size_usd: number; p_leverage?: number };
+        Returns: string;
+      };
+      close_position: {
+        Args: { p_position_id: string };
+        Returns: { realized_pnl: number; exit_vi: number };
+      };
       is_admin: {
         Args: Record<string, never>;
         Returns: boolean;

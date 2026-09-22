@@ -108,11 +108,16 @@ export function combine(components: Components): Composite | null {
 // converging on the latest reading, not because we added noise.
 export const EMA_HALF_LIFE_MS = 2 * 60 * 60 * 1000;
 
+//
+// The result is kept to two decimals, not rounded to an integer: at the
+// five-minute cadence alpha is about 0.03, so an integer round returned
+// `prev` unchanged for any move under ~17 points and the stored score
+// could never converge. Display rounding happens where it is displayed.
 export function smooth(prev: number | null, prevAt: string | null, raw: number, now = Date.now()): number {
   if (prev === null || prevAt === null) return raw;
   const dt = Math.max(0, now - new Date(prevAt).getTime());
   const alpha = 1 - Math.pow(2, -dt / EMA_HALF_LIFE_MS);
-  return Math.round(prev + (raw - prev) * alpha);
+  return Math.round((prev + (raw - prev) * alpha) * 100) / 100;
 }
 
 // The six tiers from the design doc.

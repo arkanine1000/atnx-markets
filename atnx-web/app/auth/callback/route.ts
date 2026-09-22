@@ -8,7 +8,7 @@ import { NextResponse } from 'next/server';
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get('code');
-  const redirect = searchParams.get('redirect') ?? '/app';
+  const redirect = safeRedirect(searchParams.get('redirect'));
 
   if (!code) {
     return NextResponse.redirect(`${origin}/?error=missing_code`);
@@ -29,6 +29,15 @@ export async function GET(request: Request) {
   }
 
   return NextResponse.redirect(`${origin}${redirect}`);
+}
+
+// Only a path on this site. `//evil.com`, `@evil.com` and backslash
+// variants would otherwise turn `${origin}${redirect}` into an open
+// redirect after a successful login.
+function safeRedirect(value: string | null): string {
+  if (!value || !value.startsWith('/') || value.startsWith('//')) return '/app';
+  if (/[@\\]/.test(value)) return '/app';
+  return value;
 }
 
 async function ensureUserProfile(userId: string, email: string | null | undefined) {

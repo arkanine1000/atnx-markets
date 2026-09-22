@@ -789,7 +789,9 @@ async function loadMarkets() {
   if (!res.ok) {
     marketsEl.replaceChildren(placeholder(`Markets unavailable (${res.status})`));
     marketsMeta.textContent = '';
-    return false;
+    // 401 is the web app answering "sign in", not an outage; only a real
+    // failure should slow the refresh timer down.
+    return res.status === 401;
   }
 
   const data = await readJson(res);
