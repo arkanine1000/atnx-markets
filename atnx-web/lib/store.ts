@@ -213,24 +213,75 @@ export async function recordVi(
   return vi;
 }
 
-async function buildTrendsView(
-  marketId: string,
-  entityName: string
-): Promise<TrendsResult | null> {
+type SeriesPoint = { date: string; value: number };
+type SeriesMap = Map<string, SeriesPoint[]>;
+
+const DAY_MS = 86_400_000;
+
+// VI history for many markets in one round trip: vi_history_series()
+// (migration 005) returns one median per bucket, packed as JSON per market,
+// so neither the number of markets nor the length of the window runs into
+// PostgREST's 1,000-row cap. Before the migration is applied it falls back
+// to one query per market for the newest rows.
+async function getViSeries(
+  marketIds: string[],
+  { days, bucketSeconds, fallbackRows }: { days: number; bucketSeconds: number; fallbackRows: number }
+): Promise<SeriesMap> {
+  const series: SeriesMap = new Map();
+  if (marketIds.length === 0) return series;
   const supabase = createAdminClient();
-  const { data, error } = await supabase
+  const since = new Date(Date.now() - days * DAY_MS).toISOString();
+
+  const { data, error } = await supabase.rpc('vi_history_series', {
+    market_ids: marketIds,
+    since,
+    bucket_seconds: bucketSeconds,
+  });
+  if (!error) {
+    for (const row of data ?? []) {
+      series.set(
+        row.market_id,
+        (row.points ?? []).map(([t, vi]) => ({ date: new Date(Number(t)).toISOString(), value: Number(vi) }))
+      );
+    }
+    return series;
+  }
+
+  console.warn('[store] vi_history_series unavailable, using raw rows:', error.message);
+  await Promise.all(
+    marketIds.map(async (id) => {
+      const { data: rows } = await supabase
+        .from('vi_history')
+        .select('vi, recorded_at')
+        .eq('market_id', id)
+        .gte('recorded_at', since)
+        .order('recorded_at', { ascending: false })
+        .limit(fallbackRows);
+      series.set(
+        id,
+        (rows ?? []).reverse().map((r) => ({ date: r.recorded_at as string, value: Number(r.vi) }))
+      );
+    })
+  );
+  return series;
+}
+
+// Newest raw readings for one market, oldest first. The bucketed series
+// above is too coarse for the 1H/4H ranges on the market page.
+async function getRecentViRows(marketId: string, limit: number): Promise<SeriesPoint[]> {
+  const { data, error } = await createAdminClient()
     .from('vi_history')
     .select('vi, recorded_at')
     .eq('market_id', marketId)
-    .order('recorded_at', { ascending: true })
-    .limit(200);
+    .order('recorded_at', { ascending: false })
+    .limit(limit);
   if (error) throw error;
-  if (!data || data.length === 0) return null;
+  return (data ?? []).reverse().map((r) => ({ date: r.recorded_at as string, value: Number(r.vi) }));
+}
 
-  const dataPoints = data.map((row) => ({
-    date: row.recorded_at as string,
-    value: row.vi as number,
-  }));
+// The sparkline view model from a series that is already in hand.
+function trendsFromPoints(entityName: string, dataPoints: SeriesPoint[]): TrendsResult | null {
+  if (dataPoints.length === 0) return null;
   const values = dataPoints.map((p) => p.value);
   const currentValue = values[values.length - 1];
   const peakValue = Math.max(...values);
@@ -401,6 +452,15 @@ function rowToCapture(
   };
 }
 
+// Card sparklines: a week at two-hour medians is ~84 points per market,
+// enough for the shape and small enough to poll.
+const FEED_SERIES = { days: 7, bucketSeconds: 2 * 60 * 60, fallbackRows: 84 };
+
+// The capture feed, newest first. Two round trips regardless of size: the
+// rows, then one bucketed history call for every market in them. The
+// history rides on the newest capture of each market only; the dashboard
+// groups by market and reads it from that one, and repeating it on every
+// older capture of the same market would multiply the payload.
 export async function getCaptures(limit = 50): Promise<Capture[]> {
   const supabase = createAdminClient();
 
@@ -417,15 +477,19 @@ export async function getCaptures(limit = 50): Promise<Capture[]> {
   if (error) throw error;
   if (!data) return [];
 
-  return Promise.all(
-    data.map(async (row) => {
-      const market = row.market;
-      const trends = market
-        ? await buildTrendsView(market.id, market.entity_name)
-        : null;
-      return rowToCapture(row, trends);
-    })
-  );
+  const marketIds = [...new Set(data.map((row) => row.market?.id).filter((id): id is string => Boolean(id)))];
+  const series = await getViSeries(marketIds, FEED_SERIES);
+
+  const seen = new Set<string>();
+  return data.map((row) => {
+    const market = row.market;
+    let trends: TrendsResult | null = null;
+    if (market && !seen.has(market.id)) {
+      seen.add(market.id);
+      trends = trendsFromPoints(market.entity_name, series.get(market.id) ?? []);
+    }
+    return rowToCapture(row, trends);
+  });
 }
 
 export interface MarketDetail {
@@ -463,7 +527,19 @@ export async function getMarketDetail(
   if (captureErr) throw captureErr;
   if (!captureRows || captureRows.length === 0) return null;
 
-  const trends = await buildTrendsView(market.id, market.entity_name);
+  // Ninety days at half-hour medians for the long ranges, with the newest
+  // raw readings (about a day at the five-minute cadence) on top so 1H and
+  // 4H still have every sample.
+  const [bucketed, recent] = await Promise.all([
+    getViSeries([market.id], { days: 90, bucketSeconds: 30 * 60, fallbackRows: 1000 }),
+    getRecentViRows(market.id, 300),
+  ]);
+  const recentStart = recent[0]?.date ?? '';
+  const points = [
+    ...(bucketed.get(market.id) ?? []).filter((p) => !recentStart || p.date < recentStart),
+    ...recent,
+  ];
+  const trends = trendsFromPoints(market.entity_name, points);
   const captures = captureRows.map((row) => rowToCapture(row, trends));
 
   return {

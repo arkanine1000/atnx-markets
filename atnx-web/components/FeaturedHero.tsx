@@ -14,14 +14,15 @@ const FEATURED = 5;
 // Polymarket-style top row: what the platform is on the left, and a large
 // auto-rotating showcase of the most viral markets on the right.
 export function FeaturedHero({ captures }: { captures: Capture[] }) {
-  const featured = useMemo(
-    () =>
-      [...captures]
-        .filter((c) => c.marketId)
-        .sort((a, b) => b.viralityScore - a.viralityScore)
-        .slice(0, FEATURED),
-    [captures],
-  );
+  // One slide per market: the feed lists every capture, newest first, and
+  // a market captured twice would otherwise appear twice.
+  const featured = useMemo(() => {
+    const seen = new Set<string>();
+    return captures
+      .filter((c) => c.marketId && !seen.has(c.marketId) && seen.add(c.marketId))
+      .sort((a, b) => b.viralityScore - a.viralityScore)
+      .slice(0, FEATURED);
+  }, [captures]);
 
   return (
     // Fixed height on desktop so the row doesn't jump as slides change.

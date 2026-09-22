@@ -158,11 +158,16 @@ export async function POST(request: Request) {
   }
 }
 
+// The feed is the same for every viewer and the dashboard polls it every
+// five seconds, so let the CDN answer the polls: fresh for 5 s, served
+// stale for up to 25 s more while one request refreshes it.
+const FEED_CACHE = 'public, s-maxage=5, stale-while-revalidate=25';
+
 export async function GET(request: Request) {
   const headers = corsHeaders(request);
   try {
     const captures = await getCaptures();
-    return Response.json({ captures }, { headers });
+    return Response.json({ captures }, { headers: { ...headers, 'Cache-Control': FEED_CACHE } });
   } catch (err) {
     console.error('[captures GET] failed to load', err);
     return Response.json(
