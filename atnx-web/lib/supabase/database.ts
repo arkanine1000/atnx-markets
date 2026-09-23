@@ -49,6 +49,9 @@ export type Database = {
           created_by: string | null;
           // The market this one is about (010). One level deep, display only.
           parent_market_id: string | null;
+          // The market's own summary and where it came from (012).
+          description: string | null;
+          description_source: string | null;
           deleted_at: string | null;
           created_at: string;
         };
@@ -79,6 +82,8 @@ export type Database = {
           wikidata_qid?: string | null;
           created_by?: string | null;
           parent_market_id?: string | null;
+          description?: string | null;
+          description_source?: string | null;
           deleted_at?: string | null;
           created_at?: string;
         };
@@ -109,6 +114,8 @@ export type Database = {
           wikidata_qid?: string | null;
           created_by?: string | null;
           parent_market_id?: string | null;
+          description?: string | null;
+          description_source?: string | null;
           deleted_at?: string | null;
           created_at?: string;
         };

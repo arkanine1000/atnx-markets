@@ -598,6 +598,16 @@ main {
   display: block;
 }
 
+.thumb.logo {
+  background: #f4f4f4;
+}
+
+.thumb.logo img {
+  object-fit: contain;
+  padding: 4px;
+  box-sizing: border-box;
+}
+
 .thumb .badge {
   position: absolute;
   right: -1px;

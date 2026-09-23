@@ -24,6 +24,9 @@ export interface Capture {
   // Which strategy found it (markets.thumbnail_source). A logo is drawn
   // contained on a light tile; everything else fills the frame.
   marketImageSource?: string | null;
+  // The market's own summary (markets.description), filled beside the
+  // curated image. The hero shows it instead of this capture's description.
+  marketDescription?: string | null;
   analysis: {
     type?: string;
     name?: string;
@@ -62,6 +65,8 @@ export type MarketRow = {
   // One of the ten enum values (supabase/002), the market's own filing;
   // captures display this, not whatever their analysis said.
   category: string | null;
+  // The market's own summary (supabase/012), when the thumbnail job found one.
+  description: string | null;
   // The market this one is about, if any (supabase/010). Display only.
   parent_market_id: string | null;
 };
@@ -122,7 +127,7 @@ async function uploadScreenshot(
 }
 
 const MARKET_COLUMNS =
-  'id, entity_name, entity_type, current_vi, vi_last_updated, total_captures, thumbnail_url, thumbnail_source, category, parent_market_id';
+  'id, entity_name, entity_type, current_vi, vi_last_updated, total_captures, thumbnail_url, thumbnail_source, category, description, parent_market_id';
 
 export async function getMarketById(id: string): Promise<MarketRow | null> {
   const { data, error } = await createAdminClient()
@@ -504,6 +509,7 @@ function rowToCapture(
     screenshot: row.image_url ?? TEXT_PLACEHOLDER_IMAGE,
     marketImage: market?.thumbnail_url ?? null,
     marketImageSource: market?.thumbnail_source ?? null,
+    marketDescription: market?.description ?? null,
     analysis: cleanedAnalysis,
     trends,
     viralityScore: Math.round(market?.current_vi ?? 0),

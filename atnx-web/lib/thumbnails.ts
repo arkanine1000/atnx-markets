@@ -37,7 +37,9 @@ import { createAdminClient } from './supabase/admin';
 import type { Components } from './vi/score';
 import {
   fetchArticleFacts,
+  fetchArticleSummary,
   fetchWikidataLogo,
+  leadSentences,
   fetchWikidataValues,
   fetchWikipediaPageImage,
   resolveArticleTitles,
@@ -132,6 +134,7 @@ type Candidate = MarketForImage & {
   thumbnail_url: string | null;
   thumbnail_source: string | null;
   thumbnail_checked_at: string | null;
+  description_source: string | null;
   // The image it has is one other markets have too: a placeholder.
   duplicate: boolean;
 };
@@ -141,6 +144,12 @@ export interface FoundImage {
   contentType: string;
   // Recorded in thumbnail_source: which strategy produced it.
   source: string;
+  // The market's own summary from the same place the image came from
+  // (supabase/012), so the caption under a logo describes the company,
+  // not the screenshot the newest capture was. Recorded in
+  // markets.description / description_source.
+  description?: string | null;
+  descriptionSource?: string | null;
 }
 
 // Looks up curated images for at most `limit` highlighted markets that
@@ -155,7 +164,7 @@ export async function refreshThumbnails({ limit = 12, redo = false }: RefreshOpt
   const { data, error } = await supabase
     .from('markets')
     .select(
-      'id, entity_name, entity_type, vi_components, current_vi, total_volume_usd, thumbnail_url, thumbnail_source, thumbnail_checked_at'
+      'id, entity_name, entity_type, vi_components, current_vi, total_volume_usd, thumbnail_url, thumbnail_source, thumbnail_checked_at, description_source'
     )
     .is('deleted_at', null)
     .order('current_vi', { ascending: false, nullsFirst: false });
@@ -284,7 +293,7 @@ async function brandImage(market: MarketForImage): Promise<FoundImage | null> {
     const facts = await fetchArticleFacts(title);
     if (!facts || facts.disambiguation) continue;
     const logo = facts.qid ? await fetchWikidataLogo(facts.qid) : null;
-    if (logo) return { ...(await download(logo.url)), source: 'wikidata:logo' };
+    if (logo) return { ...(await download(logo.url)), source: 'wikidata:logo', ...(await articleCaption(facts)) };
     if (!facts.shortDescription || !BRAND_DESCRIPTION.test(facts.shortDescription)) continue;
     const lead = await leadImage(facts);
     if (lead) return lead;
@@ -333,7 +342,22 @@ async function subjectLeadImage(market: MarketForImage): Promise<FoundImage | nu
 async function leadImage(facts: ArticleFacts): Promise<FoundImage | null> {
   const image = await fetchWikipediaPageImage(facts.title);
   if (!image) return null;
-  return { ...(await download(image.url)), source: 'wikipedia:lead' };
+  return { ...(await download(image.url)), source: 'wikipedia:lead', ...(await articleCaption(facts)) };
+}
+
+// The article's first sentence or two as the market's description. A
+// failure here costs the caption, never the image.
+async function articleCaption(
+  facts: ArticleFacts
+): Promise<Pick<FoundImage, 'description' | 'descriptionSource'>> {
+  try {
+    const summary = await fetchArticleSummary(facts.title);
+    const text = summary?.extract ? leadSentences(summary.extract) : null;
+    return text ? { description: text, descriptionSource: 'wikipedia' } : {};
+  } catch (err) {
+    console.warn(`[thumbnails] ${facts.title}: summary failed:`, (err as Error).message);
+    return {};
+  }
 }
 
 // The preview image of the first capture source that is a reference page
@@ -375,10 +399,21 @@ async function knowYourMemeEntry(market: MarketForImage): Promise<FoundImage | n
 async function pageImage(url: string, name: string): Promise<FoundImage | null> {
   const image = await fetchImageFromUrl(url);
   if (!image.pageTitle || !pageTitleNames(image.pageTitle, name)) return null;
+  const host = new URL(url).hostname.replace(/^www\./, '');
+  const source = `page:${host}`;
+  // The page's own summary (og:description) describes the subject, which
+  // for a reference page is the market itself. Wikipedia sets none, so
+  // its articles are asked for their intro instead.
+  let summary = image.pageContext?.trim();
+  if (!summary && /(^|\.)wikipedia\.org$/.test(host)) {
+    const title = decodeURIComponent(new URL(url).pathname.replace(/^\/wiki\//, '')).replace(/_/g, ' ');
+    summary = (await fetchArticleSummary(title).catch(() => null))?.extract ?? undefined;
+  }
   return {
     buffer: Buffer.from(image.imageBase64, 'base64'),
     contentType: image.mediaType,
-    source: `page:${new URL(url).hostname.replace(/^www\./, '')}`,
+    source,
+    ...(summary && summary.length >= 20 ? { description: leadSentences(summary), descriptionSource: source } : {}),
   };
 }
 
@@ -413,6 +448,19 @@ async function storeImage(market: Candidate, found: FoundImage): Promise<'set'> 
       thumbnail_checked_at: new Date().toISOString(),
     })
     .eq('id', market.id);
+  // The caption travels with the image, except over one written by hand.
+  if (found.description && market.description_source !== MANUAL_SOURCE) {
+    update = supabase
+      .from('markets')
+      .update({
+        thumbnail_url: pub.publicUrl,
+        thumbnail_source: found.source,
+        thumbnail_checked_at: new Date().toISOString(),
+        description: found.description,
+        description_source: found.descriptionSource ?? found.source,
+      })
+      .eq('id', market.id);
+  }
   update = market.thumbnail_url
     ? update.or(`thumbnail_source.is.null,thumbnail_source.neq.${MANUAL_SOURCE}`)
     : update.is('thumbnail_url', null);

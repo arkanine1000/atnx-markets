@@ -243,6 +243,47 @@ export async function fetchArticleFacts(title: string): Promise<ArticleFacts | n
   };
 }
 
+// The article's intro, from the REST summary endpoint: `extract` is the
+// lead paragraph as plain text, `description` the one-line short
+// description. Null when there is no such page.
+export async function fetchArticleSummary(
+  title: string
+): Promise<{ extract: string | null; description: string | null } | null> {
+  const res = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title.replace(/ /g, '_'))}`, {
+    headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`summary ${res.status}`);
+  const body = (await res.json()) as { extract?: string; description?: string; type?: string };
+  if (body.type === 'disambiguation') return null;
+  return { extract: body.extract?.trim() || null, description: body.description?.trim() || null };
+}
+
+// The first sentence or two of a paragraph, for a caption: whole sentences
+// only, up to about `max` characters, and never less than one sentence.
+export function leadSentences(text: string, max = 220): string {
+  const clean = decodeEntities(text).replace(/\s+/g, ' ').replace(/\s+\(([^)]*\b(?:pronounced|pronunciation|listen)\b[^)]*)\)/gi, '').trim();
+  const parts = clean.split(/(?<=[.!?])\s+(?=["“(A-Z0-9])/);
+  let out = '';
+  for (const part of parts) {
+    if (out && (out + ' ' + part).length > max) break;
+    out = out ? `${out} ${part}` : part;
+  }
+  return out.length > max * 1.6 ? `${out.slice(0, max * 1.6 - 1).trimEnd()}…` : out;
+}
+
+// og:description arrives HTML-escaped from some sites (Know Your Meme
+// writes &apos;).
+function decodeEntities(s: string): string {
+  return s
+    .replace(/&apos;|&#39;|&#x27;/g, "'")
+    .replace(/&quot;|&#34;/g, '"')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&nbsp;/g, ' ');
+}
+
 // The values of one property on a Wikidata item, best rank first: item
 // ids for item-valued properties (P31 "instance of"), file names for
 // Commons media (P154 "logo image").

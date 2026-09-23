@@ -25,6 +25,8 @@ type PositionRow = {
     entity_name: string;
     entity_type: string | null;
     current_vi: number;
+    thumbnail_url: string | null;
+    thumbnail_source: string | null;
   } | null;
 };
 
@@ -33,7 +35,11 @@ export interface PortfolioPosition {
   marketId: string;
   name: string;
   category: string;
+  // The market's curated image when it has one, else its newest capture.
   imageUrl: string | null;
+  // markets.thumbnail_source when imageUrl is the curated image (a
+  // 'wikidata:logo' is drawn contained on a light tile); null otherwise.
+  imageSource: string | null;
   direction: 'long' | 'short';
   sizeUsd: number;
   leverage: number;
@@ -281,7 +287,7 @@ export async function GET(request: Request) {
         supabase
           .from('positions')
           .select(
-            'id, market_id, direction, size_usd, entry_vi, leverage, opened_at, market:markets(id, entity_name, entity_type, current_vi)'
+            'id, market_id, direction, size_usd, entry_vi, leverage, opened_at, market:markets(id, entity_name, entity_type, current_vi, thumbnail_url, thumbnail_source)'
           )
           .eq('user_id', user.id)
           .eq('status', 'open')
@@ -341,7 +347,8 @@ export async function GET(request: Request) {
         marketId: row.market_id,
         name: row.market?.entity_name ?? 'Unknown',
         category: row.market?.entity_type ?? 'other',
-        imageUrl: imageByMarket.get(row.market_id) ?? null,
+        imageUrl: row.market?.thumbnail_url ?? imageByMarket.get(row.market_id) ?? null,
+        imageSource: row.market?.thumbnail_url ? (row.market.thumbnail_source ?? null) : null,
         direction: row.direction,
         sizeUsd: row.size_usd,
         leverage: row.leverage,

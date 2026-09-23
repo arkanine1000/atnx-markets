@@ -228,6 +228,11 @@ export function MarketDetailClient({
                       </span>
                     )}
                   </div>
+                  {market.description && (
+                    <p className="mt-2 text-xs sm:text-sm text-secondary leading-relaxed font-sans line-clamp-2">
+                      {market.description}
+                    </p>
+                  )}
                 </div>
               </div>
 

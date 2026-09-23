@@ -98,8 +98,10 @@ async function openTab(url) {
 }
 
 // Thumbnail with a first-letter fallback when there is no image (or it fails).
-function thumb(imageUrl, name, badge) {
-  const box = el('div', 'thumb');
+// `logo` draws the image contained on a light tile (a company mark) instead
+// of filling the frame (a screenshot or portrait), as the web cards do.
+function thumb(imageUrl, name, badge, logo = false) {
+  const box = el('div', logo ? 'thumb logo' : 'thumb');
   const letter = el('span', '', (name || '?').trim().charAt(0).toUpperCase());
   if (imageUrl) {
     const img = document.createElement('img');
@@ -771,7 +773,7 @@ function positionRow(p, base) {
   end.appendChild(el('div', 'big', usd.format(p.valueUsd ?? p.sizeUsd + p.pnlUsd)));
   end.appendChild(el('div', `small ${dir}`, `${signed(p.pnlPercent, (x) => x.toFixed(1))}%`));
 
-  row.append(thumb(p.imageUrl, p.name, badge), el('div', 'name', p.name), end);
+  row.append(thumb(p.imageUrl, p.name, badge, p.imageSource === 'wikidata:logo'), el('div', 'name', p.name), end);
   return row;
 }
 
@@ -930,7 +932,14 @@ function marketRow(c, base, rank) {
   const end = el('div', 'end');
   end.appendChild(el('div', 'big', String(c.viralityScore)));
 
-  row.append(el('div', 'rank', String(rank)), thumb(c.screenshot, name), el('div', 'name', name), end);
+  // The market's curated image when the web app has one (the logo, the
+  // portrait, the meme's reference picture); the newest capture otherwise.
+  row.append(
+    el('div', 'rank', String(rank)),
+    thumb(c.marketImage || c.screenshot, name, null, Boolean(c.marketImage) && c.marketImageSource === 'wikidata:logo'),
+    el('div', 'name', name),
+    end
+  );
   return row;
 }
 

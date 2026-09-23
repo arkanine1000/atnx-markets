@@ -290,9 +290,9 @@ function Showcase({ items }: { items: Capture[] }) {
             </div>
           </div>
 
-          {c.analysis.description && (
+          {(c.marketDescription || c.analysis.description) && (
             <p className="mt-4 text-xs sm:text-sm text-secondary leading-relaxed font-sans line-clamp-3">
-              {c.analysis.description}
+              {c.marketDescription || c.analysis.description}
             </p>
           )}
 
