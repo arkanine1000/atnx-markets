@@ -22,6 +22,10 @@ import { viTier } from "@/lib/vi/score";
 
 interface Props {
   market: MarketRow;
+  // The subject this market is about, and the markets that are about this
+  // one (supabase/010). Display only; either may be empty.
+  parent?: MarketRow | null;
+  childMarkets?: MarketRow[];
   captures: Capture[];
   trends: TrendsResult | null;
   initialTradeLog: TradeLogEvent[];
@@ -68,8 +72,51 @@ function SharedNotice({ name }: { name: string }) {
   );
 }
 
+// One row of the "About" / "Tracked as" card: the market's image when it
+// has a curated one, its name, type and current VI, linking to its page.
+function RelatedMarketLink({ market }: { market: MarketRow }) {
+  return (
+    <Link
+      href={`/app/markets/${market.id}`}
+      className="flex items-center gap-3 p-2.5 rounded-xl border border-surface hover:border-atnx-cyan/30 transition-colors"
+    >
+      {market.thumbnail_url ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={market.thumbnail_url}
+          alt=""
+          loading="lazy"
+          className="w-10 h-10 rounded-lg object-cover border border-surface bg-black shrink-0"
+        />
+      ) : (
+        <div className="w-10 h-10 rounded-lg border border-surface bg-elevated shrink-0" />
+      )}
+      <div className="min-w-0 flex-1">
+        <div className="text-xs font-bold text-primary truncate">
+          {market.entity_name}
+        </div>
+        {market.entity_type && (
+          <div className="text-[11px] text-tertiary mt-0.5">
+            {market.entity_type}
+          </div>
+        )}
+      </div>
+      <div className="text-right shrink-0">
+        <div className="text-[10px] font-mono uppercase tracking-wider text-tertiary">
+          VI
+        </div>
+        <div className="font-bold text-atnx-yellow light:text-atnx-yellow-light tabular-nums">
+          {Math.round(market.current_vi)}
+        </div>
+      </div>
+    </Link>
+  );
+}
+
 export function MarketDetailClient({
   market,
+  parent = null,
+  childMarkets = [],
   captures,
   trends,
   initialTradeLog,
@@ -242,6 +289,34 @@ export function MarketDetailClient({
               />
             </div>
           </Card>
+
+          {/* What this market is about, and what is about it. Display only. */}
+          {(parent || childMarkets.length > 0) && (
+            <Card className="p-4 sm:p-5 space-y-3">
+              {parent && (
+                <div>
+                  <div className="text-[10px] font-mono uppercase tracking-wider text-tertiary mb-1.5">
+                    About
+                  </div>
+                  <RelatedMarketLink market={parent} />
+                </div>
+              )}
+              {childMarkets.length > 0 && (
+                <div>
+                  <div className="text-[10px] font-mono uppercase tracking-wider text-tertiary mb-1.5">
+                    Tracked as
+                  </div>
+                  <ul className="space-y-2">
+                    {childMarkets.map((m) => (
+                      <li key={m.id}>
+                        <RelatedMarketLink market={m} />
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </Card>
+          )}
 
           {/* Mobile: order ticket sits right under the chart */}
           <div className="lg:hidden">

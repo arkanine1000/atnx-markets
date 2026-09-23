@@ -10,6 +10,7 @@ import {
   softDeleteCapture,
   reassignCapture,
   approveCapture,
+  setParentMarket,
 } from "./actions";
 
 interface MarketRow {
@@ -19,6 +20,7 @@ interface MarketRow {
   current_vi: number;
   total_captures: number;
   network: "simulated" | "devnet" | "mainnet";
+  parent_market_id: string | null;
   deleted_at: string | null;
   created_at: string;
 }
@@ -122,6 +124,7 @@ function MarketsTab({ markets }: { markets: MarketRow[] }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [busyId, setBusyId] = useState<string | null>(null);
+  const byId = new Map(markets.map((m) => [m.id, m]));
 
   function run(id: string, fn: () => Promise<{ success: boolean; error?: string }>) {
     setBusyId(id);
@@ -143,6 +146,7 @@ function MarketsTab({ markets }: { markets: MarketRow[] }) {
           <tr className="text-tertiary font-mono uppercase tracking-wider">
             <th className="text-left py-2 px-2">Name</th>
             <th className="text-left py-2 px-2">Type</th>
+            <th className="text-left py-2 px-2">About</th>
             <th className="text-right py-2 px-2">Captures</th>
             <th className="text-right py-2 px-2">VI</th>
             <th className="text-left py-2 px-2">Network</th>
@@ -167,6 +171,11 @@ function MarketsTab({ markets }: { markets: MarketRow[] }) {
                 </td>
                 <td className="py-2 px-2 text-secondary">
                   {m.entity_type ?? "\u2014"}
+                </td>
+                <td className="py-2 px-2 text-secondary">
+                  {m.parent_market_id
+                    ? (byId.get(m.parent_market_id)?.entity_name ?? m.parent_market_id)
+                    : "\u2014"}
                 </td>
                 <td className="py-2 px-2 text-right font-mono">
                   {m.total_captures}
@@ -202,6 +211,37 @@ function MarketsTab({ markets }: { markets: MarketRow[] }) {
                   >
                     Edit
                   </button>
+                  {!isDeleted && (
+                    <button
+                      disabled={busy}
+                      onClick={() => {
+                        // Live markets that could be the subject: not this
+                        // one, and not one that already has a parent.
+                        const options = markets
+                          .filter(
+                            (o) =>
+                              o.deleted_at === null &&
+                              o.id !== m.id &&
+                              o.parent_market_id === null
+                          )
+                          .map((o) => `${o.entity_name} — ${o.id}`)
+                          .join("\n");
+                        const target = window.prompt(
+                          `What is "${m.entity_name}" about? Paste a market id, or leave empty to clear:\n\n${options}`,
+                          m.parent_market_id ?? ""
+                        );
+                        if (target === null) return;
+                        const parentId = target.trim() || null;
+                        if (parentId === m.parent_market_id) return;
+                        const reason = promptReason(parentId ? "set parent" : "clear parent");
+                        if (reason === null) return;
+                        run(m.id, () => setParentMarket(m.id, parentId, reason));
+                      }}
+                      className="text-atnx-cyan hover:text-atnx-cyan-dim mr-3 cursor-pointer disabled:opacity-40"
+                    >
+                      About
+                    </button>
+                  )}
                   {isDeleted ? (
                     <button
                       disabled={busy}
@@ -233,7 +273,7 @@ function MarketsTab({ markets }: { markets: MarketRow[] }) {
           })}
           {markets.length === 0 && (
             <tr>
-              <td colSpan={8} className="py-8 text-center text-tertiary">
+              <td colSpan={9} className="py-8 text-center text-tertiary">
                 No markets yet.
               </td>
             </tr>

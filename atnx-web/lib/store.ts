@@ -59,6 +59,8 @@ export type MarketRow = {
   total_captures: number;
   thumbnail_url: string | null;
   thumbnail_source: string | null;
+  // The market this one is about, if any (supabase/010). Display only.
+  parent_market_id: string | null;
 };
 
 type CaptureRowWithMarket = {
@@ -117,7 +119,7 @@ async function uploadScreenshot(
 }
 
 const MARKET_COLUMNS =
-  'id, entity_name, entity_type, current_vi, vi_last_updated, total_captures, thumbnail_url, thumbnail_source';
+  'id, entity_name, entity_type, current_vi, vi_last_updated, total_captures, thumbnail_url, thumbnail_source, parent_market_id';
 
 export async function getMarketById(id: string): Promise<MarketRow | null> {
   const { data, error } = await createAdminClient()
@@ -650,6 +652,10 @@ function getFeaturedMarkets(): Promise<Capture[]> {
 
 export interface MarketDetail {
   market: MarketRow;
+  // The subject this market is about, when it has one and that market is
+  // live; and the live markets that name this one as their subject.
+  parent: MarketRow | null;
+  children: MarketRow[];
   latest: Capture;
   captures: Capture[];
   trends: TrendsResult | null;
@@ -708,12 +714,29 @@ export async function getMarketDetail(
   // Ninety days at half-hour medians for the long ranges, with the newest
   // raw readings (about a day at the five-minute cadence) on top so 1H and
   // 4H still have every sample.
-  const [bucketed, recent, traded] = await Promise.all([
+  const parentId = (market as MarketRow).parent_market_id;
+  const [bucketed, recent, traded, parentRes, childrenRes] = await Promise.all([
     getViSeries([market.id], { days: 90, bucketSeconds: 30 * 60, fallbackRows: 1000 }),
     getRecentViRows(market.id, 300),
     supabase.from('positions').select('size_usd, status').eq('market_id', market.id),
+    parentId
+      ? supabase
+          .from('markets')
+          .select(MARKET_COLUMNS)
+          .eq('id', parentId)
+          .is('deleted_at', null)
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+    supabase
+      .from('markets')
+      .select(MARKET_COLUMNS)
+      .eq('parent_market_id', market.id)
+      .is('deleted_at', null)
+      .order('current_vi', { ascending: false }),
   ]);
   if (traded.error) throw traded.error;
+  if (parentRes.error) throw parentRes.error;
+  if (childrenRes.error) throw childrenRes.error;
   const recentStart = recent[0]?.date ?? '';
   const points = [
     ...(bucketed.get(market.id) ?? []).filter((p) => !recentStart || p.date < recentStart),
@@ -724,6 +747,8 @@ export async function getMarketDetail(
 
   return {
     market: market as MarketRow,
+    parent: (parentRes.data as MarketRow | null) ?? null,
+    children: (childrenRes.data ?? []) as MarketRow[],
     latest: captures[0],
     captures,
     trends,

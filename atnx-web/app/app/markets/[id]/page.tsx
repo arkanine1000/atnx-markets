@@ -19,6 +19,8 @@ export default async function MarketPage({
   return (
     <MarketDetailClient
       market={detail.market}
+      parent={detail.parent}
+      childMarkets={detail.children}
       captures={detail.captures}
       trends={detail.trends}
       initialTradeLog={tradeLog}

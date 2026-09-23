@@ -14,8 +14,11 @@ async function callRpc<Args extends Record<string, unknown>>(
     | "admin_restore_market"
     | "admin_edit_market_name"
     | "admin_soft_delete_capture"
-    | "admin_reassign_capture",
-  args: Args
+    | "admin_reassign_capture"
+    | "admin_set_parent_market",
+  args: Args,
+  // Pages beyond /admin and /app that show the changed row.
+  extraPaths: string[] = []
 ): Promise<AdminActionResult> {
   const supabase = await createClient();
   const {
@@ -30,7 +33,28 @@ async function callRpc<Args extends Record<string, unknown>>(
 
   revalidatePath("/admin");
   revalidatePath("/app");
+  for (const path of extraPaths) revalidatePath(path);
   return { success: true };
+}
+
+// Points a market at the subject it is about, or clears the pointer with a
+// null parent. The RPC enforces the one-level rule (a parent has no parent,
+// a market with children takes none) and writes the moderation_log row.
+export async function setParentMarket(
+  marketId: string,
+  parentId: string | null,
+  reason: string
+): Promise<AdminActionResult> {
+  if (parentId === marketId) {
+    return { success: false, error: "A market cannot be its own parent" };
+  }
+  const paths = [`/app/markets/${marketId}`];
+  if (parentId) paths.push(`/app/markets/${parentId}`);
+  return callRpc(
+    "admin_set_parent_market",
+    { market_id: marketId, parent_id: parentId, reason: reason || null },
+    paths
+  );
 }
 
 export async function softDeleteMarket(

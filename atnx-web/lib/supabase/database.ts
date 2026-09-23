@@ -47,6 +47,8 @@ export type Database = {
           aliases: string[];
           wikidata_qid: string | null;
           created_by: string | null;
+          // The market this one is about (010). One level deep, display only.
+          parent_market_id: string | null;
           deleted_at: string | null;
           created_at: string;
         };
@@ -76,6 +78,7 @@ export type Database = {
           aliases?: string[];
           wikidata_qid?: string | null;
           created_by?: string | null;
+          parent_market_id?: string | null;
           deleted_at?: string | null;
           created_at?: string;
         };
@@ -105,6 +108,7 @@ export type Database = {
           aliases?: string[];
           wikidata_qid?: string | null;
           created_by?: string | null;
+          parent_market_id?: string | null;
           deleted_at?: string | null;
           created_at?: string;
         };
@@ -523,6 +527,10 @@ export type Database = {
       };
       admin_edit_market_name: {
         Args: { market_id: string; new_name: string; reason?: string | null };
+        Returns: null;
+      };
+      admin_set_parent_market: {
+        Args: { market_id: string; parent_id: string | null; reason?: string | null };
         Returns: null;
       };
       admin_soft_delete_capture: {
