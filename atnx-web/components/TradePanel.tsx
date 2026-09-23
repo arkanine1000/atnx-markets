@@ -9,11 +9,12 @@ import {
 } from "@/context/DemoContext";
 import { useAuth } from "@/context/AuthContext";
 import { Card, Segmented } from "@/components/ui";
+import { FEE_RATE, liquidationVi, tradeFee } from "@/lib/pnl";
 
 const QUICK = [25, 50, 100, 500];
 const LEVERAGE = [1, 2, 5, 10] as const;
 type Lev = `${(typeof LEVERAGE)[number]}`;
-const FEE_RATE = 0.005;
+const FEE_PCT = `${FEE_RATE * 100}%`;
 
 interface Props {
   marketId: string;
@@ -23,6 +24,12 @@ interface Props {
   score: number;
   openPosition?: Position;
   onOpened: (side: "long" | "short", size: number) => void;
+}
+
+// The most you can put in when the fee comes out of the same balance,
+// in whole dollars.
+function maxSize(balance: number): number {
+  return Math.max(0, Math.floor(balance / (1 + FEE_RATE)));
 }
 
 // Inline order ticket for the market page: side, size, leverage, submit.
@@ -45,11 +52,13 @@ export function TradePanel({
   const [error, setError] = useState<string | null>(null);
 
   const amountNum = parseFloat(amount) || 0;
-  const fee = amountNum * FEE_RATE;
+  const fee = tradeFee(amountNum);
+  const total = amountNum + fee;
   const leverage = Number(lev);
   const isLong = side === "long";
-  const overBalance = !!user && amountNum > balance;
+  const overBalance = !!user && total > balance;
   const canSubmit = amountNum > 0 && !busy && !overBalance;
+  const liqVi = Math.round(liquidationVi(score, side, leverage));
 
   async function submit() {
     if (!canSubmit) return;
@@ -116,10 +125,11 @@ export function TradePanel({
           {user && (
             <button
               type="button"
-              onClick={() => setAmount(String(Math.floor(balance)))}
+              onClick={() => setAmount(String(maxSize(balance)))}
+              title={`Leaves room for the ${FEE_PCT} fee`}
               className="text-[11px] text-secondary hover:text-atnx-cyan cursor-pointer"
             >
-              Max ${balance.toFixed(2)}
+              Max ${maxSize(balance).toFixed(2)}
             </button>
           )}
         </div>
@@ -189,9 +199,31 @@ export function TradePanel({
           </dd>
         </div>
         <div className="flex justify-between">
-          <dt className="text-tertiary">Fee (0.5%)</dt>
+          <dt
+            className="text-tertiary"
+            title={`A ${leverage}× ${side} loses everything when the VI moves ${Math.round(100 / leverage)}% against it`}
+          >
+            Liquidation VI
+          </dt>
+          <dd className="font-mono tabular-nums text-atnx-magenta light:text-atnx-magenta-light">
+            {liqVi}
+          </dd>
+        </div>
+        <div className="flex justify-between">
+          <dt
+            className="text-tertiary"
+            title="Half goes to whoever created this market, half to the treasury"
+          >
+            Fee ({FEE_PCT})
+          </dt>
           <dd className="font-mono tabular-nums text-primary">
             ${fee.toFixed(2)}
+          </dd>
+        </div>
+        <div className="flex justify-between">
+          <dt className="text-tertiary">Total</dt>
+          <dd className="font-mono tabular-nums text-primary font-bold">
+            ${total.toFixed(2)}
           </dd>
         </div>
         {user && (
@@ -213,7 +245,7 @@ export function TradePanel({
       )}
       {overBalance && !error && (
         <div className="text-xs text-atnx-magenta">
-          Amount exceeds your available balance.
+          Amount plus fee exceeds your available balance.
         </div>
       )}
 
@@ -244,7 +276,8 @@ export function TradePanel({
         </button>
       )}
       <p className="text-[10px] text-tertiary text-center">
-        Simulated USDC. Entry at the current Virality Index.
+        Simulated USDC. Entry at the current Virality Index. The {FEE_PCT} fee
+        is split between the market&apos;s creator and the treasury.
       </p>
 
       {/* Open position */}
@@ -289,8 +322,7 @@ export function TradePanel({
                   : "text-atnx-magenta/80 light:text-atnx-magenta-light"
               }
             >
-              {pnl.isProfit ? "+" : ""}
-              {pnl.pnlPercent}%
+              {pnl.liquidated ? "liquidating" : `${pnl.isProfit ? "+" : ""}${pnl.pnlPercent}%`}
             </span>
           </div>
         </Link>

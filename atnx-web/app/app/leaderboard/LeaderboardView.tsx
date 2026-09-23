@@ -7,6 +7,7 @@ import { useAuth } from "@/context/AuthContext";
 import { Card, DeltaChip, EmptyState, StatTile, compactUsd } from "@/components/ui";
 import { Identicon } from "@/components/Identicon";
 import { STARTING_BALANCE, type LeaderboardRow } from "@/lib/leaderboard";
+import type { Treasury } from "@/lib/treasury";
 import { startPolling } from "@/lib/poll";
 
 const REFRESH_MS = 30_000;
@@ -42,6 +43,7 @@ function Rank({ rank }: { rank: number }) {
 
 // Column widths shared by the header row and every data row.
 const COL_PNL = "hidden md:block w-24 text-right";
+const COL_FEES = "hidden lg:block w-24 text-right";
 const COL_EQUITY = "w-24 sm:w-28 text-right";
 
 function Row({ row, me }: { row: LeaderboardRow; me: boolean }) {
@@ -70,6 +72,9 @@ function Row({ row, me }: { row: LeaderboardRow; me: boolean }) {
           {row.totalTrades} {row.totalTrades === 1 ? "trade" : "trades"}
           {row.openPositions > 0 && ` · ${row.openPositions} open`}
           {row.volumeUsd > 0 && ` · ${compactUsd(row.volumeUsd)} vol`}
+          {row.feesEarnedUsd > 0 && (
+            <span className="md:hidden"> · {usd.format(row.feesEarnedUsd)} fees</span>
+          )}
         </div>
       </div>
       <div className={`${COL_PNL} font-mono text-xs tabular-nums ${pnlTone(row.realizedPnl)}`}>
@@ -77,6 +82,12 @@ function Row({ row, me }: { row: LeaderboardRow; me: boolean }) {
       </div>
       <div className={`${COL_PNL} font-mono text-xs tabular-nums ${pnlTone(row.unrealizedPnl)}`}>
         {signedUsd(row.unrealizedPnl)}
+      </div>
+      <div
+        className={`${COL_FEES} font-mono text-xs tabular-nums ${row.feesEarnedUsd > 0 ? pnlTone(1) : "text-tertiary"}`}
+        title="Half of every trading fee on markets this account created"
+      >
+        {row.feesEarnedUsd > 0 ? signedUsd(row.feesEarnedUsd) : "—"}
       </div>
       <div className={`${COL_EQUITY} shrink-0`}>
         <div className="font-display font-bold text-primary tabular-nums text-[15px] sm:text-base leading-none">
@@ -88,7 +99,13 @@ function Row({ row, me }: { row: LeaderboardRow; me: boolean }) {
   );
 }
 
-export function LeaderboardView({ rows }: { rows: LeaderboardRow[] }) {
+export function LeaderboardView({
+  rows,
+  treasury,
+}: {
+  rows: LeaderboardRow[];
+  treasury: Treasury;
+}) {
   const router = useRouter();
   const { user } = useAuth();
 
@@ -105,6 +122,7 @@ export function LeaderboardView({ rows }: { rows: LeaderboardRow[] }) {
   const leader = rows[0];
   const totalVolume = rows.reduce((sum, r) => sum + r.volumeUsd, 0);
   const totalTrades = rows.reduce((sum, r) => sum + r.totalTrades, 0);
+  const creatorFees = rows.reduce((sum, r) => sum + r.feesEarnedUsd, 0);
 
   return (
     <div>
@@ -114,12 +132,13 @@ export function LeaderboardView({ rows }: { rows: LeaderboardRow[] }) {
         </h2>
         <p className="text-xs text-tertiary mt-1">
           Everyone starts with {usd.format(STARTING_BALANCE)}. Ranked by equity:
-          cash plus open positions marked to the live VI.
+          cash plus open positions marked to the live VI, including fees earned
+          from markets you created.
         </p>
       </div>
 
-      {/* Phones show two tiles: the field and where you stand. */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
+      {/* Phones show three tiles: the field, the treasury and where you stand. */}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 mb-6">
         <StatTile label="Traders" value={rows.length} sub="with at least one trade" />
         <StatTile
           label="Volume"
@@ -132,6 +151,11 @@ export function LeaderboardView({ rows }: { rows: LeaderboardRow[] }) {
           value={leader ? `@${leader.handle}` : "—"}
           sub={leader ? <DeltaChip value={leader.returnPct} /> : undefined}
           className="hidden md:block"
+        />
+        <StatTile
+          label="Treasury"
+          value={usd.format(treasury.balanceUsd)}
+          sub={`${usd.format(creatorFees)} paid to market creators`}
         />
         <StatTile
           label="Your rank"
@@ -169,6 +193,7 @@ export function LeaderboardView({ rows }: { rows: LeaderboardRow[] }) {
             <span className="flex-1">Trader</span>
             <span className={COL_PNL}>Realized</span>
             <span className={COL_PNL}>Unrealized</span>
+            <span className={COL_FEES}>Fees</span>
             <span className={`${COL_EQUITY} shrink-0`}>Equity</span>
           </div>
           <Card className="overflow-hidden divide-y divide-(--color-dark-border) light:divide-(--color-light-border)">
@@ -196,7 +221,9 @@ export function LeaderboardView({ rows }: { rows: LeaderboardRow[] }) {
       <p className="mt-6 text-xs text-tertiary leading-relaxed max-w-prose">
         Simulated trading only. Equity counts realised results already in
         your balance plus what your open positions would be worth if closed
-        now, so it moves with every VI refresh.
+        now, so it moves with every VI refresh. Every open pays a 1% fee on
+        its size: half goes to whoever created the market, half to the
+        treasury. A position that loses its whole size is liquidated.
       </p>
     </div>
   );

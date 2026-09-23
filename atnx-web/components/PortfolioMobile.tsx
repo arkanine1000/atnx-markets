@@ -13,7 +13,8 @@ import { timeAgo } from "@/lib/capture-view";
 
 // The portfolio the way the extension's side panel shows it, for phones:
 // one value tile (hero number, range delta, sparkline, range tabs), then a
-// collapsible card with the three numbers that expands into position rows.
+// collapsible card with unrealized PnL and fees earned that expands into
+// position rows. Same three figures as the desktop tiles.
 // Reads /api/portfolio, the same endpoint the extension uses, so the two
 // always agree.
 
@@ -125,7 +126,7 @@ function PositionRow({
         <span className="text-right whitespace-nowrap">
           <span className="block font-display font-bold text-[15px] text-primary tabular-nums">{usd.format(p.valueUsd)}</span>
           <span className={`block text-[11px] font-mono tabular-nums ${up ? UP : DOWN}`}>
-            {signed(p.pnlPercent, (x) => x.toFixed(1))}%
+            {p.liquidated ? "liquidating" : `${signed(p.pnlPercent, (x) => x.toFixed(1))}%`}
           </span>
         </span>
       </button>
@@ -356,14 +357,8 @@ export function PortfolioMobile({
                 onClick={toggleOpen}
                 aria-expanded={open}
                 aria-controls="portfolio-positions"
-                className="w-full grid grid-cols-[1fr_1fr_auto_20px] items-center gap-2.5 px-3.5 py-3 text-left cursor-pointer active:bg-elevated transition-colors"
+                className="w-full grid grid-cols-[1fr_1fr_20px] items-center gap-2.5 px-3.5 py-3 text-left cursor-pointer active:bg-elevated transition-colors"
               >
-                <span className="min-w-0">
-                  <span className="block text-[10px] font-mono uppercase tracking-wider text-tertiary mb-0.5">Balance</span>
-                  <span className="block font-display text-lg font-bold leading-none tabular-nums truncate text-atnx-yellow light:text-atnx-yellow-light">
-                    {usd.format(data.balanceUsd)}
-                  </span>
-                </span>
                 <span className="min-w-0">
                   <span className="block text-[10px] font-mono uppercase tracking-wider text-tertiary mb-0.5">Unrealized</span>
                   <span
@@ -374,10 +369,14 @@ export function PortfolioMobile({
                     {signed(data.unrealizedPnlUsd, (x) => usd.format(x))}
                   </span>
                 </span>
-                <span className="min-w-0 text-right">
-                  <span className="block text-[10px] font-mono uppercase tracking-wider text-tertiary mb-0.5">Open</span>
-                  <span className="block font-display text-lg font-bold leading-none tabular-nums text-primary">
-                    {data.positions.length}
+                <span className="min-w-0" title="Half of every fee on markets you created">
+                  <span className="block text-[10px] font-mono uppercase tracking-wider text-tertiary mb-0.5">Fees earned</span>
+                  <span
+                    className={`block font-display text-lg font-bold leading-none tabular-nums truncate ${
+                      data.feesEarnedUsd > 0 ? UP : "text-primary"
+                    }`}
+                  >
+                    {usd.format(data.feesEarnedUsd)}
                   </span>
                 </span>
                 <svg

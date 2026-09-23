@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { positionPnl } from "@/lib/pnl";
 
 // Trend indicator: yellow for rising, secondary for stable, magenta for falling.
 // `className` is the theme-aware text colour; `color` is the raw dark-mode hex
@@ -102,11 +103,17 @@ interface CloseModalProps {
 
 export function ClosePositionModal({ position, onClose }: CloseModalProps) {
   const leverage = position.leverage ?? 1;
-  const entry = position.entryIndex || 1;
-  const ratio = position.currentIndex / entry;
-  const directional = position.type === "long" ? ratio - 1 : 1 - ratio;
-  const pnlPercent = directional * leverage * 100;
-  const pnlAmount = position.size * directional * leverage;
+  const {
+    pnlUsd: pnlAmount,
+    pnlPercent,
+    liquidated,
+  } = positionPnl({
+    sizeUsd: position.size,
+    entryVi: position.entryIndex,
+    currentVi: position.currentIndex,
+    direction: position.type,
+    leverage,
+  });
   const isProfit = pnlAmount >= 0;
   // Profit: cyan accent, Loss: magenta accent
   const accentColor = isProfit ? "#00D4FF" : "#FF00E5";
@@ -132,10 +139,13 @@ export function ClosePositionModal({ position, onClose }: CloseModalProps) {
         >
           {isProfit ? "↑" : "↓"}
         </div>
-        <h2 className="font-display text-lg font-bold text-primary">Position closed</h2>
+        <h2 className="font-display text-lg font-bold text-primary">
+          {liquidated ? "Position liquidated" : "Position closed"}
+        </h2>
         <p className="text-xs text-secondary mt-1 mb-5">
           {position.name} &middot; {position.type.toUpperCase()} {leverage}
           &times;
+          {liquidated && " · the loss reached the full size"}
         </p>
 
         <div

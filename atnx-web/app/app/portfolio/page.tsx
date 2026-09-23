@@ -95,7 +95,7 @@ function PositionCard({
 }
 
 export default function PortfolioPage() {
-  const { positions, balance, closePosition } = useDemoContext();
+  const { positions, balance, fees, closePosition } = useDemoContext();
   const { user, loading: authLoading, openLoginModal } = useAuth();
   const [closingPosition, setClosingPosition] = useState<Position | null>(null);
   const [toast, setToast] = useState<{
@@ -180,22 +180,12 @@ export default function PortfolioPage() {
         />
       </div>
 
-      <div className="hidden md:grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
+      <div className="hidden md:grid grid-cols-3 gap-3 sm:gap-4 mb-6">
         <StatTile
           label="Equity"
           value={`$${equity.toFixed(2)}`}
           hero
           sub="balance + positions"
-        />
-        <StatTile
-          label="Available"
-          value={`$${balance.toFixed(2)}`}
-          sub="USDC"
-        />
-        <StatTile
-          label="Open positions"
-          value={positions.length}
-          sub={`$${totalSize.toFixed(0)} deployed`}
         />
         <StatTile
           label="Unrealized PnL"
@@ -205,6 +195,15 @@ export default function PortfolioPage() {
             </span>
           }
           sub={<DeltaChip value={totalPnLPercent} />}
+        />
+        <StatTile
+          label="Fees earned"
+          value={
+            <span className={fees.earned > 0 ? "text-atnx-cyan light:text-atnx-cyan-light" : ""}>
+              {fees.earned > 0 ? "+" : ""}${fees.earned.toFixed(2)}
+            </span>
+          }
+          sub="half of every fee on markets you created"
         />
       </div>
 

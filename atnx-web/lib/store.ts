@@ -133,6 +133,9 @@ export interface CreateMarketInput {
   category: string | null;
   aliases: string[];
   embedding: string | null; // pgvector string
+  // The account whose capture spawned the market. It receives half of every
+  // trading fee on it (supabase/009).
+  createdBy?: string | null;
 }
 
 export interface CreateMarketResult {
@@ -156,6 +159,7 @@ export async function createMarket(input: CreateMarketInput): Promise<CreateMark
       category: input.category,
       aliases: input.aliases,
       embedding: input.embedding,
+      created_by: input.createdBy ?? null,
     })
     .select(MARKET_COLUMNS)
     .single();
@@ -631,6 +635,7 @@ export interface TradeLogEvent {
   leverage: number;
   vi: number;                      // entry_vi for open, exit_vi for close
   pnl: number | null;              // realized_pnl for close, null for open
+  liquidated: boolean;             // close was forced: the loss reached the size
   at: string;                      // opened_at for open, closed_at for close
 }
 
@@ -649,7 +654,7 @@ export async function getMarketTradeLog(
   const { data: positions, error: posErr } = await supabase
     .from('positions')
     .select(
-      'id, user_id, direction, size_usd, leverage, entry_vi, exit_vi, realized_pnl, opened_at, closed_at'
+      'id, user_id, direction, size_usd, leverage, entry_vi, exit_vi, realized_pnl, liquidated, opened_at, closed_at'
     )
     .eq('market_id', marketId)
     .order('opened_at', { ascending: false })
@@ -681,6 +686,7 @@ export async function getMarketTradeLog(
       leverage: p.leverage,
       vi: p.entry_vi,
       pnl: null,
+      liquidated: false,
       at: p.opened_at,
     });
     if (p.closed_at && p.exit_vi !== null) {
@@ -693,6 +699,7 @@ export async function getMarketTradeLog(
         leverage: p.leverage,
         vi: p.exit_vi,
         pnl: p.realized_pnl,
+        liquidated: Boolean(p.liquidated),
         at: p.closed_at,
       });
     }

@@ -368,6 +368,7 @@ export async function processCapture(opts: ProcessCaptureInput): Promise<Process
       category: decision.newMarket.category,
       aliases: decision.newMarket.aliases,
       embedding: decision.newMarket.embedding,
+      createdBy: opts.userId,
     });
     marketId = market.id;
     // Lost a race to an identical name: treat as a link to the winner.

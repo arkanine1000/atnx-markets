@@ -28,6 +28,12 @@ import { createClient } from '@/lib/supabase/server';
 // screenshot finishes the job. Facebook, Instagram and TikTok all block
 // server-side previews most of the time, so that last path is the common
 // one for them; it must not dead-end on an error banner.
+//
+// An image share can also arrive with the image missing or empty: Chrome
+// for Android 153 strips shared files from the POST, and a content URI
+// whose grant lapsed leaves a zero-byte part. Those land on the Create
+// form too, with the picker emphasised (?pick=1) and a notice that names
+// the cause, since the person is one tap from finishing there.
 
 // Bounds the model call plus the after() work (VI scoring, and the retry
 // for a low-confidence create).
@@ -132,6 +138,28 @@ function sharedFile(form: FormData): File | null {
   return null;
 }
 
+// A file part with no bytes: Chrome tried to send an image and lost it on
+// the way (a revoked content URI, or the Chrome 153 share regression).
+function emptyFile(form: FormData): File | null {
+  for (const [, v] of form.entries()) {
+    if (v instanceof File && v.size === 0) return v;
+  }
+  return null;
+}
+
+// The Create form with the picker emphasised: the image is what is missing.
+function pickImageRedirect(
+  request: Request,
+  fields: { url?: string; text?: string; notice: string }
+) {
+  return redirectTo(request, '/app/submit', {
+    url: fields.url,
+    text: fields.text?.slice(0, 1000),
+    notice: fields.notice,
+    pick: '1',
+  });
+}
+
 export async function POST(request: Request) {
   const supabase = await createClient();
   const {
@@ -158,6 +186,7 @@ export async function POST(request: Request) {
   }
 
   const image = sharedFile(form);
+  const empty = image ? null : emptyFile(form);
   const rawTitle = (form.get('title') as string | null) ?? undefined;
   const rawText = (form.get('text') as string | null) ?? undefined;
   const rawUrl = (form.get('url') as string | null) ?? undefined;
@@ -173,6 +202,7 @@ export async function POST(request: Request) {
     hasImage: Boolean(image),
     imageType: image?.type ?? null,
     imageSize: image?.size ?? null,
+    emptyImage: empty ? { name: empty.name, type: empty.type } : null,
     rawTitle,
     rawText,
     rawUrl,
@@ -194,6 +224,19 @@ export async function POST(request: Request) {
         userId: user.id,
       });
       return marketRedirect(request, result);
+    }
+
+    // An image was meant to arrive and did not. Chrome for Android 153
+    // strips shared files from the POST (the body has no parts at all, so
+    // this also catches the no-part case below when nothing else came), and
+    // a revoked content URI leaves a zero-byte part. The person is one tap
+    // from finishing on the Create form; say what happened, not "nothing".
+    if (empty) {
+      return pickImageRedirect(request, {
+        url: linkUrl,
+        text: caption || undefined,
+        notice: `The screenshot arrived empty (${empty.name || 'unnamed'}, ${empty.type || 'unknown type'}). Chrome for Android has a bug that drops shared images. Pick the screenshot below to finish.`,
+      });
     }
 
     // 2. Link: dedup on the URL first so a repeat skips the fetch, then the
@@ -276,8 +319,12 @@ export async function POST(request: Request) {
       }
     }
 
-    return submitRedirect(request, {
-      notice: 'Nothing usable arrived in the share. Add a screenshot, a link, or some text.',
+    // No file, no link, no text. A share sheet never sends an empty share,
+    // so the image was dropped before it reached us: Chrome for Android 153
+    // builds the POST with no parts at all.
+    return pickImageRedirect(request, {
+      notice:
+        'The share arrived without the image. Chrome for Android 153 has a bug that drops shared screenshots. Pick the screenshot below to finish.',
     });
   } catch (err) {
     if (err instanceof SubmissionRejectedError) {

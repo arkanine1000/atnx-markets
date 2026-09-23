@@ -8,8 +8,10 @@ import { SubmitForm } from "./SubmitForm";
 // tab and the heading say Create.
 //
 // The Android share target lands here with ?url=, ?text= and ?notice= when
-// it could not finish on its own (a site that blocks link previews, or text
-// the model turned away), so the person only has to add a screenshot.
+// it could not finish on its own (a site that blocks link previews, text
+// the model turned away, or a shared image Chrome dropped or could not
+// read), so the person only has to add a screenshot. ?pick=1 says the
+// image is the missing piece and makes the picker the obvious next tap.
 export default async function SubmitPage({
   searchParams,
 }: {
@@ -37,6 +39,7 @@ export default async function SubmitPage({
         initialUrl={first(params.url)}
         initialText={first(params.text)}
         notice={first(params.notice)}
+        wantsImage={first(params.pick) === "1"}
       />
     </div>
   );

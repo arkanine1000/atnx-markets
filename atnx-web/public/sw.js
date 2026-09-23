@@ -14,8 +14,15 @@
 //   3. moves that window to the market the route answers with, or, when
 //      the route says the user is signed out, parks the capture in the
 //      Cache API and moves the window to the sign-in page that replays it.
+//
+// The image is copied into memory before anything else is done with it.
+// Chrome on Android hands over a File backed by a content URI whose read
+// permission can be gone by the time it is decoded or uploaded (Chromium
+// issue 40123366), and Chrome 153 has a regression that strips the file
+// from the share entirely. Either way the person lands on the Create form
+// with the picker emphasised and a notice that says exactly what arrived.
 
-const SHELL_CACHE = 'atnx-shell-v3';
+const SHELL_CACHE = 'atnx-shell-v4';
 const SHELL_URLS = ['/app'];
 
 const SHARE_PATH = '/share';
@@ -114,9 +121,33 @@ async function processShare(form, clientId) {
     target = await uploadShare(form);
   } catch (err) {
     console.error('[sw] share failed', err);
-    target = `/app?shareError=${encodeURIComponent(err.message || 'Capture failed')}`;
+    const file = form.get('image');
+    target =
+      file instanceof File
+        ? submitPath(
+            `The upload failed before it left the phone (${err.message || 'unknown error'}; ${describeFile(file)}). Pick the screenshot below to finish.`
+          )
+        : `/app?shareError=${encodeURIComponent(err.message || 'Capture failed')}`;
   }
   await moveClient(clientId, target);
+}
+
+// The Create form with the picker emphasised and the text fields prefilled
+// from what did arrive.
+function submitPath(notice, form) {
+  const params = new URLSearchParams({ notice, pick: '1' });
+  if (form) {
+    for (const key of ['url', 'text']) {
+      const v = form.get(key);
+      if (typeof v === 'string' && v.trim()) params.set(key, v.trim().slice(0, 1000));
+    }
+  }
+  return `/app/submit?${params}`;
+}
+
+function describeFile(file) {
+  const kb = Math.round(file.size / 1024);
+  return `${file.name || 'unnamed'}, ${file.type || 'unknown type'}, ${kb} KB reported`;
 }
 
 // Resolves to the path the window should go to next.
@@ -127,21 +158,45 @@ async function uploadShare(form) {
     if (key !== 'image') out.append(key, value);
   }
 
-  let upload = null;
-  if (file instanceof File && file.size > 0) {
+  if (file instanceof File) {
+    // Copy the bytes now, while the permission Chrome was granted for this
+    // share still holds. An empty or unreadable file ends here with a
+    // notice; it must never be uploaded as the platform File, whose body
+    // Chrome fails to read at request time ("Failed to fetch").
+    let bytes;
     try {
-      upload = await shrink(file);
-      console.log('[sw] share image shrunk', { from: file.size, to: upload.size, type: file.type });
+      bytes = await file.arrayBuffer();
+    } catch (err) {
+      console.warn('[sw] share image unreadable', err);
+      return submitPath(
+        `Your phone offered a screenshot (${describeFile(file)}) but Chrome would not let ATNX read it. This is a Chrome for Android bug with photos from a cloud gallery. Pick the screenshot below to finish.`,
+        form
+      );
+    }
+    if (bytes.byteLength === 0) {
+      console.warn('[sw] share image empty', describeFile(file));
+      return submitPath(
+        `The screenshot arrived empty (${describeFile(file)}, 0 bytes). Chrome for Android 153 has a bug that drops shared images. Pick the screenshot below to finish.`,
+        form
+      );
+    }
+    const copy = new Blob([bytes], { type: file.type || 'image/jpeg' });
+
+    let upload;
+    try {
+      upload = await shrink(copy);
+      console.log('[sw] share image shrunk', { from: copy.size, to: upload.size, type: file.type });
     } catch (err) {
       console.warn('[sw] share image could not be decoded', err);
-      if (file.size <= MAX_RAW_BYTES) upload = file;
+      if (copy.size <= MAX_RAW_BYTES) upload = copy;
       else {
-        const notice =
-          'That screenshot could not be read and is too large to send as-is. Take a fresh screenshot and add it here.';
-        return `/app/submit?notice=${encodeURIComponent(notice)}`;
+        return submitPath(
+          `That screenshot could not be decoded and is too large to send as-is (${describeFile(file)}). Take a fresh screenshot and pick it below.`,
+          form
+        );
       }
     }
-    out.append('image', upload, upload === file ? file.name || 'share' : 'share.jpg');
+    out.append('image', upload, upload === copy ? file.name || 'share' : 'share.jpg');
   }
 
   const res = await fetch(SHARE_PATH, {

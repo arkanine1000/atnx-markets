@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { RPC_MISSING } from '@/lib/store';
+import { positionPnl } from '@/lib/pnl';
 import { corsHeaders, corsPreflight } from '@/lib/cors';
 
 // Read-only portfolio snapshot for the Chrome extension's side panel.
@@ -41,6 +42,8 @@ export interface PortfolioPosition {
   valueUsd: number;
   pnlUsd: number;
   pnlPercent: number;
+  // The mark has reached −100%; the next VI write closes it for nothing.
+  liquidated: boolean;
   openedAt: string;
 }
 
@@ -56,6 +59,10 @@ export interface PortfolioResponse {
   balanceUsd: number;
   realizedPnlUsd: number;
   totalTrades: number;
+  // Creator share of trading fees on markets this account created (already
+  // in balanceUsd) and fees paid on this account's own opens.
+  feesEarnedUsd: number;
+  feesPaidUsd: number;
   unrealizedPnlUsd: number;
   // Cash + open positions marked to market.
   totalValueUsd: number;
@@ -89,22 +96,21 @@ function parseRange(value: string | null): PortfolioRange {
 type ViPoint = { t: number; vi: number };
 type ViSeries = Map<string, ViPoint[]>;
 
-// Linear VI-based PnL, same math as calculatePnL in DemoContext and the
-// server-side close in actions/trading.ts.
-function directional(row: PositionRow, vi: number) {
-  const entry = row.entry_vi || 1;
-  const ratio = vi / entry;
-  return row.direction === 'long' ? ratio - 1 : 1 - ratio;
+// Linear VI-based PnL floored at −size, same math as calculatePnL in
+// DemoContext and the server-side close (lib/pnl.ts).
+function pnlAt(row: PositionRow, vi: number) {
+  return positionPnl({
+    sizeUsd: row.size_usd,
+    entryVi: row.entry_vi,
+    currentVi: vi,
+    direction: row.direction,
+    leverage: row.leverage,
+  });
 }
 
 function pnlFor(row: PositionRow) {
   const current = row.market?.current_vi ?? row.entry_vi;
-  const d = directional(row, current);
-  return {
-    pnlUsd: row.size_usd * d * row.leverage,
-    pnlPercent: d * row.leverage * 100,
-    currentVi: current,
-  };
+  return { ...pnlAt(row, current), currentVi: current };
 }
 
 // Median-per-bucket reduction, the same shape vi_history_series() returns.
@@ -239,7 +245,7 @@ function buildHistory(
       if (t < openedAt) {
         value += p.size_usd;
       } else {
-        value += p.size_usd * (1 + directional(p, viAt(p, t)) * p.leverage);
+        value += p.size_usd + pnlAt(p, viAt(p, t)).pnlUsd;
       }
     }
     return { t: new Date(t).toISOString(), value: Math.round(value * 100) / 100 };
@@ -269,7 +275,7 @@ export async function GET(request: Request) {
           .maybeSingle(),
         supabase
           .from('sim_balances')
-          .select('balance_usd, total_pnl_realized, total_trades')
+          .select('balance_usd, total_pnl_realized, total_trades, fees_earned_usd, fees_paid_usd')
           .eq('user_id', user.id)
           .maybeSingle(),
         supabase
@@ -329,7 +335,7 @@ export async function GET(request: Request) {
     }
 
     const positions: PortfolioPosition[] = openPositions.map((row) => {
-      const { pnlUsd, pnlPercent, currentVi } = pnlFor(row);
+      const { pnlUsd, pnlPercent, liquidated, currentVi } = pnlFor(row);
       return {
         id: row.id,
         marketId: row.market_id,
@@ -344,6 +350,7 @@ export async function GET(request: Request) {
         valueUsd: row.size_usd + pnlUsd,
         pnlUsd,
         pnlPercent,
+        liquidated,
         openedAt: row.opened_at,
       };
     });
@@ -362,6 +369,8 @@ export async function GET(request: Request) {
       balanceUsd,
       realizedPnlUsd: bal?.total_pnl_realized ?? 0,
       totalTrades: bal?.total_trades ?? 0,
+      feesEarnedUsd: Number(bal?.fees_earned_usd ?? 0),
+      feesPaidUsd: Number(bal?.fees_paid_usd ?? 0),
       unrealizedPnlUsd,
       totalValueUsd,
       positions,

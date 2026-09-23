@@ -62,8 +62,10 @@ export function TradeLog({ marketId, initialEvents }: Props) {
         {events.map((e) => {
           const isLong = e.direction === "long";
           const isClose = e.kind === "close";
-          const label = isClose ? "Close" : isLong ? "Long" : "Short";
-          const tone = isClose
+          const label = e.liquidated ? "Liq" : isClose ? "Close" : isLong ? "Long" : "Short";
+          const tone = e.liquidated
+            ? "bg-atnx-magenta/15 text-atnx-magenta light:text-atnx-magenta-light border-atnx-magenta/40"
+            : isClose
             ? "bg-elevated text-secondary border-surface"
             : isLong
               ? "bg-atnx-cyan/10 text-atnx-cyan light:text-atnx-cyan-light border-atnx-cyan/25"
@@ -82,6 +84,7 @@ export function TradeLog({ marketId, initialEvents }: Props) {
             >
               <span
                 className={`w-12 shrink-0 inline-flex justify-center rounded-md border px-1.5 py-0.5 text-[10px] font-bold font-mono uppercase tracking-wider ${tone}`}
+                title={e.liquidated ? "Liquidated: the loss reached the full size" : undefined}
               >
                 {label}
               </span>

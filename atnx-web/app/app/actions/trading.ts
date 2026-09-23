@@ -4,12 +4,13 @@ import { createClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
 
 // Both actions are thin wrappers over the open_position() and
-// close_position() database functions (supabase/006). The accounting
-// lives there, in one transaction with the balance row locked, because a
-// check-then-write from here let two concurrent opens overdraw and a
-// double-click close credit twice. The functions also validate size,
-// leverage and direction, and RLS no longer lets a user write positions
-// or balances directly, so this is the only way in.
+// close_position() database functions (supabase/006, fees and liquidation
+// in 009). The accounting lives there, in one transaction with the balance
+// row locked, because a check-then-write from here let two concurrent opens
+// overdraw and a double-click close credit twice. The functions also
+// validate size, leverage and direction, charge the 1% fee and floor the
+// loss at the size, and RLS no longer lets a user write positions or
+// balances directly, so this is the only way in.
 
 export interface OpenPositionInput {
   marketId: string;
@@ -30,6 +31,8 @@ export interface OpenPositionResult extends TradingResult {
 export interface ClosePositionResult extends TradingResult {
   realizedPnl?: number;
   exitVi?: number;
+  // The loss had reached the full size, so the close paid nothing back.
+  liquidated?: boolean;
 }
 
 // Postgres wraps a raise exception as "P0001"; its message is ours and
@@ -94,5 +97,6 @@ export async function closePosition(
     success: true,
     realizedPnl: Number(data?.realized_pnl ?? 0),
     exitVi: Number(data?.exit_vi ?? 0),
+    liquidated: Boolean(data?.liquidated),
   };
 }
