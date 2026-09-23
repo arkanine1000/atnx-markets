@@ -117,7 +117,7 @@ ignores for Gemini 3.x (measured: 18 s and truncated JSON versus 2.6 s).
 | Command | What it does |
 |---|---|
 | `npm run dev` / `build` / `start` / `lint` | The usual. |
-| `npm run eval:capture` | Posts the fixtures in `scripts/fixtures/` through the real route and checks each expected outcome, then resubmits to check dedup. Needs `EVAL_*` variables in `.env.local` and a running server. Run after any change to the pipeline. |
+| `npm run eval:capture` | Posts the fixtures in `scripts/fixtures/` through the one-shot route and checks each expected outcome, then resubmits to check dedup; then the review cases (manifest `review`) through `/api/captures/propose`, checking the nudge tier, the markets offered, the default choice and the create options, plus one re-crop. Review drafts are never committed. `--review-only`, `--no-review`, `--cleanup`. Needs `EVAL_*` variables in `.env.local` and a running server. Run after any change to the pipeline, the prompt or the thresholds. |
 | `npm run fixtures:render` | Regenerates the fixture images from `scripts/fixtures/manifest.json`. |
 | `npm run backfill:embeddings` | Embeds every live market without a vector. Run once after migration `001` and after any bulk seed. |
 | `npm run categories:backfill [--dry-run]` | Files every live market without a `category` into one of the ten enum values with one text-model call each. Run after any seed that inserts markets without one; `--dry-run` prints the proposals. |

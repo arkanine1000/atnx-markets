@@ -25,6 +25,16 @@
       "name": "Grumpy Cat",
       "type": "meme",
       "category": "memes"
+    },
+    {
+      "name": "Elon Musk",
+      "type": "person",
+      "category": "people"
+    },
+    {
+      "name": "Donald Trump",
+      "type": "person",
+      "category": "politics"
     }
   ],
   "fixtures": [
@@ -344,5 +354,71 @@
       "expect": "reject",
       "text": "asdf qwerty 12345 zxcv"
     }
-  ]
+  ],
+  "review": [
+    {
+      "id": "review-strong-grumpy",
+      "kind": "text",
+      "text": "grumpy cat is trending again after the documentary dropped",
+      "expect": {
+        "tier": "strong",
+        "offered": [
+          "Grumpy Cat"
+        ],
+        "default": "attach",
+        "defaultMarket": "Grumpy Cat"
+      }
+    },
+    {
+      "id": "review-strong-skibidi-img",
+      "kind": "image",
+      "image": "match-skibidi-1",
+      "pad": 1,
+      "recrop": true,
+      "expect": {
+        "tier": "strong",
+        "offered": [
+          "Skibidi Toilet"
+        ],
+        "default": "attach",
+        "defaultMarket": "Skibidi Toilet"
+      }
+    },
+    {
+      "id": "review-subject-elon",
+      "kind": "text",
+      "text": "Elon Musk crying meme after the Tesla earnings call, everyone is posting the sad Elon edit",
+      "expect": {
+        "tier": "subject",
+        "subject": "Elon Musk",
+        "default": "attach",
+        "defaultMarket": "Elon Musk",
+        "canCreate": true,
+        "parentAllowed": true
+      }
+    },
+    {
+      "id": "review-subject-trump",
+      "kind": "text",
+      "text": "new AI image of Trump as a Roman emperor in a toga is going around X right now",
+      "expect": {
+        "tier": "subject",
+        "subject": "Donald Trump",
+        "default": "attach",
+        "defaultMarket": "Donald Trump",
+        "canCreate": true
+      }
+    },
+    {
+      "id": "review-none-brainrot",
+      "kind": "text",
+      "text": "Ballerina Cappuccina Italian brainrot dance edit with the espresso cup head",
+      "expect": {
+        "tier": "none",
+        "default": "create",
+        "canCreate": true
+      }
+    }
+  ],
+  "_comment_review": "review: propose-only cases for the review step (tier, offered markets, default choice). Never committed; drafts expire. `pad` adds that many black pixel rows so the image hash differs from the one-shot fixture."
 }
