@@ -141,6 +141,9 @@ export interface CreateMarketInput {
   // The account whose capture spawned the market. It receives half of every
   // trading fee on it (supabase/009).
   createdBy?: string | null;
+  // The subject this market is about (supabase/010), when the reviewer
+  // created it over the subject nudge. Display only.
+  parentMarketId?: string | null;
 }
 
 export interface CreateMarketResult {
@@ -165,6 +168,7 @@ export async function createMarket(input: CreateMarketInput): Promise<CreateMark
       aliases: input.aliases,
       embedding: input.embedding,
       created_by: input.createdBy ?? null,
+      parent_market_id: input.parentMarketId ?? null,
     })
     .select(MARKET_COLUMNS)
     .single();

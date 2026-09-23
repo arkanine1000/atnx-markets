@@ -3,10 +3,11 @@ import {
   contentHash,
   findByHash,
   findEarlierRejection,
-  processCapture,
+  proposeCapture,
   SubmissionRejectedError,
   toMediaType,
   type ProcessCaptureResult,
+  type ProposeOutcome,
 } from '@/lib/capture';
 import { fetchImageFromUrl, OgFetchError } from '@/lib/og';
 import { createClient } from '@/lib/supabase/server';
@@ -14,7 +15,8 @@ import { createClient } from '@/lib/supabase/server';
 // Android share target. The manifest registers /share with method=POST and
 // enctype=multipart/form-data; picking ATNX from the share sheet POSTs
 // {title, text, url, image} here. We run the same pipeline as /api/captures
-// and redirect to the new market so the PWA feels native on Android.
+// and land on the review page (or straight on the market for a repeat)
+// so the PWA feels native on Android.
 //
 // What arrives depends on the app that shared:
 //   1. Image share (screenshot from the gallery): `image` file present.
@@ -127,6 +129,13 @@ function marketRedirect(request: Request, result: ProcessCaptureResult) {
   return redirectTo(request, path, { shared: result.outcome });
 }
 
+// After propose: a submission seen before goes straight to its market; a
+// new one lands on the review page, where the person commits it.
+function proposedRedirect(request: Request, proposed: ProposeOutcome) {
+  if (proposed.kind === 'final') return marketRedirect(request, proposed.result);
+  return redirectTo(request, `/app/submit/review/${proposed.draft.id}`, {});
+}
+
 // The first non-empty file in the form. Chrome names it `image` per the
 // manifest, but a defensive scan costs nothing.
 function sharedFile(form: FormData): File | null {
@@ -214,7 +223,7 @@ export async function POST(request: Request) {
     // 1. Screenshot: the reliable path, straight to the model.
     if (image) {
       const buffer = Buffer.from(await image.arrayBuffer());
-      const result = await processCapture({
+      const proposed = await proposeCapture({
         imageBase64: buffer.toString('base64'),
         mediaType: toMediaType(image.type),
         sourceUrl: linkUrl,
@@ -222,8 +231,8 @@ export async function POST(request: Request) {
         pageContext: caption || undefined,
         supabase,
         userId: user.id,
-      });
-      return marketRedirect(request, result);
+      }, { persist: true });
+      return proposedRedirect(request, proposed);
     }
 
     // An image was meant to arrive and did not. Chrome for Android 153
@@ -251,7 +260,7 @@ export async function POST(request: Request) {
       let fetchReason: string | null = null;
       try {
         const fetched = await fetchImageFromUrl(linkUrl);
-        const result = await processCapture({
+        const proposed = await proposeCapture({
           imageBase64: fetched.imageBase64,
           mediaType: fetched.mediaType,
           sourceUrl: linkUrl,
@@ -262,8 +271,8 @@ export async function POST(request: Request) {
           contentHash: hash,
           supabase,
           userId: user.id,
-        });
-        return marketRedirect(request, result);
+        }, { persist: true });
+        return proposedRedirect(request, proposed);
       } catch (err) {
         if (err instanceof SubmissionRejectedError) throw err;
         fetchReason =
@@ -276,14 +285,14 @@ export async function POST(request: Request) {
       // for the text model. Anything shorter is app boilerplate.
       if (caption.length >= 8) {
         try {
-          const result = await processCapture({
+          const proposed = await proposeCapture({
             text: caption,
             sourceUrl: linkUrl,
             pageTitle,
             supabase,
             userId: user.id,
-          });
-          return marketRedirect(request, result);
+          }, { persist: true });
+          return proposedRedirect(request, proposed);
         } catch (err) {
           if (!(err instanceof SubmissionRejectedError)) throw err;
           return submitRedirect(request, {
@@ -303,13 +312,13 @@ export async function POST(request: Request) {
     // 3. Plain text.
     if (caption.trim()) {
       try {
-        const result = await processCapture({
+        const proposed = await proposeCapture({
           text: caption,
           pageTitle,
           supabase,
           userId: user.id,
-        });
-        return marketRedirect(request, result);
+        }, { persist: true });
+        return proposedRedirect(request, proposed);
       } catch (err) {
         if (!(err instanceof SubmissionRejectedError)) throw err;
         return submitRedirect(request, {

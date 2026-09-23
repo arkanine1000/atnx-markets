@@ -26,6 +26,8 @@ const BADGE = {
   capturing: { text: '…', color: '#FF00E5' },
   analyzing: { text: '…', color: '#FFE500' },
   done: { text: '✓', color: '#00D4FF' },
+  // A proposal is waiting for the person's review in the side panel.
+  review: { text: '?', color: '#FFE500' },
   error: { text: '!', color: '#FF00E5' },
   ready: { text: '', color: '#00D4FF' }
 };
@@ -146,6 +148,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   } else if (msg.action === 'start-capture') {
     getActiveTab().then(activateTab).then(sendResponse);
     return true; // async sendResponse
+  } else if (msg.action === 'set-status') {
+    // The side panel finished (or dropped) a review: it owns the outcome,
+    // the worker owns the badge and the stored status.
+    updateStatus(msg.status);
+    if (msg.status === 'done' || msg.status === 'error') resetStatusAfter(msg.status === 'done' ? 3000 : 5000);
+    else if (msg.status === 'ready') {
+      clearTimeout(resetTimer);
+      resetTimer = null;
+    }
   }
 });
 
@@ -185,9 +196,11 @@ async function handleCapture(msg, tab) {
     updateStatus('analyzing');
     notifyTab(tab, 'analyzing');
 
-    // 3. POST the image to the web app. The server runs the vision model and
-    //    persists the capture. `credentials: 'include'` attaches the Supabase
-    //    auth cookie so the handler can attribute the capture to the user.
+    // 3. POST the image to the web app's propose endpoint. The server runs
+    //    the vision model and answers with a draft for the person to review
+    //    in the side panel (or with the earlier answer for a repeat).
+    //    `credentials: 'include'` attaches the Supabase auth cookie so the
+    //    draft belongs to the user.
     const webAppUrl = await getWebAppUrl();
     const form = new FormData();
     form.append('image', blob, 'capture.jpg');
@@ -197,7 +210,7 @@ async function handleCapture(msg, tab) {
     let persistFailed = null;
     let serverPayload = null;
     try {
-      const res = await fetch(`${webAppUrl}/api/captures`, {
+      const res = await fetch(`${webAppUrl}/api/captures/propose`, {
         method: 'POST',
         credentials: 'include',
         body: form,
@@ -205,6 +218,9 @@ async function handleCapture(msg, tab) {
       });
       if (res.status === 401) {
         persistFailed = `Sign in at ${hostOf(webAppUrl)} first`;
+      } else if (res.status === 404) {
+        // The web app at this URL predates the review step.
+        persistFailed = `${hostOf(webAppUrl)} has no review endpoint yet — update it, or point the side panel at a newer one`;
       } else if (res.status === 413) {
         persistFailed = 'Selection too large to upload';
       } else if (!res.ok) {
@@ -223,6 +239,15 @@ async function handleCapture(msg, tab) {
       updateStatus('error');
       notifyTab(tab, 'error', persistFailed);
       resetStatusAfter(5000);
+    } else if (serverPayload && serverPayload.success && serverPayload.final === false) {
+      // A draft: the side panel renders it and commits the person's choice.
+      // Anything older than the draft's own expiry is dropped by the panel.
+      await chrome.storage.local.set({
+        pendingReview: { draft: serverPayload.draft, base: webAppUrl, at: Date.now() }
+      });
+      const name = serverPayload.draft?.analysis?.name || 'Content';
+      updateStatus('review');
+      notifyTab(tab, 'review', `Review in the side panel: ${name}`);
     } else {
       // Popup counter only; the web app holds the durable history.
       const { captureCount = 0 } = await chrome.storage.local.get('captureCount');

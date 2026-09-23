@@ -1,15 +1,7 @@
 import { after } from 'next/server';
 import { getCaptures } from '@/lib/store';
-import {
-  contentHash,
-  findByHash,
-  findEarlierRejection,
-  processCapture,
-  SubmissionRejectedError,
-  toMediaType,
-  type ProcessCaptureInput,
-} from '@/lib/capture';
-import { fetchImageFromUrl, OgFetchError } from '@/lib/og';
+import { processCapture } from '@/lib/capture';
+import { captureErrorResponse, readCaptureRequest, successBody } from '@/lib/capture-request';
 import { createClient } from '@/lib/supabase/server';
 import { corsHeaders, corsPreflight } from '@/lib/cors';
 
@@ -18,33 +10,11 @@ import { corsHeaders, corsPreflight } from '@/lib/cors';
 // capture is identified and saved.
 export const maxDuration = 60;
 
-// Hosts that block server-side fetches. When the OG fetch fails for one of
-// these, the answer is "paste a screenshot", not an error.
-const SCREENSHOT_ONLY_HOSTS =
-  /(^|\.)(x\.com|twitter\.com|tiktok\.com|instagram\.com|threads\.net|threads\.com|facebook\.com|fb\.com|fb\.watch)$/i;
-
-function successBody(result: Awaited<ReturnType<typeof processCapture>>) {
-  return {
-    success: true,
-    marketId: result.marketId,
-    entityName: result.entityName,
-    isNew: result.isNew,
-    outcome: result.outcome,
-    review: result.review,
-    vi: result.vi,
-    // True when the VI sources are still being fetched after this response;
-    // the market's score lands a few seconds later.
-    viPending: result.viPending,
-    source: result.source,
-  };
-}
-
-// Accepts multipart/form-data with at least one of:
-//   image  File               screenshot or photo
-//   url    string             a link; the og:image is fetched server-side
-//   text   string             a line of text
-// plus optional sourceUrl, pageTitle, pageContext. An image wins over a url,
-// a url over bare text; the others ride along as context.
+// The one-shot path: propose and commit the default choice in one call.
+// The web form, the share sheet and the extension go through
+// /api/captures/propose and /commit instead so the submitter can review
+// first; this stays for the eval script and older clients. The body is the
+// multipart form lib/capture-request.ts describes.
 export async function POST(request: Request) {
   const headers = corsHeaders(request);
 
@@ -60,102 +30,17 @@ export async function POST(request: Request) {
     );
   }
 
-  let form: FormData;
   try {
-    form = await request.formData();
-  } catch {
-    return Response.json(
-      { success: false, error: 'Expected multipart/form-data' },
-      { status: 400, headers }
-    );
-  }
+    const req = await readCaptureRequest(request, { supabase, userId: user.id });
+    if (req.kind === 'error') return Response.json(req.body, { status: req.status, headers });
+    if (req.kind === 'final') return Response.json(successBody(req.result), { headers });
 
-  const str = (key: string) => {
-    const v = form.get(key);
-    return typeof v === 'string' && v.trim() ? v.trim() : undefined;
-  };
-  const image = form.get('image');
-  const hasImage = image instanceof File && image.size > 0;
-  const url = str('url');
-  const text = str('text');
-
-  if (!hasImage && !url && !text) {
-    return Response.json(
-      { success: false, error: 'Send an image, a url, or text' },
-      { status: 400, headers }
-    );
-  }
-
-  const input: ProcessCaptureInput = {
-    text,
-    sourceUrl: str('sourceUrl'),
-    pageTitle: str('pageTitle'),
-    pageContext: str('pageContext'),
-    supabase,
-    userId: user.id,
-  };
-
-  try {
-    if (hasImage) {
-      input.mediaType = toMediaType(image.type);
-      input.imageBase64 = Buffer.from(await image.arrayBuffer()).toString('base64');
-    } else if (url) {
-      // Dedup on the URL before fetching anything.
-      const hash = contentHash({ url });
-      const earlier = await findByHash(hash);
-      if (earlier) return Response.json(successBody(earlier), { headers });
-      const earlierReject = await findEarlierRejection(hash);
-      if (earlierReject) throw new SubmissionRejectedError(earlierReject);
-
-      input.contentHash = hash;
-      input.sourceUrl = input.sourceUrl ?? url;
-      try {
-        const fetched = await fetchImageFromUrl(url);
-        input.imageBase64 = fetched.imageBase64;
-        input.mediaType = fetched.mediaType;
-        input.pageTitle = input.pageTitle ?? fetched.pageTitle;
-        input.pageContext = input.pageContext ?? fetched.pageContext;
-      } catch (err) {
-        const reason = err instanceof OgFetchError ? err.reason : (err as Error).message;
-        let host = '';
-        try {
-          host = new URL(url).hostname;
-        } catch {
-          // fall through with empty host
-        }
-        if (SCREENSHOT_ONLY_HOSTS.test(host)) {
-          return Response.json(
-            {
-              success: false,
-              outcome: 'needs_image',
-              error: `${host.replace(/^www\./, '')} blocks link previews. Paste a screenshot of the post instead.`,
-            },
-            { status: 422, headers }
-          );
-        }
-        return Response.json(
-          { success: false, error: `Couldn't fetch that link: ${reason}` },
-          { status: 400, headers }
-        );
-      }
-    }
-
-    const result = await processCapture(input);
+    const result = await processCapture(req.input);
     if (result.background) after(result.background);
 
     return Response.json(successBody(result), { headers });
   } catch (err) {
-    if (err instanceof SubmissionRejectedError) {
-      return Response.json(
-        { success: false, outcome: 'rejected', reason: err.reason, error: err.message },
-        { status: 422, headers }
-      );
-    }
-    console.error('[captures POST] failed', err);
-    return Response.json(
-      { success: false, error: (err as Error).message },
-      { status: 500, headers }
-    );
+    return captureErrorResponse(err, headers, 'captures POST');
   }
 }
 

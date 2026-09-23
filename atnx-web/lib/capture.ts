@@ -9,13 +9,42 @@ import {
   type VisionMediaType,
 } from './vlm';
 import { embedText, marketEmbeddingText, toPgVector } from './embed';
-import { retrieveCandidates, type RetrievalResult } from './retrieve';
-import { LINK_COSINE, LINK_TRIGRAM, recordDecision, routeSubmission } from './route';
-
-// Below the link thresholds but above these, a proposal is checked with the
-// model before a new market is created.
-const CONFIRM_COSINE = Number(process.env.CONFIRM_COSINE ?? 0.6);
-const CONFIRM_TRIGRAM = Number(process.env.CONFIRM_TRIGRAM ?? 0.35);
+import { retrieveCandidates, type RetrievalResult, type ScoredCandidate } from './retrieve';
+import {
+  LINK_COSINE,
+  LINK_TRIGRAM,
+  recordDecision,
+  routeSubmission,
+  type RoutingDecision,
+} from './route';
+import {
+  buildReview,
+  CONFIRM_COSINE,
+  CONFIRM_TRIGRAM,
+  cropImage,
+  imageSize,
+  isNewAccount,
+  loadDraft,
+  MARKET_CREATE_DAILY_LIMIT,
+  markDraftCommitted,
+  marketDetails,
+  marketsCreatedToday,
+  MAX_RECROPS,
+  newExpiry,
+  parkImage,
+  pendingImagePath,
+  readParkedImage,
+  removeParkedImages,
+  ReviewError,
+  saveDraft,
+  toView,
+  updateDraft,
+  validateCrop,
+  type ReviewChoice,
+  type ReviewDraft,
+  type ReviewDraftView,
+  type SubjectResolution,
+} from './review';
 import { normalizeSearchTerm } from './trends';
 import { composeVi } from './signals';
 import { addCapture, createMarket, DuplicateCaptureError, recordVi, type Capture } from './store';
@@ -53,9 +82,9 @@ export interface ProcessCaptureResult {
   viPending: boolean;
   source: string;
   analysis: VisionAnalysis;
-  // Work that runs after the response: the VI scoring and, for a
-  // created_review outcome, one retry with a wider candidate list. Route
-  // handlers pass it to after() from next/server.
+  // Work that runs after the response: the VI scoring and, on the one-shot
+  // path, one retry for a low-confidence create. Route handlers pass it to
+  // after() from next/server.
   background?: () => Promise<void>;
 }
 
@@ -195,13 +224,20 @@ export async function findEarlierRejection(hash: string): Promise<RejectReason |
     : 'not_cultural_content';
 }
 
-// Shared capture pipeline used by /api/captures (extension) and /share
-// (Android share target). Order: exact dedup by hash, cheap retrieval on
-// the text we already have, one model call with those candidates, a
-// deterministic link check on the name the model proposed, then persist.
-// The VI sources (Trends, Bluesky, GDELT, Wikipedia) are the slowest step
-// and the user is not waiting on them, so they run after the response via
-// `result.background`. Auth must be established by the caller.
+// Shared capture pipeline. Two halves:
+//
+//   propose  hash dedup, cheap retrieval on the text we already have, one
+//            model call with those candidates, a deterministic link check on
+//            the name the model proposed, the subject the content is about,
+//            and the bounded choices the reviewer gets. Persists a draft and
+//            parks the image; creates nothing else.
+//   commit   the reviewer's choice, validated against the draft, then the
+//            tail: create or attach, upload, audit. VI scoring runs after the
+//            response via `result.background`.
+//
+// processCapture() is the one-shot path (eval script, older clients): propose
+// in memory and commit the default choice at once. Auth must be established
+// by the caller.
 export interface ProcessCaptureInput {
   // At least one of imageBase64 / text is required.
   imageBase64?: string;
@@ -218,33 +254,30 @@ export interface ProcessCaptureInput {
   userId: string;
 }
 
-export async function processCapture(opts: ProcessCaptureInput): Promise<ProcessCaptureResult> {
-  if (!opts.imageBase64 && !opts.text?.trim()) {
-    throw new Error('processCapture needs an image or text');
-  }
-  const hash =
-    opts.contentHash ?? contentHash({ imageBase64: opts.imageBase64, text: opts.text });
-  const earlier = await findByHash(hash);
-  if (earlier) {
-    await recordDecision({
-      outcome: 'dedup',
-      userId: opts.userId,
-      contentHash: hash,
-      marketId: earlier.marketId,
-    });
-    return earlier;
-  }
-  const earlierReject = await findEarlierRejection(hash);
-  if (earlierReject) {
-    await recordDecision({
-      outcome: 'dedup',
-      userId: opts.userId,
-      contentHash: hash,
-      rejectReason: earlierReject,
-    });
-    throw new SubmissionRejectedError(earlierReject);
-  }
+// --- Stage one: analyse and route -------------------------------------------
 
+interface AnalysisStage {
+  submission: SubmissionAnalysis;
+  shownCandidates: CandidateMarket[];
+  preRetrieval: RetrievalResult | null;
+  postRetrieval: RetrievalResult | null;
+  decision: RoutingDecision;
+  embedding: string | null;
+  docEmbedding: number[] | null;
+}
+
+async function analyseAndRoute(opts: {
+  imageBase64?: string;
+  mediaType?: VisionMediaType;
+  text?: string;
+  sourceUrl?: string;
+  pageTitle?: string;
+  pageContext?: string;
+  // One-shot path only: ask the model about a proposal that is close to an
+  // existing market but not close enough to link blind. With a reviewer,
+  // the candidates are shown to them instead.
+  confirmAmbiguous: boolean;
+}): Promise<AnalysisStage> {
   // Pre-model retrieval on whatever text the caller sent. Page titles from
   // X, Reddit and YouTube usually carry the post text, so this is often
   // enough to surface the right market before the image is even looked at.
@@ -290,16 +323,14 @@ export async function processCapture(opts: ProcessCaptureInput): Promise<Process
       limit: 10,
     });
 
-    // Middle band: something is close but not close enough to link blind.
-    // One text-only call shows the model the candidates and lets it decide.
-    // Measured at 1.5 to 2.5 s; only paid on ambiguous proposals.
     const best = postRetrieval.best;
     const ambiguous =
       best &&
       ((best.cosine ?? 0) >= CONFIRM_COSINE || (best.trigram ?? 0) >= CONFIRM_TRIGRAM) &&
       (best.cosine ?? 0) < LINK_COSINE &&
       (best.trigram ?? 0) < LINK_TRIGRAM;
-    if (ambiguous) {
+    if (ambiguous && opts.confirmAmbiguous) {
+      // Measured at 1.5 to 2.5 s; only paid on ambiguous proposals.
       const confirmCandidates = postRetrieval.candidates.map(({ id, name, entityType }) => ({
         id,
         name,
@@ -339,46 +370,336 @@ export async function processCapture(opts: ProcessCaptureInput): Promise<Process
     embedding,
   });
 
+  return { submission, shownCandidates: candidates, preRetrieval, postRetrieval, decision, embedding, docEmbedding };
+}
+
+// The market the model's subject refers to. An id is taken as shown; a
+// name is matched against existing markets and only a hit at the link
+// threshold counts. Anything else becomes a proposal to create.
+async function resolveSubject(s: SubmissionAnalysis): Promise<SubjectResolution> {
+  if (s.subject_market_id) {
+    const details = await marketDetails([s.subject_market_id]);
+    const existing = details.get(s.subject_market_id) ?? null;
+    if (existing) return { existing, proposal: null };
+  }
+  if (s.subject_name && s.subject_entity_type) {
+    const hits = await retrieveCandidates({ names: [s.subject_name], limit: 3 });
+    const best = hits.best;
+    if (best && (best.trigram ?? 0) >= LINK_TRIGRAM) {
+      const details = await marketDetails([best.id]);
+      const existing = details.get(best.id) ?? null;
+      if (existing) return { existing, proposal: null };
+    }
+    return { existing: null, proposal: { name: s.subject_name, entityType: s.subject_entity_type } };
+  }
+  return { existing: null, proposal: null };
+}
+
+// The candidate list the reviewer sees and the audit row records: what the
+// proposal's name retrieval found, else what the context found.
+function reviewCandidates(stage: AnalysisStage): ScoredCandidate[] {
+  const r = stage.postRetrieval ?? stage.preRetrieval;
+  return r?.candidates ?? [];
+}
+
+function retrievalFor(candidates: ScoredCandidate[]): RetrievalResult {
+  let maxCosine: number | null = null;
+  let maxTrigram: number | null = null;
+  for (const c of candidates) {
+    if (c.cosine !== null) maxCosine = Math.max(maxCosine ?? -Infinity, c.cosine);
+    if (c.trigram !== null) maxTrigram = Math.max(maxTrigram ?? -Infinity, c.trigram);
+  }
+  return { candidates, maxCosine, maxTrigram, best: candidates[0] ?? null };
+}
+
+async function reviewFor(
+  stage: AnalysisStage
+): Promise<Pick<ReviewDraft, 'candidates' | 'nudge' | 'choices'>> {
+  const candidates = reviewCandidates(stage);
+  const subject = await resolveSubject(stage.submission);
+  const ids = candidates.map((c) => c.id);
+  if (stage.decision.outcome === 'matched' || stage.decision.outcome === 'linked') {
+    ids.push(stage.decision.marketId);
+  }
+  if (subject.existing) ids.push(subject.existing.id);
+  const details = await marketDetails(ids);
+  const { nudge, choices } = buildReview({
+    submission: stage.submission,
+    decision: stage.decision,
+    candidates,
+    details,
+    subject,
+  });
+  return { candidates, nudge, choices };
+}
+
+// --- Propose ----------------------------------------------------------------
+
+export type ProposeOutcome =
+  | { kind: 'final'; result: ProcessCaptureResult }
+  | { kind: 'draft'; draft: ReviewDraft; view: ReviewDraftView };
+
+export interface ProposeOptions {
+  // Store the draft and park the image so a later request can commit it.
+  // The one-shot path keeps everything in memory.
+  persist: boolean;
+  confirmAmbiguous?: boolean;
+}
+
+export async function proposeCapture(
+  opts: ProcessCaptureInput,
+  po: ProposeOptions
+): Promise<ProposeOutcome> {
+  if (!opts.imageBase64 && !opts.text?.trim()) {
+    throw new Error('proposeCapture needs an image or text');
+  }
+  const hash =
+    opts.contentHash ?? contentHash({ imageBase64: opts.imageBase64, text: opts.text });
+  const earlier = await findByHash(hash);
+  if (earlier) {
+    await recordDecision({
+      outcome: 'dedup',
+      userId: opts.userId,
+      contentHash: hash,
+      marketId: earlier.marketId,
+    });
+    return { kind: 'final', result: earlier };
+  }
+  const earlierReject = await findEarlierRejection(hash);
+  if (earlierReject) {
+    await recordDecision({
+      outcome: 'dedup',
+      userId: opts.userId,
+      contentHash: hash,
+      rejectReason: earlierReject,
+    });
+    throw new SubmissionRejectedError(earlierReject);
+  }
+
+  const stage = await analyseAndRoute({
+    imageBase64: opts.imageBase64,
+    mediaType: opts.mediaType,
+    text: opts.text,
+    sourceUrl: opts.sourceUrl,
+    pageTitle: opts.pageTitle,
+    pageContext: opts.pageContext,
+    confirmAmbiguous: po.confirmAmbiguous ?? false,
+  });
+
+  // Rejections are not appealable and skip review.
+  if (stage.decision.outcome === 'rejected') {
+    await recordDecision({
+      userId: opts.userId,
+      contentHash: hash,
+      candidates: stage.postRetrieval?.candidates ?? stage.shownCandidates,
+      retrieval: stage.postRetrieval ?? stage.preRetrieval,
+      submission: stage.submission,
+      outcome: 'rejected',
+      rejectReason: stage.decision.reason,
+    });
+    throw new SubmissionRejectedError(stage.decision.reason, stage.submission);
+  }
+
+  const review = await reviewFor(stage);
+  const id = crypto.randomUUID();
+  const modelText = [opts.text, opts.pageContext].filter(Boolean).join('\n') || null;
+
+  const draft: ReviewDraft = {
+    id,
+    userId: opts.userId,
+    status: 'pending',
+    contentHash: hash,
+    mediaType: opts.mediaType ?? null,
+    sourceUrl: opts.sourceUrl ?? null,
+    pageTitle: opts.pageTitle ?? null,
+    pageContext: opts.pageContext ?? null,
+    text: opts.text ?? null,
+    imagePath: null,
+    cropPath: null,
+    imageWidth: null,
+    imageHeight: null,
+    crop: null,
+    recrops: 0,
+    submission: stage.submission,
+    candidates: review.candidates,
+    decision: stage.decision,
+    nudge: review.nudge,
+    choices: review.choices,
+    embedding: stage.embedding,
+    expiresAt: newExpiry(),
+    imageBase64: opts.imageBase64,
+    docEmbedding: stage.docEmbedding,
+  };
+  void modelText;
+
+  if (po.persist && opts.imageBase64) {
+    const bytes = Buffer.from(opts.imageBase64, 'base64');
+    try {
+      const size = await imageSize(bytes);
+      draft.imageWidth = size.width;
+      draft.imageHeight = size.height;
+    } catch (err) {
+      // No dimensions means no crop; the review still works.
+      console.warn('[capture] image size unreadable', (err as Error).message);
+    }
+    draft.imagePath = pendingImagePath(opts.userId, id);
+    await parkImage(draft.imagePath, bytes, opts.mediaType ?? 'image/png');
+  }
+  if (po.persist) await saveDraft(draft);
+
+  return { kind: 'draft', draft, view: toView(draft) };
+}
+
+// --- Commit -----------------------------------------------------------------
+
+export interface CommitOptions {
+  supabase: SupabaseClient<Database>;
+  userId: string;
+  choice: ReviewChoice;
+  // The draft lives in submission_drafts (review path) rather than only in
+  // memory (one-shot path).
+  persisted: boolean;
+  // One-shot path: a low-confidence create gets one model retry with a
+  // wider candidate list. With a reviewer, the reviewer is the retry.
+  lowConfidenceRetry?: boolean;
+}
+
+export async function commitDraft(
+  draft: ReviewDraft,
+  opts: CommitOptions
+): Promise<ProcessCaptureResult> {
+  const { choice } = opts;
+  const s = draft.submission;
+  const strongId = draft.choices.strongMatchId;
+
+  if (choice.kind === 'create' && strongId && (await isNewAccount(opts.userId))) {
+    throw new ReviewError(
+      'New accounts cannot create a market over a strong match. Attach it to the existing market for now.',
+      403,
+      'override_not_allowed'
+    );
+  }
+  if (choice.kind !== 'attach') {
+    const created = await marketsCreatedToday(opts.userId);
+    if (created >= MARKET_CREATE_DAILY_LIMIT) {
+      throw new ReviewError(
+        `You have created ${created} markets in the last day, the limit. Attach this to an existing market or come back later.`,
+        429,
+        'create_limit'
+      );
+    }
+  }
+
+  // Hash dedup still applies at commit: the same bytes may have been
+  // committed by someone else while this draft sat in review.
+  const hash = draft.contentHash;
+  const earlier = await findByHash(hash);
+  if (earlier) {
+    await recordDecision({ outcome: 'dedup', userId: opts.userId, contentHash: hash, marketId: earlier.marketId });
+    if (opts.persisted) {
+      await markDraftCommitted(draft.id, null, earlier.marketId);
+      await removeParkedImages([draft.imagePath, draft.cropPath]);
+    }
+    return earlier;
+  }
+
+  // The image that gets stored: the crop when there is one, else the
+  // original, from memory on the one-shot path and from storage otherwise.
+  let imageBase64 = draft.imageBase64;
+  let mediaType: VisionMediaType | null = (draft.mediaType as VisionMediaType | null) ?? null;
+  if (!imageBase64 && (draft.cropPath || draft.imagePath)) {
+    const bytes = await readParkedImage((draft.cropPath ?? draft.imagePath) as string);
+    imageBase64 = bytes.toString('base64');
+  }
+  if (draft.cropPath) mediaType = 'image/jpeg';
+
   const audit = {
     userId: opts.userId,
     contentHash: hash,
-    candidates: postRetrieval?.candidates ?? candidates,
-    retrieval: postRetrieval ?? preRetrieval,
-    submission,
+    candidates: draft.candidates,
+    retrieval: retrievalFor(draft.candidates),
+    submission: s,
   };
-
-  if (decision.outcome === 'rejected') {
-    await recordDecision({ ...audit, outcome: 'rejected', rejectReason: decision.reason });
-    throw new SubmissionRejectedError(decision.reason, submission);
-  }
 
   // Resolve the market row the capture attaches to.
   let marketId: string;
   let similarity: number | null;
   let matched: CandidateMarket | undefined;
   let createdMarketId: string | null = null;
-  if (decision.outcome === 'matched' || decision.outcome === 'linked') {
-    marketId = decision.marketId;
-    similarity = decision.similarity;
-    matched = decision.matched;
+  let outcome: ProcessCaptureResult['outcome'];
+  let analysis: VisionAnalysis;
+  let extra: Record<string, string | boolean> = {};
+  let scoringAliases: string[] | null = null;
+
+  const offered = [...draft.nudge.candidates, ...(draft.nudge.subject ? [draft.nudge.subject] : [])];
+
+  if (choice.kind === 'attach') {
+    const target = offered.find((m) => m.id === choice.marketId);
+    if (!target) throw new ReviewError('That market was not offered for this submission');
+    marketId = target.id;
+    matched = { id: target.id, name: target.name, entityType: target.entityType, category: target.category };
+    if (target.id === strongId) {
+      similarity = draft.decision.outcome === 'matched' || draft.decision.outcome === 'linked'
+        ? draft.decision.similarity
+        : 1;
+      outcome = draft.decision.outcome === 'matched' ? 'matched' : 'linked';
+    } else {
+      similarity = target.similarity ?? 1;
+      outcome = 'linked';
+      extra = { chosen_by: 'reviewer', relation: target.relation };
+    }
+    // The capture lands on that market, so it carries that market's name
+    // and type; the market page titles itself from its newest capture.
+    // The description keeps what this particular post is.
+    analysis = {
+      ...toVisionAnalysis(s, matched),
+      name: target.name,
+      type: (target.entityType as VisionAnalysis['type'] | null) ?? 'other',
+      category: target.category ?? s.new_market?.category ?? '',
+    };
   } else {
-    const { market, created } = await createMarket({
-      name: decision.newMarket.name,
-      entityType: decision.newMarket.entityType,
-      category: decision.newMarket.category,
-      aliases: decision.newMarket.aliases,
-      embedding: decision.newMarket.embedding,
-      createdBy: opts.userId,
-    });
+    const spec =
+      choice.kind === 'create'
+        ? {
+            name: choice.name,
+            entityType: choice.entityType,
+            category: choice.category,
+            aliases: choice.aliases,
+            embedding: draft.embedding,
+            parentMarketId: choice.parentMarketId,
+          }
+        : await subjectMarketSpec(draft);
+    const { market, created } = await createMarket({ ...spec, createdBy: opts.userId });
     marketId = market.id;
     // Lost a race to an identical name: treat as a link to the winner.
     similarity = created ? null : 1;
-    if (created) createdMarketId = market.id;
-    else matched = { id: market.id, name: market.entity_name, entityType: market.entity_type };
+    if (created) {
+      createdMarketId = market.id;
+      const override = choice.kind === 'create' && strongId !== null;
+      outcome = override || s.confidence === 'low' ? 'created_review' : 'created';
+      if (override) extra = { overrode_market_id: strongId as string };
+      if (choice.kind === 'create_subject') extra = { created_subject_market: true };
+      if (choice.kind === 'create' && choice.parentMarketId) {
+        extra = { ...extra, parent_market_id: choice.parentMarketId };
+      }
+    } else {
+      outcome = 'linked';
+      matched = { id: market.id, name: market.entity_name, entityType: market.entity_type };
+    }
+    scoringAliases = spec.aliases;
+    analysis = toVisionAnalysis(s, matched);
+    if (choice.kind === 'create_subject') {
+      analysis = { ...analysis, name: spec.name, type: spec.entityType as VisionAnalysis['type'] };
+    } else if (choice.kind === 'create') {
+      analysis = {
+        ...analysis,
+        name: spec.name,
+        type: spec.entityType as VisionAnalysis['type'],
+        category: spec.category,
+      };
+    }
   }
-  const review = decision.outcome === 'created_review' && createdMarketId !== null;
-
-  const analysis = toVisionAnalysis(submission, matched);
+  const review = outcome === 'created_review' && createdMarketId !== null;
 
   // Persist unscored: the market keeps its current VI until the deferred
   // scoring below records this capture's reading.
@@ -386,9 +707,9 @@ export async function processCapture(opts: ProcessCaptureInput): Promise<Process
     id: crypto.randomUUID(),
     marketId: null,
     timestamp: new Date().toISOString(),
-    pageUrl: opts.sourceUrl ?? '',
-    pageTitle: opts.pageTitle ?? '',
-    screenshot: opts.imageBase64 ?? '',
+    pageUrl: draft.sourceUrl ?? '',
+    pageTitle: draft.pageTitle ?? '',
+    screenshot: imageBase64 ?? '',
     analysis,
     trends: null,
     viralityScore: 0,
@@ -403,25 +724,25 @@ export async function processCapture(opts: ProcessCaptureInput): Promise<Process
       similarity,
       review,
       contentHash: hash,
-      mediaType: opts.mediaType ?? null,
+      mediaType,
     }));
   } catch (err) {
     if (err instanceof DuplicateCaptureError) {
       const winner = await findByHash(hash);
       if (winner) {
         await recordDecision({ ...audit, outcome: 'dedup', marketId: winner.marketId });
+        if (opts.persisted) await markDraftCommitted(draft.id, null, winner.marketId);
         return winner;
       }
     }
     throw err;
   }
 
-  // A create that lost the name race to a concurrent request is a link.
-  const outcome: ProcessCaptureResult['outcome'] =
-    decision.outcome === 'matched' || decision.outcome === 'linked' || createdMarketId !== null
-      ? decision.outcome
-      : 'linked';
-  await recordDecision({ ...audit, outcome, captureId: capture.id, marketId });
+  await recordDecision({ ...audit, outcome, captureId: capture.id, marketId, extra });
+  if (opts.persisted) {
+    await markDraftCommitted(draft.id, capture.id, marketId);
+    await removeParkedImages([draft.imagePath, draft.cropPath]);
+  }
 
   const result: ProcessCaptureResult = {
     marketId: capture.marketId,
@@ -429,8 +750,6 @@ export async function processCapture(opts: ProcessCaptureInput): Promise<Process
     isNew,
     outcome,
     review,
-    // The market's VI before this capture's reading; the sources are
-    // fetched after the response.
     vi: Math.round(capture.viralityScore),
     viPending: true,
     source: 'pending',
@@ -440,23 +759,21 @@ export async function processCapture(opts: ProcessCaptureInput): Promise<Process
   const scoring: ScoringContext = {
     marketId,
     term: normalizeSearchTerm(analysis),
-    // Straight from the model for a market created just now; read from the
-    // row for an existing one (inside the background task, not here).
-    aliases: 'newMarket' in decision ? decision.newMarket.aliases : null,
+    aliases: createdMarketId ? scoringAliases : null,
   };
   const retry: RetryContext | null =
-    review && createdMarketId && docEmbedding
+    opts.lowConfidenceRetry && review && createdMarketId && draft.docEmbedding
       ? {
           captureId: capture.id,
           createdMarketId,
-          docEmbedding,
+          docEmbedding: draft.docEmbedding,
           userId: opts.userId,
           contentHash: hash,
-          imageBase64: opts.imageBase64,
-          mediaType: opts.mediaType,
-          text: modelText,
-          sourceUrl: opts.sourceUrl,
-          pageTitle: opts.pageTitle,
+          imageBase64: draft.imageBase64,
+          mediaType: (draft.mediaType as VisionMediaType | null) ?? undefined,
+          text: [draft.text, draft.pageContext].filter(Boolean).join('\n') || undefined,
+          sourceUrl: draft.sourceUrl ?? undefined,
+          pageTitle: draft.pageTitle ?? undefined,
         }
       : null;
 
@@ -470,6 +787,141 @@ export async function processCapture(opts: ProcessCaptureInput): Promise<Process
 
   return result;
 }
+
+// A market for the subject the model named, embedded on its own name so
+// later proposals of the same subject find it.
+async function subjectMarketSpec(draft: ReviewDraft) {
+  const cs = draft.choices.createSubject;
+  if (!cs) throw new ReviewError('No subject market to create here');
+  let embedding: string | null = null;
+  try {
+    embedding = toPgVector(
+      await embedText(marketEmbeddingText({ name: cs.name, aliases: [], description: '' }), {
+        purpose: 'document',
+      })
+    );
+  } catch (err) {
+    console.warn('[capture] subject embedding failed', (err as Error).message);
+  }
+  return {
+    name: cs.name,
+    entityType: cs.entityType,
+    category: cs.category,
+    aliases: [] as string[],
+    embedding,
+    parentMarketId: null,
+  };
+}
+
+// --- Recrop -----------------------------------------------------------------
+
+// The reviewer's crop rectangle, applied to the server's copy of the
+// original. Re-hashes, re-analyses (one more model call) and rewrites the
+// draft's proposal, nudge and choices. Capped at MAX_RECROPS per draft.
+export async function recropDraft(draft: ReviewDraft, rect: unknown): Promise<ProposeOutcome> {
+  if (!draft.imagePath || !draft.imageWidth || !draft.imageHeight) {
+    throw new ReviewError('This submission has no image to crop');
+  }
+  if (draft.recrops >= MAX_RECROPS) {
+    throw new ReviewError(`No re-crops left (${MAX_RECROPS} per submission)`, 429, 'recrop_limit');
+  }
+  const crop = validateCrop(rect, draft.imageWidth, draft.imageHeight);
+  const original = await readParkedImage(draft.imagePath);
+  const cropped = await cropImage(original, crop);
+  const imageBase64 = cropped.toString('base64');
+  const hash = contentHash({ imageBase64 });
+
+  const earlier = await findByHash(hash);
+  if (earlier) {
+    await recordDecision({ outcome: 'dedup', userId: draft.userId, contentHash: hash, marketId: earlier.marketId });
+    await markDraftCommitted(draft.id, null, earlier.marketId);
+    await removeParkedImages([draft.imagePath, draft.cropPath]);
+    return { kind: 'final', result: earlier };
+  }
+  const earlierReject = await findEarlierRejection(hash);
+  if (earlierReject) throw new SubmissionRejectedError(earlierReject);
+
+  draft.recrops += 1;
+  const stage = await analyseAndRoute({
+    imageBase64,
+    mediaType: 'image/jpeg',
+    text: draft.text ?? undefined,
+    sourceUrl: draft.sourceUrl ?? undefined,
+    pageTitle: draft.pageTitle ?? undefined,
+    pageContext: draft.pageContext ?? undefined,
+    confirmAmbiguous: false,
+  });
+  if (stage.decision.outcome === 'rejected') {
+    await recordDecision({
+      userId: draft.userId,
+      contentHash: hash,
+      candidates: stage.postRetrieval?.candidates ?? stage.shownCandidates,
+      retrieval: stage.postRetrieval ?? stage.preRetrieval,
+      submission: stage.submission,
+      outcome: 'rejected',
+      rejectReason: stage.decision.reason,
+    });
+    // The crop was the problem; the draft keeps its earlier proposal.
+    await updateDraft(draft);
+    throw new SubmissionRejectedError(stage.decision.reason, stage.submission);
+  }
+
+  const review = await reviewFor(stage);
+  const cropPath = pendingImagePath(draft.userId, draft.id, '-crop');
+  await parkImage(cropPath, cropped, 'image/jpeg');
+
+  Object.assign(draft, {
+    contentHash: hash,
+    cropPath,
+    crop,
+    submission: stage.submission,
+    candidates: review.candidates,
+    decision: stage.decision,
+    nudge: review.nudge,
+    choices: review.choices,
+    embedding: stage.embedding,
+    expiresAt: newExpiry(),
+  } satisfies Partial<ReviewDraft>);
+  await updateDraft(draft);
+  return { kind: 'draft', draft, view: toView(draft) };
+}
+
+// Loads a user's pending draft or throws a ReviewError (410) if it is gone.
+export { loadDraft };
+
+// --- One-shot ---------------------------------------------------------------
+
+// Propose and commit the default choice in one call. What every client did
+// before the review step; kept for the eval script and older clients.
+export async function processCapture(opts: ProcessCaptureInput): Promise<ProcessCaptureResult> {
+  const proposed = await proposeCapture(opts, { persist: false, confirmAmbiguous: true });
+  if (proposed.kind === 'final') return proposed.result;
+  const { draft } = proposed;
+  const nm = draft.submission.new_market;
+  // Without a reviewer the subject nudge is not taken: a strong match
+  // attaches, anything else creates, as before.
+  const choice: ReviewChoice = draft.choices.strongMatchId
+    ? { kind: 'attach', marketId: draft.choices.strongMatchId }
+    : nm
+      ? {
+          kind: 'create',
+          name: nm.name,
+          entityType: nm.entity_type,
+          category: nm.category,
+          aliases: nm.aliases,
+          parentMarketId: null,
+        }
+      : draft.nudge.defaultChoice;
+  return commitDraft(draft, {
+    supabase: opts.supabase,
+    userId: opts.userId,
+    choice,
+    persisted: false,
+    lowConfidenceRetry: true,
+  });
+}
+
+// --- After the response -----------------------------------------------------
 
 interface ScoringContext {
   marketId: string;

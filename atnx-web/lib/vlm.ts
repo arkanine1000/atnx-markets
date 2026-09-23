@@ -37,6 +37,12 @@ export type RejectReason = (typeof REJECT_REASONS)[number];
 export const CONFIDENCE_LEVELS = ['high', 'medium', 'low'] as const;
 export type Confidence = (typeof CONFIDENCE_LEVELS)[number];
 
+// Entity types a subject may have: the person, brand or event a meme,
+// trend or edit is about. The review step offers that subject's market as
+// the place to attach the capture (see lib/review.ts).
+export const SUBJECT_TYPES = ['person', 'brand', 'event'] as const;
+export type SubjectType = (typeof SUBJECT_TYPES)[number];
+
 export type VisionMediaType = 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif';
 
 // A market the retrieval stage (Phase 2) found close to this submission. The
@@ -60,7 +66,7 @@ function buildSchema(candidateIds: string[]) {
   // The candidate enum is rebuilt per request. When there are no candidates
   // a nullable string keeps the JSON schema simple; the value is discarded
   // below because there is nothing valid to link to.
-  const matched =
+  const candidateId = () =>
     candidateIds.length > 0
       ? z.enum(candidateIds as [string, ...string[]]).nullable()
       : z.string().nullable();
@@ -68,8 +74,16 @@ function buildSchema(candidateIds: string[]) {
   return z.object({
     admit: z.boolean(),
     reject_reason: z.enum(REJECT_REASONS).nullable(),
-    matched_market_id: matched,
+    matched_market_id: candidateId(),
     new_market: newMarketSchema.nullable(),
+    // Other canonical names the market could go by; the reviewer picks one.
+    name_alternates: z.array(z.string().min(1).max(120)).max(2),
+    // The subject a meme/trend/event is about, when it is a person, brand
+    // or event with its own identity: a candidate id if it was shown, else
+    // a name and type the server resolves against existing markets.
+    subject_market_id: candidateId(),
+    subject_name: z.string().max(120).nullable(),
+    subject_entity_type: z.enum(SUBJECT_TYPES).nullable(),
     description: z.string().max(400),
     ocr_text: z.string().max(4000),
     platforms_detected: z.array(z.string()).max(8),
@@ -106,7 +120,9 @@ Decide three things.
 
 2. matched_market_id. A list of candidate markets may be supplied with their ids. If the submission's subject IS one of those candidates (the same meme, person, product, or event, even under a different spelling or alias), set matched_market_id to that candidate's id and new_market to null. Never invent an id. If no candidate fits, set matched_market_id to null.
 
-3. new_market. When admitted and unmatched, describe the subject as a market: the canonical name people use for it (short, no hashtags, no trailing punctuation), its entity_type, one category, and up to eight aliases (alternative spellings, hashtags without the #, nicknames). Names must be specific: "Distracted Boyfriend" not "meme about a boyfriend".
+3. new_market. When admitted and unmatched, describe the subject as a market: the canonical name people use for it (short, no hashtags, no trailing punctuation), its entity_type, one category, and up to eight aliases (alternative spellings, hashtags without the #, nicknames). Names must be specific: "Distracted Boyfriend" not "meme about a boyfriend". In name_alternates give up to two other names the same market could reasonably carry (a longer or shorter form, the name a different community uses); leave it empty when the name is settled.
+
+4. subject. When the content is a meme, trend, edit, image or event ABOUT a specific person, brand, product or public event that has its own identity beyond this content (a mugshot meme is about the person in it; a "graphics setting off / on" meme is about that product; a fan edit is about the show), name that subject. If the subject is one of the candidate markets, set subject_market_id to its id; otherwise set subject_name (canonical name) and subject_entity_type (person, brand or event). The subject is what the content is about, never the platform it appears on and never the meme format itself. Leave all three null when the market IS the subject (a person's own post, a brand's own product page, a public figure's photo with no meme on top) or when there is no single subject.
 
 Also fill in: description (one sentence, what the content is and why it is circulating), ocr_text (all readable text in the image, verbatim, or the submitted text; empty string if none), platforms_detected (platform names visible or implied, such as X, TikTok, Instagram, Reddit, YouTube), sentiment, and confidence in your admit/match/new decision (high, medium, low). Use low when the subject is ambiguous or you are unsure whether it is a known thing.`;
 
@@ -144,6 +160,10 @@ function unreadable(model: string, latencyMs: number, text = ''): SubmissionAnal
     reject_reason: 'unreadable',
     matched_market_id: null,
     new_market: null,
+    name_alternates: [],
+    subject_market_id: null,
+    subject_name: null,
+    subject_entity_type: null,
     description: '',
     ocr_text: text,
     platforms_detected: [],
@@ -215,6 +235,31 @@ export async function analyzeSubmission(
     output.matched_market_id && candidateIds.includes(output.matched_market_id)
       ? output.matched_market_id
       : null;
+  const subjectId =
+    output.subject_market_id && candidateIds.includes(output.subject_market_id)
+      ? output.subject_market_id
+      : null;
+  // A subject that is the proposal itself under another spelling is no
+  // subject; and a name without a type (or the reverse) is unusable.
+  const proposedName = output.new_market?.name.trim().toLowerCase();
+  const subjectName =
+    output.subject_name?.trim() &&
+    output.subject_entity_type &&
+    output.subject_name.trim().toLowerCase() !== proposedName
+      ? output.subject_name.trim()
+      : null;
+  const subject = {
+    subject_market_id: subjectId,
+    subject_name: subjectId ? null : subjectName,
+    subject_entity_type: subjectId || !subjectName ? null : output.subject_entity_type,
+    name_alternates: [
+      ...new Set(
+        output.name_alternates
+          .map((n) => n.trim())
+          .filter((n) => n && n.toLowerCase() !== proposedName)
+      ),
+    ].slice(0, 2),
+  };
 
   // Keep the three-way outcome consistent regardless of how the model filled
   // the optional fields.
@@ -229,12 +274,20 @@ export async function analyzeSubmission(
     };
   }
   if (matched) {
-    return { ...output, reject_reason: null, matched_market_id: matched, new_market: null, model: modelId, latencyMs };
+    return {
+      ...output,
+      ...subject,
+      reject_reason: null,
+      matched_market_id: matched,
+      new_market: null,
+      model: modelId,
+      latencyMs,
+    };
   }
   if (!output.new_market) {
     // Admitted, unmatched, but nothing to create: treat as unreadable so the
     // caller has one code path for "the model gave us nothing usable".
     return unreadable(modelId, latencyMs, output.ocr_text);
   }
-  return { ...output, reject_reason: null, matched_market_id: null, model: modelId, latencyMs };
+  return { ...output, ...subject, reject_reason: null, matched_market_id: null, model: modelId, latencyMs };
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 // Client-side resize before upload: 1080 px long edge, JPEG at 0.85. Keeps
@@ -33,6 +34,9 @@ type Outcome = "matched" | "linked" | "created" | "created_review" | "dedup";
 
 interface SuccessResponse {
   success: true;
+  // True when the submission was answered outright (seen before); false
+  // when a draft came back and the review page takes over.
+  final: true;
   marketId: string | null;
   entityName: string | null;
   isNew: boolean;
@@ -47,7 +51,13 @@ interface FailureResponse {
   error: string;
 }
 
-type Result = SuccessResponse | FailureResponse;
+interface DraftResponse {
+  success: true;
+  final: false;
+  draft: { draftId: string };
+}
+
+type Result = SuccessResponse | DraftResponse | FailureResponse;
 
 function drawScaled(
   source: ImageBitmap | HTMLImageElement,
@@ -160,6 +170,7 @@ export function SubmitForm({
   notice = "",
   wantsImage = false,
 }: SubmitFormProps) {
+  const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   // The picked file could not be read; what we know about it, for the notice.
@@ -239,8 +250,14 @@ export function SubmitForm({
       } else {
         form.set("text", text.trim());
       }
-      const res = await fetch("/api/captures", { method: "POST", body: form });
+      // Propose only: the review page shows what was found and commits.
+      // A submission seen before is answered here outright.
+      const res = await fetch("/api/captures/propose", { method: "POST", body: form });
       const body = (await res.json().catch(() => null)) as Result | null;
+      if (body?.success && !body.final) {
+        router.push(`/app/submit/review/${body.draft.draftId}`);
+        return;
+      }
       setResult(body ?? { success: false, error: `Request failed (${res.status})` });
     } catch (err) {
       setResult({ success: false, error: (err as Error).message });
@@ -460,7 +477,7 @@ export function SubmitForm({
               : "border-atnx-magenta/40 bg-atnx-magenta/10 text-atnx-magenta"
           }`}
         >
-          {result.success ? (
+          {result.success && result.final ? (
             <>
               <div className="font-bold">{result.entityName ?? "Market"}</div>
               <div className="text-secondary">{outcomeLine(result)}</div>
@@ -474,7 +491,7 @@ export function SubmitForm({
               )}
             </>
           ) : (
-            <div>{result.error}</div>
+            <div>{result.success ? "Opening review…" : result.error}</div>
           )}
         </div>
       )}

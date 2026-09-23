@@ -416,6 +416,14 @@
           BUSY_TOAST_MS
         );
         break;
+      case 'review':
+        showToast({
+          title: 'REVIEW',
+          subtitle: detail || 'Check it in the side panel before it lands',
+          icon: '?',
+          duration: 5000
+        });
+        break;
       case 'done':
         showToast({
           title: 'DONE',

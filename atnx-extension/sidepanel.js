@@ -234,6 +234,9 @@ function renderStatus({ captureStatus = 'ready', captureStatusAt = 0 }) {
   if ((status === 'done' || status === 'error') && age > STALE_STATUS_MS) {
     status = 'ready';
   }
+  // A pending review keeps its badge until the panel commits or drops it;
+  // the draft's own expiry is checked in loadReview().
+  if (status === 'review') status = 'ready';
   let timedOut = false;
   if (BUSY[status] && age > BUSY_STALE_MS) {
     status = 'ready';
@@ -277,7 +280,163 @@ async function loadStatus() {
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local') return;
   if ('captureStatus' in changes) loadStatus();
+  if ('pendingReview' in changes) loadReview();
 });
+
+// --- Review: the proposal the worker parked, waiting for a choice ---
+//
+// The compact version of /app/submit/review/<id>: the same draft, the same
+// commit endpoint, without the crop tool (the selection was the crop) and
+// without the name/type/alias pickers; those are one click away on the web.
+
+const reviewEl = $('review');
+let reviewBusy = false;
+
+async function loadReview() {
+  const { pendingReview } = await chrome.storage.local.get('pendingReview');
+  const draft = pendingReview?.draft;
+  if (!draft || new Date(draft.expiresAt).getTime() <= Date.now()) {
+    if (pendingReview) dropReview('ready');
+    reviewEl.hidden = true;
+    reviewEl.replaceChildren();
+    return;
+  }
+  renderReview(draft, pendingReview.base);
+}
+
+async function dropReview(status) {
+  await chrome.storage.local.remove('pendingReview').catch(() => {});
+  chrome.runtime.sendMessage({ action: 'set-status', status }).catch(() => {});
+}
+
+function reviewHeadline(draft) {
+  const n = draft.nudge;
+  const strong = n.candidates.find((c) => c.id === draft.choices.strongMatchId);
+  if (n.tier === 'strong' && strong) return `Looks like ${strong.name}`;
+  if (n.tier === 'subject' && n.subject) return `About ${n.subject.name}`;
+  if (n.tier === 'ambiguous') return 'Could be one of these';
+  return draft.choices.canCreate ? 'Nothing like this yet' : 'Review';
+}
+
+function renderReview(draft, base) {
+  const n = draft.nudge;
+  const c = draft.choices;
+  const isDefault = (choice) => JSON.stringify(choice) === JSON.stringify(n.defaultChoice);
+  const frag = document.createDocumentFragment();
+
+  const head = el('div', 'review-head');
+  head.append(el('span', 'tile-label', 'Review'), el('strong', '', reviewHeadline(draft)));
+  frag.append(head);
+  if (draft.analysis?.description) frag.append(el('p', 'review-desc', draft.analysis.description));
+
+  const options = el('div', 'review-options');
+  const offered = [...n.candidates, ...(n.subject ? [n.subject] : [])];
+  for (const m of offered) {
+    const choice = { kind: 'attach', marketId: m.id };
+    const btn = el('button', `review-option${isDefault(choice) ? ' primary' : ''}`);
+    btn.type = 'button';
+    const meta =
+      m.relation === 'subject'
+        ? 'what this is about'
+        : m.id === c.strongMatchId
+          ? 'same thing'
+          : m.similarity !== null
+            ? `${Math.round(m.similarity * 100)}% similar`
+            : '';
+    btn.append(el('span', 'review-option-name', `Add to ${m.name}`), el('span', 'muted', `${meta}${meta ? ' · ' : ''}VI ${m.currentVi}`));
+    btn.addEventListener('click', () => commitReview(draft, base, choice));
+    options.append(btn);
+  }
+  if (c.canCreate && draft.analysis?.name) {
+    const nm = draft.analysis;
+    const choice = {
+      kind: 'create',
+      name: c.names[0] || nm.name,
+      entityType: nm.entityType || 'other',
+      category: nm.category || 'other',
+      aliases: c.aliases,
+      parentMarketId: c.parentMarketId
+    };
+    const btn = el('button', `review-option${isDefault({ ...choice, parentMarketId: null }) || isDefault(choice) ? ' primary' : ''}`);
+    btn.type = 'button';
+    const note = c.strongMatchId
+      ? 'this is something else · flagged for review'
+      : c.parentMarketId && n.subject
+        ? `its own market, marked as about ${n.subject.name}`
+        : `${nm.entityType || 'market'} · ${nm.category || ''}`;
+    btn.append(el('span', 'review-option-name', `Create “${choice.name}”`), el('span', 'muted', note));
+    btn.addEventListener('click', () => commitReview(draft, base, choice));
+    options.append(btn);
+  }
+  if (c.createSubject) {
+    const btn = el('button', 'review-option');
+    btn.type = 'button';
+    btn.append(el('span', 'review-option-name', `Track ${c.createSubject.name} instead`), el('span', 'muted', c.createSubject.entityType));
+    btn.addEventListener('click', () => commitReview(draft, base, { kind: 'create_subject' }));
+    options.append(btn);
+  }
+  frag.append(options);
+
+  const actions = el('div', 'review-actions');
+  const full = el('a', '', 'Crop or edit on the web →');
+  full.href = '#';
+  full.addEventListener('click', (e) => {
+    e.preventDefault();
+    openTab(`${base}/app/submit/review/${draft.draftId}`);
+  });
+  const discard = el('button', 'link-btn', 'Discard');
+  discard.type = 'button';
+  discard.addEventListener('click', async () => {
+    await dropReview('ready');
+    loadReview();
+  });
+  actions.append(full, discard);
+  frag.append(actions);
+  frag.append(el('div', 'status-text review-note'));
+
+  reviewEl.replaceChildren(frag);
+  reviewEl.hidden = false;
+}
+
+async function commitReview(draft, base, choice) {
+  if (reviewBusy) return;
+  reviewBusy = true;
+  reviewEl.classList.add('busy');
+  const note = reviewEl.querySelector('.review-note');
+  if (note) note.textContent = 'Saving…';
+  try {
+    const res = await fetch(`${base}/api/captures/commit`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ draftId: draft.draftId, choice })
+    });
+    const body = await readJson(res);
+    if (res.ok && body?.success) {
+      const { captureCount = 0 } = await chrome.storage.local.get('captureCount');
+      await chrome.storage.local.set({ captureCount: captureCount + 1 });
+      await dropReview('done');
+      loadReview();
+      refreshData();
+      return;
+    }
+    if (res.status === 410) {
+      await dropReview('ready');
+      loadReview();
+      captureNote.textContent = body?.error || 'That review expired — capture again';
+      captureNote.hidden = false;
+      return;
+    }
+    if (note) note.textContent = body?.error || `Save failed (${res.status})`;
+  } catch (e) {
+    if (note) note.textContent = `Can't reach ${hostOf(base)}: ${e.message}`;
+  } finally {
+    reviewBusy = false;
+    reviewEl.classList.remove('busy');
+  }
+}
+
+loadReview();
 
 // --- Value tile: hero number + range delta + chart ---
 
