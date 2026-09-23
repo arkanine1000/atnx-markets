@@ -135,36 +135,57 @@ export async function fetchBlueskySignal(term: string, aliases: string[] = []): 
     const perPhrase = await Promise.all(phrases.map((p) => fetchPosts(p, since)));
     if (perPhrase.every((p) => p === null)) return empty;
 
-    const seen = new Map<string, number>(); // uri -> created ms
+    // Posts are assigned to the first phrase that returned them, so the
+    // per-phrase counts are disjoint and sum to the de-duplicated total.
+    const seen = new Set<string>();
+    const hourAgo = now - 3600 * 1000;
+    let day = 0;
+    let hour = 0;
+    let baselineRate = 0; // posts per hour, summed over phrases with a usable span
+    let minSpan = Infinity;
     for (const posts of perPhrase) {
+      let n = 0;
+      let recent = 0;
+      let oldest = now;
       for (const p of posts ?? []) {
-        if (!seen.has(p.uri)) seen.set(p.uri, Date.parse(p.record?.createdAt ?? p.indexedAt));
+        if (seen.has(p.uri)) continue;
+        seen.add(p.uri);
+        const t = Date.parse(p.record?.createdAt ?? p.indexedAt);
+        n++;
+        if (t >= hourAgo) recent++;
+        if (t < oldest) oldest = t;
+      }
+      day += n;
+      if (n === 0) continue;
+      // The search index returns a truncated recent slice for busy phrases
+      // whatever `since` says (Google: its newest ~150 posts, all inside
+      // two hours, while "Google Search" spreads a few dozen over the day).
+      // Each phrase's rate is therefore taken over the hours its own posts
+      // span; one span across phrases read a busy market as a 10x spike
+      // every hour. A span under two hours carries no baseline, and its
+      // posts must then stay out of the hour count too, or the ratio
+      // compares a busy phrase's hour against a quiet phrase's baseline.
+      const spanHours = (now - oldest) / 3600_000;
+      minSpan = Math.min(minSpan, spanHours);
+      if (spanHours >= 2) {
+        baselineRate += n / spanHours;
+        hour += recent;
       }
     }
-    const day = seen.size;
-    const times = [...seen.values()];
-    const hour = times.filter((t) => t >= now - 3600 * 1000).length;
     // A phrase that hit the cap means the true count is higher.
     const capped = perPhrase.some((p) => (p?.length ?? 0) >= COUNT_CAP);
 
-    // Hourly rate now vs the average hourly rate over the window. Below one
-    // post an hour most hours are empty and the ratio is noise, so only
-    // report momentum once the day count clears that bar. The baseline is
-    // taken over the hours the fetched posts actually span, never an
-    // assumed 24: the search index returns a truncated recent slice for
-    // busy phrases whatever `since` says (Google: 400 posts, 191 of them in
-    // the last hour), and dividing by 24 read that as a 10x spike every
-    // hour. A span under two hours has no baseline to speak of.
-    const oldest = times.length ? Math.min(...times) : now;
-    const spanHours = (now - oldest) / 3600_000;
-    const momentum = day < MOMENTUM_MIN_DAY || spanHours < 2 ? null : hour / (day / spanHours);
+    // Hourly rate now vs the baseline rate, both over the phrases with a
+    // real span. Below one post an hour most hours are empty and the ratio
+    // is noise, so momentum also needs the day count to clear that bar.
+    const momentum = day < MOMENTUM_MIN_DAY || baselineRate <= 0 ? null : hour / baselineRate;
 
     const result: SourceComponent = {
       source: 'bluesky',
       level: blueskyLevel(day),
       momentum,
       fetchedAt: new Date().toISOString(),
-      meta: { posts_24h: capped ? `${day}+` : day, posts_1h: hour, phrases: phrases.length },
+      meta: { posts_24h: capped ? `${day}+` : day, posts_1h: hour, phrases: phrases.length, span_h_min: Number.isFinite(minSpan) ? Number(minSpan.toFixed(1)) : null },
     };
     cache.set(key, { data: result, expiry: Date.now() + CACHE_TTL });
     return result;
