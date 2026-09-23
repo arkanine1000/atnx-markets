@@ -24,6 +24,15 @@ export const MAX_CROP_ASPECT = 4;
 export const MARKET_CREATE_DAILY_LIMIT = Number(process.env.MARKET_CREATE_DAILY_LIMIT ?? 10);
 // Accounts younger than this cannot override a strong match.
 export const NEW_ACCOUNT_MS = 24 * 60 * 60 * 1000;
+// Accounts the daily create cap does not apply to, by email or user id,
+// comma-separated: the eval tester, a seeding account. Admins and
+// moderators are exempt by role without being listed.
+const CREATE_LIMIT_EXEMPT = new Set(
+  (process.env.MARKET_CREATE_LIMIT_EXEMPT ?? '')
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean)
+);
 
 // Below the link thresholds but above these, an existing market is close
 // enough to show the reviewer (and, on the one-shot path, to ask the
@@ -406,6 +415,21 @@ export async function marketsCreatedToday(userId: string): Promise<number> {
     .gte('created_at', since);
   if (error) throw error;
   return count ?? 0;
+}
+
+// Whether the daily create cap applies to this account: not to admins and
+// moderators, and not to anyone named in MARKET_CREATE_LIMIT_EXEMPT.
+export async function isCreateLimitExempt(userId: string): Promise<boolean> {
+  if (CREATE_LIMIT_EXEMPT.has(userId.toLowerCase())) return true;
+  const { data, error } = await createAdminClient()
+    .from('user_profiles')
+    .select('role, email')
+    .eq('id', userId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return false;
+  if (data.role === 'admin' || data.role === 'moderator') return true;
+  return Boolean(data.email && CREATE_LIMIT_EXEMPT.has(data.email.toLowerCase()));
 }
 
 export async function isNewAccount(userId: string): Promise<boolean> {

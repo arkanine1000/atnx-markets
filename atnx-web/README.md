@@ -71,7 +71,8 @@ text: the name comes from the model's proposal and up to two alternates,
 type and category from the fixed enums, aliases can only be dropped, and
 the crop is a rectangle the server applies to its own copy of the image
 (two re-crops per draft, each one more model call). Market creation is
-capped per account per day (`MARKET_CREATE_DAILY_LIMIT`, default 10).
+capped per account per day (`MARKET_CREATE_DAILY_LIMIT`, default 10; admins and
+moderators are exempt, as is any account listed in `MARKET_CREATE_LIMIT_EXEMPT`).
 
 `/api/captures` (POST) is the one-shot path: propose and commit the
 default choice in one call, with the confirm call of step 4 kept there. The

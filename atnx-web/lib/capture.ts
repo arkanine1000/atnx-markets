@@ -23,6 +23,7 @@ import {
   CONFIRM_TRIGRAM,
   cropImage,
   imageSize,
+  isCreateLimitExempt,
   isNewAccount,
   loadDraft,
   MARKET_CREATE_DAILY_LIMIT,
@@ -579,7 +580,7 @@ export async function commitDraft(
       'override_not_allowed'
     );
   }
-  if (choice.kind !== 'attach') {
+  if (choice.kind !== 'attach' && !(await isCreateLimitExempt(opts.userId))) {
     const created = await marketsCreatedToday(opts.userId);
     if (created >= MARKET_CREATE_DAILY_LIMIT) {
       throw new ReviewError(
