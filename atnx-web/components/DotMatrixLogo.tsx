@@ -148,33 +148,39 @@ function sampleText(w: number, h: number, gap: number): Target[] {
   const fontSize = (h / (1 + BURST_ROOM)) * 0.7;
   ctx.fillStyle = "#fff";
   ctx.font = brandFont(fontSize);
-  ctx.textAlign = "center";
+  ctx.textAlign = "left";
   ctx.textBaseline = "middle";
-  ctx.fillText(TEXT, w / 2, h / 2);
+  const left = (w - ctx.measureText(TEXT).width) / 2;
 
-  // Letter boundaries → colour per dot.
-  const total = ctx.measureText(TEXT).width;
-  let cursor = (w - total) / 2;
-  const bounds = [...TEXT].map((ch) => {
-    const width = ctx.measureText(ch).width;
-    const b = { start: cursor, end: cursor + width };
-    cursor += width;
-    return b;
+  // Colour per dot comes from which letter has ink there. Each letter is
+  // isolated as the browser laid it out in the full word: draw the word up
+  // to and including the letter, then erase the word up to the letter
+  // before it. Advance widths alone would miss kerning and glyph overhang.
+  const layers = [...TEXT].map((_, i) => {
+    ctx.clearRect(0, 0, w, h);
+    ctx.globalCompositeOperation = "source-over";
+    ctx.fillText(TEXT.slice(0, i + 1), left, h / 2);
+    if (i > 0) {
+      ctx.globalCompositeOperation = "destination-out";
+      ctx.fillText(TEXT.slice(0, i), left, h / 2);
+    }
+    return ctx.getImageData(0, 0, w, h).data;
   });
+  ctx.globalCompositeOperation = "source-over";
 
-  const { data } = ctx.getImageData(0, 0, w, h);
   const targets: Target[] = [];
   for (let y = 0; y < h; y += gap) {
     for (let x = 0; x < w; x += gap) {
-      if (data[(y * w + x) * 4 + 3] <= 128) continue;
-      let c = 0;
-      for (let i = 0; i < bounds.length; i++) {
-        if (x >= bounds[i].start && x < bounds[i].end) {
+      const k = (y * w + x) * 4 + 3;
+      let c = -1;
+      let best = 128;
+      for (let i = 0; i < layers.length; i++) {
+        if (layers[i][k] > best) {
+          best = layers[i][k];
           c = i;
-          break;
         }
       }
-      targets.push({ x, y, c });
+      if (c >= 0) targets.push({ x, y, c });
     }
   }
   return targets;
