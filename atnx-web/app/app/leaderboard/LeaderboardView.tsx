@@ -7,6 +7,7 @@ import { useAuth } from "@/context/AuthContext";
 import { Card, DeltaChip, EmptyState, StatTile, compactUsd } from "@/components/ui";
 import { Identicon } from "@/components/Identicon";
 import { STARTING_BALANCE, type LeaderboardRow } from "@/lib/leaderboard";
+import type { Treasury } from "@/lib/treasury";
 import { startPolling } from "@/lib/poll";
 
 const REFRESH_MS = 30_000;
@@ -68,6 +69,9 @@ function Row({ row, me }: { row: LeaderboardRow; me: boolean }) {
           {row.totalTrades} {row.totalTrades === 1 ? "trade" : "trades"}
           {row.openPositions > 0 && ` · ${row.openPositions} open`}
           {row.volumeUsd > 0 && ` · ${compactUsd(row.volumeUsd)} vol`}
+          {row.feesEarnedUsd > 0 && (
+            <span className="md:hidden"> · {usd.format(row.feesEarnedUsd)} fees</span>
+          )}
         </div>
       </div>
       <div className="hidden md:block w-24 text-right font-mono text-xs tabular-nums">
@@ -77,6 +81,15 @@ function Row({ row, me }: { row: LeaderboardRow; me: boolean }) {
       <div className="hidden md:block w-24 text-right font-mono text-xs tabular-nums">
         <div className="text-[10px] uppercase tracking-wider text-tertiary">Unrealized</div>
         <div className={pnlTone(row.unrealizedPnl)}>{signedUsd(row.unrealizedPnl)}</div>
+      </div>
+      <div
+        className="hidden lg:block w-24 text-right font-mono text-xs tabular-nums"
+        title="Half of every trading fee on markets this account created"
+      >
+        <div className="text-[10px] uppercase tracking-wider text-tertiary">Fees earned</div>
+        <div className={row.feesEarnedUsd > 0 ? pnlTone(1) : "text-tertiary"}>
+          {row.feesEarnedUsd > 0 ? signedUsd(row.feesEarnedUsd) : "—"}
+        </div>
       </div>
       <div className="text-right shrink-0">
         <div className="font-mono font-bold text-primary tabular-nums text-sm sm:text-base">
@@ -88,7 +101,13 @@ function Row({ row, me }: { row: LeaderboardRow; me: boolean }) {
   );
 }
 
-export function LeaderboardView({ rows }: { rows: LeaderboardRow[] }) {
+export function LeaderboardView({
+  rows,
+  treasury,
+}: {
+  rows: LeaderboardRow[];
+  treasury: Treasury;
+}) {
   const router = useRouter();
   const { user } = useAuth();
 
@@ -105,6 +124,7 @@ export function LeaderboardView({ rows }: { rows: LeaderboardRow[] }) {
   const leader = rows[0];
   const totalVolume = rows.reduce((sum, r) => sum + r.volumeUsd, 0);
   const totalTrades = rows.reduce((sum, r) => sum + r.totalTrades, 0);
+  const creatorFees = rows.reduce((sum, r) => sum + r.feesEarnedUsd, 0);
 
   return (
     <div>
@@ -114,12 +134,13 @@ export function LeaderboardView({ rows }: { rows: LeaderboardRow[] }) {
         </h2>
         <p className="text-xs text-tertiary mt-1">
           Everyone starts with {usd.format(STARTING_BALANCE)}. Ranked by equity:
-          cash plus open positions marked to the live VI.
+          cash plus open positions marked to the live VI, including fees earned
+          from markets you created.
         </p>
       </div>
 
-      {/* Phones show two tiles: the field and where you stand. */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
+      {/* Phones show three tiles: the field, the treasury and where you stand. */}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 mb-6">
         <StatTile label="Traders" value={rows.length} sub="with at least one trade" />
         <StatTile
           label="Volume"
@@ -132,6 +153,11 @@ export function LeaderboardView({ rows }: { rows: LeaderboardRow[] }) {
           value={leader ? `@${leader.handle}` : "—"}
           sub={leader ? <DeltaChip value={leader.returnPct} /> : undefined}
           className="hidden md:block"
+        />
+        <StatTile
+          label="Treasury"
+          value={usd.format(treasury.balanceUsd)}
+          sub={`${usd.format(creatorFees)} paid to market creators`}
         />
         <StatTile
           label="Your rank"
@@ -186,7 +212,9 @@ export function LeaderboardView({ rows }: { rows: LeaderboardRow[] }) {
       <Card className="mt-6 p-4 text-xs text-tertiary leading-relaxed">
         Simulated trading only. Equity counts realised results already in
         your balance plus what your open positions would be worth if closed
-        now, so it moves with every VI refresh.
+        now, so it moves with every VI refresh. Every open pays a 1% fee on
+        its size: half goes to whoever created the market, half to the
+        treasury. A position that loses its whole size is liquidated.
       </Card>
     </div>
   );

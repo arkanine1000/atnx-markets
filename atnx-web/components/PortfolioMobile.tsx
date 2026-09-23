@@ -125,7 +125,7 @@ function PositionRow({
         <span className="text-right whitespace-nowrap">
           <span className="block font-bold text-sm text-primary font-mono tabular-nums">{usd.format(p.valueUsd)}</span>
           <span className={`block text-[11px] font-mono tabular-nums ${up ? UP : DOWN}`}>
-            {signed(p.pnlPercent, (x) => x.toFixed(1))}%
+            {p.liquidated ? "liquidating" : `${signed(p.pnlPercent, (x) => x.toFixed(1))}%`}
           </span>
         </span>
       </button>
@@ -427,6 +427,14 @@ export function PortfolioMobile({
           <p className="mt-2 text-[10px] text-tertiary text-center">
             Realized {signed(data.realizedPnlUsd, (x) => usd.format(x))} over {data.totalTrades}{" "}
             {data.totalTrades === 1 ? "trade" : "trades"}
+            {" · "}
+            <span title="Half of every fee on markets you created">
+              earned{" "}
+              <span className={data.feesEarnedUsd > 0 ? UP : ""}>{usd.format(data.feesEarnedUsd)}</span>{" "}
+              in fees
+            </span>
+            {" · "}
+            paid {usd.format(data.feesPaidUsd)}
           </p>
         )}
       </section>

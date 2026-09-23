@@ -1,4 +1,5 @@
 import { createAdminClient } from './supabase/admin';
+import { positionPnl } from './pnl';
 
 // Everyone starts the simulation with this much USDC (sim_balances default).
 export const STARTING_BALANCE = 10000;
@@ -7,12 +8,15 @@ export interface LeaderboardRow {
   rank: number;
   userId: string;
   handle: string;
-  // Cash plus open positions marked to each market's live VI.
+  // Cash plus open positions marked to each market's live VI. Creator fee
+  // income is paid into cash, so it is in here too.
   equity: number;
   // Equity against the starting balance, in percent.
   returnPct: number;
   realizedPnl: number;
   unrealizedPnl: number;
+  // Half of every trading fee on markets this account created.
+  feesEarnedUsd: number;
   openPositions: number;
   totalTrades: number;
   // Simulated USDC this account has traded: every open and every close at
@@ -25,6 +29,7 @@ type BalanceRow = {
   balance_usd: number;
   total_pnl_realized: number;
   total_trades: number;
+  fees_earned_usd: number | null;
 };
 
 type OpenPositionRow = {
@@ -36,30 +41,31 @@ type OpenPositionRow = {
   market: { current_vi: number } | null;
 };
 
-// Same linear VI PnL as the portfolio page, the portfolio API and the
-// server-side close: size × (vi/entry − 1) × leverage, sign flipped for a
-// short.
+// Same PnL as the portfolio page, the portfolio API and the server-side
+// close (lib/pnl.ts): linear in the VI, floored at −size.
 function positionValue(p: OpenPositionRow): { value: number; pnl: number } {
-  const entry = p.entry_vi || 1;
-  const vi = p.market?.current_vi ?? p.entry_vi;
-  const ratio = vi / entry;
-  const directional = p.direction === 'long' ? ratio - 1 : 1 - ratio;
-  const pnl = p.size_usd * directional * p.leverage;
-  return { value: p.size_usd + pnl, pnl };
+  const { pnlUsd } = positionPnl({
+    sizeUsd: p.size_usd,
+    entryVi: p.entry_vi,
+    currentVi: p.market?.current_vi ?? p.entry_vi,
+    direction: p.direction,
+    leverage: p.leverage,
+  });
+  return { value: p.size_usd + pnlUsd, pnl: pnlUsd };
 }
 
 // Every account that has traded (a closed trade on record or a position
-// open now), ranked by equity. Accounts that never traded all sit at the
-// starting balance and would only pad the list. Three reads, no joins on
-// the user side: balances, open positions with their market's VI, and
-// handles; combined here. Reads use the admin client because sim_balances
-// is per-user under RLS.
+// open now) or earned a fee, ranked by equity. Accounts that never traded
+// all sit at the starting balance and would only pad the list. Three reads,
+// no joins on the user side: balances, open positions with their market's
+// VI, and handles; combined here. Reads use the admin client because
+// sim_balances is per-user under RLS.
 export async function getLeaderboard(): Promise<LeaderboardRow[]> {
   const admin = createAdminClient();
   const [balances, positions, traded, profiles] = await Promise.all([
     admin
       .from('sim_balances')
-      .select('user_id, balance_usd, total_pnl_realized, total_trades')
+      .select('user_id, balance_usd, total_pnl_realized, total_trades, fees_earned_usd')
       .returns<BalanceRow[]>(),
     admin
       .from('positions')
@@ -100,7 +106,8 @@ export async function getLeaderboard(): Promise<LeaderboardRow[]> {
   for (const b of balances.data ?? []) {
     const o = open.get(b.user_id);
     const totalTrades = Number(b.total_trades ?? 0);
-    if (totalTrades === 0 && !o) continue;
+    const feesEarnedUsd = Number(b.fees_earned_usd ?? 0);
+    if (totalTrades === 0 && !o && feesEarnedUsd === 0) continue;
     const equity = Number(b.balance_usd ?? STARTING_BALANCE) + (o?.value ?? 0);
     rows.push({
       userId: b.user_id,
@@ -109,6 +116,7 @@ export async function getLeaderboard(): Promise<LeaderboardRow[]> {
       returnPct: ((equity - STARTING_BALANCE) / STARTING_BALANCE) * 100,
       realizedPnl: Number(b.total_pnl_realized ?? 0),
       unrealizedPnl: o?.pnl ?? 0,
+      feesEarnedUsd,
       openPositions: o?.count ?? 0,
       totalTrades,
       volumeUsd: volume.get(b.user_id) ?? 0,

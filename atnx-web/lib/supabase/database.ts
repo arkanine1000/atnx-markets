@@ -46,6 +46,7 @@ export type Database = {
           category: string | null;
           aliases: string[];
           wikidata_qid: string | null;
+          created_by: string | null;
           deleted_at: string | null;
           created_at: string;
         };
@@ -74,6 +75,7 @@ export type Database = {
           category?: string | null;
           aliases?: string[];
           wikidata_qid?: string | null;
+          created_by?: string | null;
           deleted_at?: string | null;
           created_at?: string;
         };
@@ -102,6 +104,7 @@ export type Database = {
           category?: string | null;
           aliases?: string[];
           wikidata_qid?: string | null;
+          created_by?: string | null;
           deleted_at?: string | null;
           created_at?: string;
         };
@@ -234,6 +237,8 @@ export type Database = {
           balance_usd: number;
           total_pnl_realized: number;
           total_trades: number;
+          fees_earned_usd: number;
+          fees_paid_usd: number;
           updated_at: string;
         };
         Insert: {
@@ -241,6 +246,8 @@ export type Database = {
           balance_usd?: number;
           total_pnl_realized?: number;
           total_trades?: number;
+          fees_earned_usd?: number;
+          fees_paid_usd?: number;
           updated_at?: string;
         };
         Update: {
@@ -248,7 +255,66 @@ export type Database = {
           balance_usd?: number;
           total_pnl_realized?: number;
           total_trades?: number;
+          fees_earned_usd?: number;
+          fees_paid_usd?: number;
           updated_at?: string;
+        };
+        Relationships: EmptyRelationships;
+      };
+      sim_treasury: {
+        Row: {
+          id: number;
+          balance_usd: number;
+          fee_count: number;
+          updated_at: string;
+        };
+        Insert: {
+          id?: number;
+          balance_usd?: number;
+          fee_count?: number;
+          updated_at?: string;
+        };
+        Update: {
+          id?: number;
+          balance_usd?: number;
+          fee_count?: number;
+          updated_at?: string;
+        };
+        Relationships: EmptyRelationships;
+      };
+      fee_events: {
+        Row: {
+          id: number;
+          position_id: string;
+          market_id: string;
+          payer_user_id: string;
+          creator_user_id: string | null;
+          fee_usd: number;
+          creator_usd: number;
+          treasury_usd: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: number;
+          position_id: string;
+          market_id: string;
+          payer_user_id: string;
+          creator_user_id?: string | null;
+          fee_usd: number;
+          creator_usd: number;
+          treasury_usd: number;
+          created_at?: string;
+        };
+        Update: {
+          id?: number;
+          position_id?: string;
+          market_id?: string;
+          payer_user_id?: string;
+          creator_user_id?: string | null;
+          fee_usd?: number;
+          creator_usd?: number;
+          treasury_usd?: number;
+          created_at?: string;
         };
         Relationships: EmptyRelationships;
       };
@@ -269,6 +335,8 @@ export type Database = {
           exit_vi: number | null;
           exit_price: number | null;
           realized_pnl: number | null;
+          fee_usd: number;
+          liquidated: boolean;
           status: 'open' | 'closed';
         };
         Insert: {
@@ -287,6 +355,8 @@ export type Database = {
           exit_vi?: number | null;
           exit_price?: number | null;
           realized_pnl?: number | null;
+          fee_usd?: number;
+          liquidated?: boolean;
           status?: 'open' | 'closed';
         };
         Update: {
@@ -305,6 +375,8 @@ export type Database = {
           exit_vi?: number | null;
           exit_price?: number | null;
           realized_pnl?: number | null;
+          fee_usd?: number;
+          liquidated?: boolean;
           status?: 'open' | 'closed';
         };
         Relationships: EmptyRelationships;
@@ -431,7 +503,11 @@ export type Database = {
       };
       close_position: {
         Args: { p_position_id: string };
-        Returns: { realized_pnl: number; exit_vi: number };
+        Returns: { realized_pnl: number; exit_vi: number; liquidated: boolean };
+      };
+      liquidate_positions: {
+        Args: { p_market_id: string; p_vi: number };
+        Returns: number;
       };
       is_admin: {
         Args: Record<string, never>;

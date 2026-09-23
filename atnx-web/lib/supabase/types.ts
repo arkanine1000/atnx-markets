@@ -14,6 +14,7 @@ export type Market = {
   network: 'simulated' | 'devnet' | 'mainnet';
   on_chain_pda: string | null;
   trading_mode: 'sim' | 'live';
+  created_by: string | null;
   deleted_at: string | null;
   created_at: string;
 };
@@ -48,6 +49,8 @@ export type Position = {
   exit_vi: number | null;
   exit_price: number | null;
   realized_pnl: number | null;
+  fee_usd: number;
+  liquidated: boolean;
   status: 'open' | 'closed';
 };
 
@@ -56,6 +59,15 @@ export type SimBalance = {
   balance_usd: number;
   total_pnl_realized: number;
   total_trades: number;
+  fees_earned_usd: number;
+  fees_paid_usd: number;
+  updated_at: string;
+};
+
+export type SimTreasury = {
+  id: number;
+  balance_usd: number;
+  fee_count: number;
   updated_at: string;
 };
 

@@ -10,6 +10,7 @@ import {
 } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/context/AuthContext";
+import { positionPnl } from "@/lib/pnl";
 import {
   openPosition as serverOpenPosition,
   closePosition as serverClosePosition,
@@ -30,9 +31,18 @@ export interface Position {
   captureId: string;
 }
 
+// Fee totals from sim_balances: what this account has earned as the
+// creator of markets others trade on (already in `balance`) and what it
+// has paid on its own opens.
+export interface FeeTotals {
+  earned: number;
+  paid: number;
+}
+
 interface DemoContextType {
   positions: Position[];
   balance: number;
+  fees: FeeTotals;
   isLiveMode: boolean;
   loading: boolean;
   openPosition: (input: OpenPositionArgs) => Promise<OpenPositionOutcome>;
@@ -58,6 +68,7 @@ export type OpenPositionOutcome =
   | { ok: false; error: string };
 
 const INITIAL_BALANCE = 10000;
+const NO_FEES: FeeTotals = { earned: 0, paid: 0 };
 
 const DemoContext = createContext<DemoContextType | null>(null);
 
@@ -104,6 +115,7 @@ export function DemoProvider({ children }: { children: ReactNode }) {
   const { user, loading: authLoading } = useAuth();
   const [positions, setPositions] = useState<Position[]>([]);
   const [balance, setBalance] = useState<number>(INITIAL_BALANCE);
+  const [fees, setFees] = useState<FeeTotals>(NO_FEES);
   const [isLiveMode, setIsLiveMode] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -115,6 +127,7 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     if (!user) {
       setPositions([]);
       setBalance(INITIAL_BALANCE);
+      setFees(NO_FEES);
       setLoading(false);
       return;
     }
@@ -122,7 +135,7 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     const [{ data: bal }, { data: pos }] = await Promise.all([
       supabase
         .from("sim_balances")
-        .select("balance_usd")
+        .select("balance_usd, fees_earned_usd, fees_paid_usd")
         .eq("user_id", user.id)
         .maybeSingle(),
       supabase
@@ -136,7 +149,13 @@ export function DemoProvider({ children }: { children: ReactNode }) {
         .returns<PositionRow[]>(),
     ]);
 
-    if (bal) setBalance(bal.balance_usd);
+    if (bal) {
+      setBalance(bal.balance_usd);
+      setFees({
+        earned: Number(bal.fees_earned_usd ?? 0),
+        paid: Number(bal.fees_paid_usd ?? 0),
+      });
+    }
     setPositions((pos ?? []).map(mapRow));
     setLoading(false);
   }, []);
@@ -216,6 +235,7 @@ export function DemoProvider({ children }: { children: ReactNode }) {
       value={{
         positions,
         balance,
+        fees,
         isLiveMode,
         loading,
         openPosition,
@@ -231,18 +251,22 @@ export function DemoProvider({ children }: { children: ReactNode }) {
 }
 
 export function calculatePnL(position: Position) {
-  // Linear VI-based PnL that matches the server's close math.
-  const entry = position.entryIndex || 1;
-  const ratio = position.currentIndex / entry;
-  const directional = position.type === "long" ? ratio - 1 : 1 - ratio;
-  const pnlAmount = position.size * directional * position.leverage;
-  const pnlPercent = directional * position.leverage * 100;
-  const currentValue = position.size + pnlAmount;
+  // Linear VI-based PnL floored at −size, matching the server's close math
+  // (lib/pnl.ts).
+  const { pnlUsd, pnlPercent, liquidated } = positionPnl({
+    sizeUsd: position.size,
+    entryVi: position.entryIndex,
+    currentVi: position.currentIndex,
+    direction: position.type,
+    leverage: position.leverage,
+  });
+  const currentValue = position.size + pnlUsd;
 
   return {
     pnlPercent: pnlPercent.toFixed(2),
-    pnlAmount: pnlAmount.toFixed(2),
+    pnlAmount: pnlUsd.toFixed(2),
     currentValue: currentValue.toFixed(2),
-    isProfit: pnlAmount >= 0,
+    isProfit: pnlUsd >= 0,
+    liquidated,
   };
 }
