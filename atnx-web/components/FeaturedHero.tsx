@@ -123,7 +123,7 @@ function Intro() {
         }}
       />
       <div className="relative">
-        <h2 className="text-3xl sm:text-4xl font-bold text-primary tracking-tight leading-tight">
+        <h2 className="font-display text-3xl sm:text-4xl font-bold text-primary tracking-tight leading-tight">
           Trade attention,
           <br />
           not tokens.
@@ -146,7 +146,7 @@ function Intro() {
         <button
           type="button"
           onClick={() => setShowHow(true)}
-          className="btn-cmyk mt-7 inline-flex items-center gap-1.5 rounded-full px-[18px] py-[9px] text-[13px] font-bold font-mono cursor-pointer"
+          className="btn-cmyk mt-7 inline-flex items-center gap-1.5 rounded-full px-[18px] py-[9px] text-[13px] font-bold cursor-pointer"
         >
           Show Me
           <span aria-hidden="true" className="opacity-60">
@@ -278,16 +278,16 @@ function Showcase({ items }: { items: Capture[] }) {
             {c.analysis.name || "Untitled"}
           </Link>
 
-          <div className="mt-4 flex items-end gap-4">
-            <div>
-              <div className="text-[10px] uppercase tracking-[0.15em] text-tertiary">
-                Virality Index
-              </div>
-              <div className="text-4xl sm:text-5xl font-bold leading-none text-atnx-yellow light:text-atnx-yellow-light mt-1">
-                {c.viralityScore}
-              </div>
+          <div className="mt-4">
+            <div className="text-[10px] font-mono uppercase tracking-[0.15em] text-tertiary">
+              Virality Index
             </div>
-            <DeltaChip value={change24h} size="md" className="mb-1" />
+            <div className="mt-1 flex items-baseline gap-2.5">
+              <span className="font-display text-4xl sm:text-5xl font-bold leading-none tabular-nums text-atnx-yellow light:text-atnx-yellow-light">
+                {c.viralityScore}
+              </span>
+              <DeltaChip value={change24h} size="md" />
+            </div>
           </div>
 
           {c.analysis.description && (
@@ -299,7 +299,7 @@ function Showcase({ items }: { items: Capture[] }) {
           <div className="mt-auto pt-5 flex items-center gap-2">
             <Link
               href={`/app/markets/${c.marketId}`}
-              className="inline-flex items-center gap-1.5 rounded-full bg-atnx-magenta px-4 py-2 text-xs font-bold text-white hover:bg-atnx-magenta-dim hover:shadow-[0_0_20px_rgba(255,0,229,0.3)] transition-all"
+              className="inline-flex items-center gap-1.5 rounded-full btn-magenta px-4 py-2 text-xs font-bold"
             >
               Trade {"↗"}
             </Link>

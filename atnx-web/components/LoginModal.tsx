@@ -57,7 +57,7 @@ export function LoginModal() {
 
         <h2
           id="login-modal-title"
-          className="text-lg font-bold text-atnx-cyan mb-1"
+          className="font-display text-lg font-bold text-atnx-cyan mb-1"
         >
           Sign in to ATNX
         </h2>

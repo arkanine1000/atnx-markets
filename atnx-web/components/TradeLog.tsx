@@ -50,7 +50,7 @@ export function TradeLog({ marketId, initialEvents }: Props) {
 
   return (
     <div className="max-h-96 overflow-y-auto -mx-1 px-1">
-      <div className="flex items-center gap-3 px-2 pb-2 text-[10px] uppercase tracking-wider text-tertiary">
+      <div className="flex items-center gap-3 px-2 pb-2 text-[10px] font-mono uppercase tracking-wider text-tertiary">
         <span className="w-12">Side</span>
         <span className="flex-1">Trader</span>
         <span className="w-16 text-right">Size</span>
@@ -83,7 +83,7 @@ export function TradeLog({ marketId, initialEvents }: Props) {
               className="flex items-center gap-3 px-2 py-2 rounded-lg text-xs font-mono tabular-nums hover:bg-elevated transition-colors"
             >
               <span
-                className={`w-12 shrink-0 inline-flex justify-center rounded-md border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${tone}`}
+                className={`w-12 shrink-0 inline-flex justify-center rounded-md border px-1.5 py-0.5 text-[10px] font-bold font-mono uppercase tracking-wider ${tone}`}
                 title={e.liquidated ? "Liquidated: the loss reached the full size" : undefined}
               >
                 {label}

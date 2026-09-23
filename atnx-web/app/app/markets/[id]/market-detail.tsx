@@ -156,7 +156,7 @@ export function MarketDetailClient({
                   className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl object-cover border border-surface bg-black shrink-0"
                 />
                 <div className="min-w-0">
-                  <h1 className="text-xl sm:text-2xl font-bold text-primary leading-tight break-words">
+                  <h1 className="font-display text-xl sm:text-2xl font-bold text-primary leading-tight break-words">
                     {name}
                   </h1>
                   <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
@@ -185,14 +185,14 @@ export function MarketDetailClient({
               </div>
 
               <div className="sm:text-right shrink-0">
-                <div className="text-[10px] uppercase tracking-[0.15em] text-tertiary mb-1">
+                <div className="text-[10px] font-mono uppercase tracking-[0.15em] text-tertiary mb-1">
                   Virality Index
                 </div>
                 <div className="flex sm:justify-end items-baseline gap-2">
                   <span className="text-4xl font-bold text-atnx-yellow light:text-atnx-yellow-light leading-none">
                     {viralityScore}
                   </span>
-                  <span className="text-[11px] uppercase tracking-[0.12em] text-secondary">
+                  <span className="text-[11px] font-mono uppercase tracking-[0.12em] text-secondary">
                     {viTier(viralityScore).label}
                   </span>
                 </div>
@@ -380,7 +380,7 @@ export function MarketDetailClient({
                       )}
                       {analysis.virality_signals && (
                         <p className="text-xs text-secondary leading-relaxed font-sans">
-                          <span className="text-tertiary uppercase tracking-wider text-[10px] mr-2">
+                          <span className="text-tertiary font-mono uppercase tracking-wider text-[10px] mr-2">
                             Signals
                           </span>
                           {analysis.virality_signals}
@@ -412,7 +412,7 @@ export function MarketDetailClient({
                               key={String(k)}
                               className="rounded-xl border border-surface bg-elevated p-3 min-w-0"
                             >
-                              <dt className="text-[10px] uppercase tracking-wider text-tertiary">
+                              <dt className="text-[10px] font-mono uppercase tracking-wider text-tertiary">
                                 {k}
                               </dt>
                               <dd
@@ -431,7 +431,7 @@ export function MarketDetailClient({
                       {analysis.platforms_detected &&
                         analysis.platforms_detected.length > 0 && (
                           <div>
-                            <div className="text-[10px] uppercase tracking-wider text-tertiary mb-1.5">
+                            <div className="text-[10px] font-mono uppercase tracking-wider text-tertiary mb-1.5">
                               Platforms
                             </div>
                             <div className="flex gap-1.5 flex-wrap">
@@ -447,7 +447,7 @@ export function MarketDetailClient({
                       {analysis.metrics_detected &&
                         Object.keys(analysis.metrics_detected).length > 0 && (
                           <div>
-                            <div className="text-[10px] uppercase tracking-wider text-tertiary mb-1.5">
+                            <div className="text-[10px] font-mono uppercase tracking-wider text-tertiary mb-1.5">
                               Detected metrics
                             </div>
                             <dl className="rounded-xl border border-surface bg-elevated text-xs">

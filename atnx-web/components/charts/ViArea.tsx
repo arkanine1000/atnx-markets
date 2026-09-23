@@ -326,7 +326,7 @@ export function ViChart({
                       {Math.round(p.value)}
                     </span>
                     <span
-                      className="text-[10px] uppercase tracking-wider"
+                      className="text-[10px] font-mono uppercase tracking-wider"
                       style={{ color: t.inkMuted }}
                     >
                       VI

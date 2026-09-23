@@ -74,7 +74,7 @@ export function AdminDashboard({
     <div className="max-w-6xl mx-auto px-4 py-8 w-full">
       <header className="flex items-center justify-between mb-6 gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-atnx-cyan tracking-widest">
+          <h1 className="wordmark text-2xl text-atnx-cyan tracking-[0.15em]">
             ATNX ADMIN
           </h1>
           <p className="text-xs text-secondary tracking-wide">
@@ -140,7 +140,7 @@ function MarketsTab({ markets }: { markets: MarketRow[] }) {
     <div className="overflow-x-auto">
       <table className="w-full text-xs">
         <thead>
-          <tr className="text-tertiary uppercase tracking-wider">
+          <tr className="text-tertiary font-mono uppercase tracking-wider">
             <th className="text-left py-2 px-2">Name</th>
             <th className="text-left py-2 px-2">Type</th>
             <th className="text-right py-2 px-2">Captures</th>
@@ -277,7 +277,7 @@ function CapturesTab({
     <div className="overflow-x-auto">
       <table className="w-full text-xs">
         <thead>
-          <tr className="text-tertiary uppercase tracking-wider">
+          <tr className="text-tertiary font-mono uppercase tracking-wider">
             <th className="text-left py-2 px-2">Thumb</th>
             <th className="text-left py-2 px-2">User</th>
             <th className="text-left py-2 px-2">Matched to</th>
@@ -391,7 +391,7 @@ function LogTab({ log }: { log: ModerationLogRow[] }) {
     <div className="overflow-x-auto">
       <table className="w-full text-xs">
         <thead>
-          <tr className="text-tertiary uppercase tracking-wider">
+          <tr className="text-tertiary font-mono uppercase tracking-wider">
             <th className="text-left py-2 px-2">When</th>
             <th className="text-left py-2 px-2">Admin</th>
             <th className="text-left py-2 px-2">Action</th>

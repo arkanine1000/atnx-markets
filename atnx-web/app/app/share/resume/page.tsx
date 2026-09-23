@@ -126,14 +126,14 @@ export default function ShareResumePage() {
     <div className="max-w-md mx-auto w-full pt-8 text-center">
       {state === "signin" ? (
         <>
-          <h1 className="text-xl font-bold text-primary">One more step</h1>
+          <h1 className="font-display text-xl font-bold text-primary">One more step</h1>
           <p className="mt-2 text-sm text-secondary">
             Your capture is saved on this phone. Sign in and it goes straight to its market.
           </p>
           <button
             type="button"
             onClick={openLoginModal}
-            className="mt-6 px-6 py-2.5 rounded-full bg-atnx-magenta text-white text-sm font-bold hover:bg-atnx-magenta-dim cursor-pointer transition-colors"
+            className="mt-6 px-6 py-2.5 rounded-full btn-magenta text-sm font-bold cursor-pointer"
           >
             Sign in to finish
           </button>
@@ -150,7 +150,7 @@ export default function ShareResumePage() {
         </>
       ) : state === "error" ? (
         <>
-          <h1 className="text-xl font-bold text-primary">Could not finish the capture</h1>
+          <h1 className="font-display text-xl font-bold text-primary">Could not finish the capture</h1>
           <p className="mt-2 text-sm text-atnx-magenta">{error}</p>
           <div className="mt-6 flex items-center justify-center gap-4 text-sm">
             <button
@@ -159,7 +159,7 @@ export default function ShareResumePage() {
                 started.current = false;
                 setState("checking");
               }}
-              className="px-5 py-2 rounded-full bg-atnx-magenta text-white font-bold cursor-pointer"
+              className="px-5 py-2 rounded-full btn-magenta font-bold cursor-pointer"
             >
               Try again
             </button>
@@ -174,7 +174,7 @@ export default function ShareResumePage() {
             aria-hidden="true"
             className="mx-auto mb-5 h-12 w-12 rounded-full border-[3px] border-elevated border-t-atnx-magenta border-r-atnx-cyan border-b-atnx-yellow animate-spin"
           />
-          <h1 className="text-xl font-bold text-primary">
+          <h1 className="font-display text-xl font-bold text-primary">
             {state === "sending" ? "Capturing…" : "One moment…"}
           </h1>
           <p className="mt-2 text-sm text-secondary">

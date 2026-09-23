@@ -139,7 +139,7 @@ export function ClosePositionModal({ position, onClose }: CloseModalProps) {
         >
           {isProfit ? "↑" : "↓"}
         </div>
-        <h2 className="text-lg font-bold text-primary">
+        <h2 className="font-display text-lg font-bold text-primary">
           {liquidated ? "Position liquidated" : "Position closed"}
         </h2>
         <p className="text-xs text-secondary mt-1 mb-5">

@@ -52,7 +52,7 @@ export function UserMenu() {
     return (
       <button
         onClick={openLoginModal}
-        className="text-xs px-3 py-1.5 rounded border border-atnx-magenta bg-atnx-magenta/10 text-atnx-magenta hover:bg-atnx-magenta hover:text-white cursor-pointer transition-colors font-mono font-bold whitespace-nowrap"
+        className="text-xs px-3 py-1.5 rounded border border-atnx-magenta bg-atnx-magenta/10 text-atnx-magenta hover:bg-atnx-magenta hover:text-white cursor-pointer transition-colors font-bold whitespace-nowrap"
       >
         Login
       </button>

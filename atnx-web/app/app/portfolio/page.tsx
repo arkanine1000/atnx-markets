@@ -10,7 +10,7 @@ import {
 import { useAuth } from "@/context/AuthContext";
 import { ClosePositionModal, DemoToast } from "@/components/Trading";
 import { PortfolioMobile } from "@/components/PortfolioMobile";
-import { Card, Chip, DeltaChip, EmptyState, StatTile } from "@/components/ui";
+import { Card, Chip, DeltaChip, EmptyState, Readout, StatTile } from "@/components/ui";
 import { timeAgo } from "@/lib/capture-view";
 
 function PositionCard({
@@ -33,7 +33,7 @@ function PositionCard({
         <div className="min-w-0">
           <Link
             href={`/app/markets/${position.marketId}`}
-            className="font-bold text-primary text-sm hover:text-atnx-cyan transition-colors break-words"
+            className="font-bold text-primary text-[15px] hover:text-atnx-cyan transition-colors break-words"
           >
             {position.name}
           </Link>
@@ -48,7 +48,7 @@ function PositionCard({
         </div>
         <div className="text-right shrink-0">
           <div
-            className={`text-xl font-semibold font-mono tabular-nums ${pnlTone}`}
+            className={`font-display text-2xl font-bold leading-none tabular-nums ${pnlTone}`}
           >
             {pnl.isProfit ? "+" : ""}${pnl.pnlAmount}
           </div>
@@ -56,7 +56,7 @@ function PositionCard({
         </div>
       </div>
 
-      <dl className="grid grid-cols-4 gap-2 mt-4 text-xs">
+      <div className="grid grid-cols-4 gap-3 mt-4 pt-3 border-t border-surface">
         {[
           [
             "Entry",
@@ -71,21 +71,9 @@ function PositionCard({
           ["Size", `$${position.size.toFixed(0)}`, "text-primary"],
           ["Value", `$${pnl.currentValue}`, "text-primary"],
         ].map(([k, v, cls]) => (
-          <div
-            key={String(k)}
-            className="rounded-lg bg-elevated px-2.5 py-2 min-w-0"
-          >
-            <dt className="text-[10px] uppercase tracking-wider text-tertiary">
-              {k}
-            </dt>
-            <dd
-              className={`mt-0.5 text-sm font-mono font-normal tabular-nums truncate ${cls}`}
-            >
-              {v}
-            </dd>
-          </div>
+          <Readout key={String(k)} label={k} value={v} valueClassName={String(cls)} />
         ))}
-      </dl>
+      </div>
 
       <div className="mt-3 pt-3 border-t border-surface flex items-center justify-between">
         <Link
@@ -97,7 +85,7 @@ function PositionCard({
         <button
           type="button"
           onClick={() => onClose(position)}
-          className="text-[11px] px-3 py-1.5 rounded-full border border-surface text-secondary hover:border-atnx-magenta/50 hover:text-atnx-magenta cursor-pointer transition-colors"
+          className="text-[11px] px-3 py-1.5 rounded-full border border-surface bg-surface hover-lift text-secondary hover:text-primary cursor-pointer"
         >
           Close position
         </button>
@@ -165,7 +153,7 @@ export default function PortfolioPage() {
             <button
               type="button"
               onClick={openLoginModal}
-              className="text-xs px-5 py-2.5 rounded-full bg-atnx-magenta text-white font-bold hover:bg-atnx-magenta-dim cursor-pointer transition-colors"
+              className="text-xs px-5 py-2.5 rounded-full btn-magenta font-bold cursor-pointer"
             >
               Login
             </button>
@@ -178,7 +166,7 @@ export default function PortfolioPage() {
   return (
     <div>
       <div className="mb-5">
-        <h2 className="text-xl sm:text-2xl font-bold text-primary tracking-tight">
+        <h2 className="font-display text-xl sm:text-2xl font-bold text-primary tracking-tight">
           Portfolio
         </h2>
         <p className="text-xs text-tertiary mt-1">Simulated USDC account</p>
@@ -227,7 +215,7 @@ export default function PortfolioPage() {
             action={
               <Link
                 href="/app"
-                className="inline-block text-xs px-5 py-2.5 rounded-full bg-atnx-magenta text-white font-bold hover:bg-atnx-magenta-dim transition-colors"
+                className="inline-block text-xs px-5 py-2.5 rounded-full btn-magenta font-bold"
               >
                 Browse markets
               </Link>
