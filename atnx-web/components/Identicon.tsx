@@ -10,12 +10,22 @@ import { useId, useMemo } from "react";
 // is blue, cyan over yellow green, magenta over yellow red) and a triple
 // overlap goes black. The eye also looks a little to one side, per seed.
 // Pure SVG, no image request, same picture on server and client.
+//
+// The eye itself is line work in the app's greys, like the nav icons: a
+// lid outline over an elevated-grey almond with a fainter crease above it.
+// Only the iris carries colour, so the inks read against the dark disc
+// instead of fighting a white sclera.
 
 const INKS = ["#00D4FF", "#FF00E5", "#FFE500"] as const;
 const DISC = "#0A0A0A";
-const SCLERA = "#F0F0F0";
+const SCLERA = "#1E1E1E"; // dark-elevated
+const LID = "#999999"; // text-secondary
+const CREASE = "#555555";
+const GLINT = "#D6D6D6";
 // Almond from x=8 to x=92, lids meeting at the corners.
 const ALMOND = "M8 50 Q50 12 92 50 Q50 88 8 50 Z";
+// The upper lid's crease, a shallower arc a little above it.
+const CREASE_ARC = "M16 42 Q50 4 84 42";
 
 // FNV-1a: a small, well-spread 32-bit hash for a string.
 function hash(s: string): number {
@@ -170,8 +180,23 @@ export function Identicon({
           </g>
         </g>
         <circle cx={cx} cy={cy} r={r * 0.42} fill={DISC} />
-        <circle cx={cx - r * 0.3} cy={cy - r * 0.3} r={r * 0.13} fill="#FFFFFF" opacity={0.9} />
+        <circle cx={cx - r * 0.3} cy={cy - r * 0.3} r={r * 0.13} fill={GLINT} opacity={0.9} />
       </g>
+      {/* Lid line over the iris edge, then the crease above it. */}
+      <path
+        d={ALMOND}
+        fill="none"
+        stroke={LID}
+        strokeWidth={5}
+        strokeLinejoin="round"
+      />
+      <path
+        d={CREASE_ARC}
+        fill="none"
+        stroke={CREASE}
+        strokeWidth={3.5}
+        strokeLinecap="round"
+      />
     </svg>
   );
 }
