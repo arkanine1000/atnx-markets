@@ -21,8 +21,8 @@ locally.
 
 ## Database
 
-Schema lives in `supabase/` as numbered SQL files, applied by hand in the
-Supabase SQL editor, in order:
+Schema lives in `supabase/` as numbered SQL files, applied by hand in order,
+in the Supabase SQL editor or with `npx supabase db query --linked -f <file>`:
 
 | File | What it does |
 |---|---|
@@ -131,8 +131,10 @@ ignores for Gemini 3.x (measured: 18 s and truncated JSON versus 2.6 s).
 
 - `app/` routes. `app/app/` is the signed-in product; `app/app/submit/` is
   the web entry form; `app/admin/` is the moderation dashboard.
-- `lib/` server code. `capture.ts`, `vlm.ts`, `embed.ts`, `retrieve.ts`,
-  `route.ts`, `store.ts` are the submission path; `signals.ts` and `vi/`
-  compute the virality index.
+- `lib/` server code. `capture.ts`, `capture-request.ts`, `vlm.ts`,
+  `embed.ts`, `retrieve.ts`, `route.ts`, `review.ts`, `store.ts` are the
+  submission path; `signals.ts` and `vi/` compute the virality index;
+  `thumbnails.ts` curates images and descriptions.
 - `components/` shared UI. `supabase/` schema. `scripts/` eval and seeding.
-- `../atnx-extension/` is the Chrome extension that posts to `/api/captures`.
+- `../atnx-extension/` is the Chrome extension that posts to `/api/captures/propose`
+  and commits from its side panel.
