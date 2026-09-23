@@ -153,6 +153,10 @@ export interface WikipediaPageImage {
 // raster at most `width` wide, so an SVG logo comes back as a PNG. Non-free
 // images are included: a company's logo on that company's market is the
 // point. Null when the article has no usable image.
+//
+// Redirects are not followed here or below: a title that redirects
+// ("Kirkiversary" into "Assassination of Charlie Kirk") is a section of a
+// broader subject, whose picture is not the title's.
 export async function fetchWikipediaPageImage(title: string, width = 1024): Promise<WikipediaPageImage | null> {
   const params = new URLSearchParams({
     action: 'query',
@@ -160,7 +164,6 @@ export async function fetchWikipediaPageImage(title: string, width = 1024): Prom
     piprop: 'thumbnail|name',
     pithumbsize: String(width),
     pilicense: 'any',
-    redirects: '1',
     titles: title,
     format: 'json',
     formatversion: '2',
@@ -194,7 +197,6 @@ export async function fetchWikidataLogo(title: string, width = 1024): Promise<Wi
     action: 'query',
     prop: 'pageprops',
     ppprop: 'wikibase_item',
-    redirects: '1',
     titles: title,
     format: 'json',
     formatversion: '2',
