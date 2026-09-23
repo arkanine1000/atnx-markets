@@ -1,6 +1,7 @@
 "use client";
 
 import type { HTMLAttributes, ReactNode } from "react";
+import Link from "next/link";
 import { viTier } from "@/lib/vi/score";
 
 // Small presentational primitives shared across the /app section.
@@ -278,4 +279,82 @@ export function hostOf(url: string): string {
   } catch {
     return url || "—";
   }
+}
+
+/** Which page numbers a pager shows: the ends, a window round the current
+ *  page, and null where pages are skipped. */
+export function pagerItems(page: number, pages: number, around = 1): (number | null)[] {
+  if (pages <= 5 + 2 * around) return Array.from({ length: pages }, (_, i) => i + 1);
+  const keep = new Set<number>([1, pages]);
+  for (let p = page - around; p <= page + around; p++) {
+    if (p >= 1 && p <= pages) keep.add(p);
+  }
+  // Never skip a single page: 1 … 3 reads worse than 1 2 3.
+  if (page - around === 3) keep.add(2);
+  if (page + around === pages - 2) keep.add(pages - 1);
+  const out: (number | null)[] = [];
+  let last = 0;
+  for (const p of [...keep].sort((a, b) => a - b)) {
+    if (p - last > 1) out.push(null);
+    out.push(p);
+    last = p;
+  }
+  return out;
+}
+
+/** Numbered pager. Links, so a page has a URL; the caller builds them. */
+export function Pager({
+  page,
+  pages,
+  href,
+  className = "",
+}: {
+  page: number;
+  pages: number;
+  href: (page: number) => string;
+  className?: string;
+}) {
+  if (pages <= 1) return null;
+  const pill =
+    "inline-flex items-center justify-center min-w-8 h-8 px-2.5 rounded-full text-xs font-bold whitespace-nowrap transition-colors";
+  const idle = `${pill} text-secondary hover:text-primary hover:bg-elevated`;
+  const off = `${pill} text-tertiary/50 pointer-events-none`;
+  const end = (target: number, label: string, enabled: boolean) =>
+    enabled ? (
+      <Link href={href(target)} scroll={false} className={idle}>
+        {label}
+      </Link>
+    ) : (
+      <span aria-disabled="true" className={off}>
+        {label}
+      </span>
+    );
+  return (
+    <nav
+      aria-label="Pages"
+      className={`inline-flex items-center gap-0.5 p-1 rounded-full bg-surface border border-surface ${className}`}
+    >
+      {end(page - 1, "‹ Prev", page > 1)}
+      {pagerItems(page, pages).map((p, i) =>
+        p === null ? (
+          <span key={`gap-${i}`} className={`${pill} text-tertiary`} aria-hidden="true">
+            …
+          </span>
+        ) : p === page ? (
+          <span
+            key={p}
+            aria-current="page"
+            className={`${pill} bg-atnx-magenta text-white shadow-[0_0_16px_rgba(255,0,229,0.25)]`}
+          >
+            {p}
+          </span>
+        ) : (
+          <Link key={p} href={href(p)} scroll={false} className={idle}>
+            {p}
+          </Link>
+        ),
+      )}
+      {end(page + 1, "Next ›", page < pages)}
+    </nav>
+  );
 }

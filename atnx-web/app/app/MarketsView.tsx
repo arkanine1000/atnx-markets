@@ -2,18 +2,19 @@
 
 import {
   useEffect,
-  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
   Suspense,
 } from "react";
-import { useSearchParams } from "next/navigation";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { MarketCard, MarketRow } from "@/components/MarketCard";
 import { FeaturedHero } from "@/components/FeaturedHero";
-import { EmptyState, Segmented } from "@/components/ui";
+import { EmptyState, Pager, Segmented } from "@/components/ui";
 import { startPolling } from "@/lib/poll";
-import type { Capture } from "@/lib/store";
+import { marketsHref, type SortMode } from "@/lib/markets-query";
+import type { MarketsPage } from "@/lib/store";
 
 // A new VI point lands every five minutes; thirty seconds is plenty to
 // catch a fresh capture. Behind it the server memoizes the feed for 15 s,
@@ -40,7 +41,6 @@ function ShareErrorBanner() {
   );
 }
 
-type SortMode = "virality" | "newest" | "category";
 type ViewMode = "grid" | "list";
 const VIEW_KEY = "atnx:markets:view";
 
@@ -73,49 +73,6 @@ function writeView(v: ViewMode) {
   for (const l of viewListeners) l();
 }
 
-interface MarketGroup {
-  key: string; // marketId, or capture.id for orphan captures without a market yet
-  latest: Capture;
-  count: number;
-}
-
-// Collapse captures to one entry per market. The API returns captures in
-// created_at DESC order, so the first time we see a marketId is the latest
-// capture for that market (and the one carrying the history).
-function groupByMarket(captures: Capture[]): MarketGroup[] {
-  const groups = new Map<string, MarketGroup>();
-  for (const capture of captures) {
-    const key = capture.marketId ?? capture.id;
-    const existing = groups.get(key);
-    if (existing) existing.count += 1;
-    else groups.set(key, { key, latest: capture, count: 1 });
-  }
-  return Array.from(groups.values());
-}
-
-function sortMarkets(groups: MarketGroup[], mode: SortMode): MarketGroup[] {
-  const sorted = [...groups];
-  switch (mode) {
-    case "virality":
-      return sorted.sort(
-        (a, b) => b.latest.viralityScore - a.latest.viralityScore,
-      );
-    case "newest":
-      return sorted.sort(
-        (a, b) =>
-          new Date(b.latest.timestamp).getTime() -
-          new Date(a.latest.timestamp).getTime(),
-      );
-    case "category":
-      return sorted.sort((a, b) => {
-        const catA = a.latest.analysis.category || "zzz";
-        const catB = b.latest.analysis.category || "zzz";
-        if (catA !== catB) return catA.localeCompare(catB);
-        return b.latest.viralityScore - a.latest.viralityScore;
-      });
-  }
-}
-
 const GridIcon = (
   <svg
     viewBox="0 0 16 16"
@@ -144,43 +101,64 @@ const ListIcon = (
   </svg>
 );
 
-export function MarketsView({ initialCaptures }: { initialCaptures: Capture[] }) {
-  const [captures, setCaptures] = useState<Capture[]>(initialCaptures);
-  const [sortMode, setSortMode] = useState<SortMode>("virality");
+export function MarketsView({
+  initial,
+  sort,
+  page,
+}: {
+  initial: MarketsPage;
+  sort: SortMode;
+  page: number;
+}) {
+  const router = useRouter();
+  const [data, setData] = useState<MarketsPage>(initial);
   const view = useSyncExternalStore<ViewMode>(subscribeView, readView, () => "grid");
-  // Body of the last feed we rendered. A poll that returns the same bytes
-  // is dropped before setState, so forty sparklines are not redrawn for
-  // nothing every thirty seconds.
+  // Body of the last page we rendered. A poll that returns the same bytes
+  // is dropped before setState, so two dozen sparklines are not redrawn
+  // for nothing every thirty seconds.
   const lastBody = useRef<string | null>(null);
 
-  // Poll while the tab is visible, backing off while the API is failing.
-  // The first fetch waits a full interval: the page arrived with the feed
-  // in it, unless the server render failed, in which case fetch now.
+  // Poll the open page while the tab is visible, backing off while the API
+  // is failing. The first fetch waits a full interval: the page arrived
+  // with its data, unless the server render failed, in which case fetch now.
   useEffect(() => {
-    async function fetchCaptures() {
-      const res = await fetch("/api/captures");
-      if (!res.ok) throw new Error(`feed ${res.status}`);
+    async function fetchPage() {
+      const res = await fetch(`/api/markets${marketsHref({ page, sort }, "")}`);
+      if (!res.ok) throw new Error(`markets ${res.status}`);
       const body = await res.text();
       if (body === lastBody.current) return;
-      const data = JSON.parse(body);
-      if (Array.isArray(data.captures)) {
+      const next = JSON.parse(body) as MarketsPage;
+      if (Array.isArray(next.items)) {
         lastBody.current = body;
-        setCaptures(data.captures);
+        setData(next);
       }
     }
-    return startPolling(fetchCaptures, {
+    return startPolling(fetchPage, {
       intervalMs: POLL_MS,
-      immediate: initialCaptures.length === 0,
+      immediate: initial.items.length === 0,
     });
-    // initialCaptures is the server render; it does not change.
+    // initial is the server render; it does not change for this key.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [page, sort]);
 
-  const groups = useMemo(() => groupByMarket(captures), [captures]);
-  const sorted = useMemo(
-    () => sortMarkets(groups, sortMode),
-    [groups, sortMode],
-  );
+  // A page turn keeps the scroll (the links pass scroll={false}) and lands
+  // on the listing rather than re-showing the hero.
+  const mounted = useRef(false);
+  useEffect(() => {
+    if (!mounted.current) {
+      mounted.current = true;
+      return;
+    }
+    document.getElementById("all-markets")?.scrollIntoView({ block: "start" });
+  }, [page, sort]);
+
+  const setSort = (next: SortMode) =>
+    router.replace(marketsHref({ sort: next, page: 1 }), { scroll: false });
+
+  const { items, featured, total, pageSize } = data;
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+  const offset = (page - 1) * pageSize;
+  const pastEnd = items.length === 0 && total > 0;
 
   return (
     <div>
@@ -188,7 +166,7 @@ export function MarketsView({ initialCaptures }: { initialCaptures: Capture[] })
         <ShareErrorBanner />
       </Suspense>
 
-      <FeaturedHero captures={captures} />
+      <FeaturedHero captures={featured} />
 
       <div
         id="all-markets"
@@ -203,8 +181,8 @@ export function MarketsView({ initialCaptures }: { initialCaptures: Capture[] })
               <span className="absolute inline-flex h-full w-full rounded-full bg-atnx-cyan opacity-60 animate-live-pulse" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-atnx-cyan" />
             </span>
-            {groups.length} live {groups.length === 1 ? "market" : "markets"},
-            refreshed every 30s
+            {total} live {total === 1 ? "market" : "markets"}, refreshed
+            every 30s
           </p>
         </div>
 
@@ -213,8 +191,8 @@ export function MarketsView({ initialCaptures }: { initialCaptures: Capture[] })
             ariaLabel="Sort markets"
             tone="accent"
             itemClassName="w-24"
-            value={sortMode}
-            onChange={setSortMode}
+            value={sort}
+            onChange={setSort}
             options={[
               { value: "virality", label: "Virality" },
               { value: "newest", label: "Newest" },
@@ -233,7 +211,20 @@ export function MarketsView({ initialCaptures }: { initialCaptures: Capture[] })
         </div>
       </div>
 
-      {sorted.length === 0 ? (
+      {pastEnd ? (
+        <EmptyState
+          title="Nothing on this page"
+          body={`There are ${pages} ${pages === 1 ? "page" : "pages"} of markets.`}
+          action={
+            <Link
+              href={marketsHref({ sort, page: 1 })}
+              className="btn-magenta inline-flex items-center rounded-full px-4 py-2 text-xs font-bold"
+            >
+              Back to the first page
+            </Link>
+          }
+        />
+      ) : items.length === 0 ? (
         <EmptyState
           title="No markets yet"
           body={
@@ -248,12 +239,12 @@ export function MarketsView({ initialCaptures }: { initialCaptures: Capture[] })
         />
       ) : view === "grid" ? (
         <div className="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-          {sorted.map((g, i) => (
+          {items.map((c, i) => (
             <MarketCard
-              key={g.key}
-              capture={g.latest}
-              captureCount={g.count}
-              rank={i + 1}
+              key={c.marketId ?? c.id}
+              capture={c}
+              captureCount={c.captureCount ?? 1}
+              rank={offset + i + 1}
               compact
             />
           ))}
@@ -274,15 +265,25 @@ export function MarketsView({ initialCaptures }: { initialCaptures: Capture[] })
             <span className="w-3 shrink-0" />
           </div>
           <div className="space-y-1.5">
-            {sorted.map((g, i) => (
+            {items.map((c, i) => (
               <MarketRow
-                key={g.key}
-                capture={g.latest}
-                captureCount={g.count}
-                rank={i + 1}
+                key={c.marketId ?? c.id}
+                capture={c}
+                captureCount={c.captureCount ?? 1}
+                rank={offset + i + 1}
               />
             ))}
           </div>
+        </div>
+      )}
+
+      {pages > 1 && (
+        <div className="mt-6 flex justify-center">
+          <Pager
+            page={page}
+            pages={pages}
+            href={(p) => marketsHref({ sort, page: p })}
+          />
         </div>
       )}
     </div>

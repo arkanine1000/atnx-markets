@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createAdminClient } from './supabase/admin';
-import { forget, memo } from './memo';
+import { forget, forgetPrefix, memo } from './memo';
+import { PAGE_SIZE, type SortMode } from './markets-query';
 import type { TrendsResult } from './trends';
 import type { Database, Json } from './supabase/database';
 import { smooth, type Components } from './vi/score';
@@ -39,6 +40,8 @@ export interface Capture {
   };
   trends: TrendsResult | null;
   viralityScore: number;
+  // markets.total_captures, for the "N captures" chip on a card.
+  captureCount?: number;
   // Write-side only: the per-source breakdown behind viralityScore and a
   // Trends series on the VI axis to seed a new market's history. Null
   // score means no source knew the term; nothing is recorded then.
@@ -449,6 +452,7 @@ export async function addCapture(
 
   // The submitter is about to look at the feed; let it show this capture.
   forget(feedKey(50));
+  forgetPrefix(MARKETS_PREFIX);
 
   return {
     capture: {
@@ -490,6 +494,7 @@ function rowToCapture(
     analysis: cleanedAnalysis,
     trends,
     viralityScore: Math.round(market?.current_vi ?? 0),
+    captureCount: market?.total_captures ?? undefined,
   };
 }
 
@@ -540,6 +545,106 @@ async function loadCaptures(limit: number): Promise<Capture[]> {
       trends = trendsFromPoints(market.entity_name, series.get(market.id) ?? []);
     }
     return rowToCapture(row, trends);
+  });
+}
+
+// One page of markets for the dashboard, with the hero's featured set so
+// the client refreshes both in one request. Sorting and paging happen in
+// the database; each row carries its newest capture (the card's image,
+// title and analysis) and the market's own capture count.
+export interface MarketsPage {
+  items: Capture[];
+  featured: Capture[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+const MARKETS_PREFIX = 'markets:';
+const FEATURED = 5;
+
+type MarketPageRow = MarketRow & {
+  category: string | null;
+  created_at: string;
+  captures: Omit<CaptureRowWithMarket, 'market'>[];
+};
+
+function marketsQuery(sort: SortMode) {
+  let q = createAdminClient()
+    .from('markets')
+    .select(
+      `${MARKET_COLUMNS}, category, created_at, captures!inner(id, created_at, image_url, source_url, ocr_text, raw_ai_response, market_id)`,
+      { count: 'exact' }
+    )
+    .is('deleted_at', null)
+    .is('captures.deleted_at', null)
+    .order('created_at', { referencedTable: 'captures', ascending: false })
+    .limit(1, { referencedTable: 'captures' });
+  switch (sort) {
+    case 'virality':
+      q = q.order('current_vi', { ascending: false }).order('created_at', { ascending: false });
+      break;
+    case 'newest':
+      q = q.order('created_at', { ascending: false });
+      break;
+    case 'category':
+      q = q
+        .order('category', { ascending: true, nullsFirst: false })
+        .order('current_vi', { ascending: false });
+      break;
+  }
+  return q;
+}
+
+async function loadMarketRows(
+  sort: SortMode,
+  from: number,
+  to: number
+): Promise<{ items: Capture[]; total: number }> {
+  const { data, error, count } = await marketsQuery(sort)
+    .range(from, to)
+    .returns<MarketPageRow[]>();
+  // A page past the end is an empty page, not an error; PostgREST answers
+  // such a range with 416. The count is then re-read on its own.
+  if (error?.code === 'PGRST103') {
+    const { count: total } = await marketsQuery(sort).limit(0);
+    return { items: [], total: total ?? 0 };
+  }
+  if (error) throw error;
+  // The inner join keeps the count to markets with a live capture, so a
+  // market whose captures were all deleted neither counts nor draws.
+  const rows = data ?? [];
+  const series = await getViSeries(
+    rows.map((row) => row.id),
+    FEED_SERIES
+  );
+  const items = rows.map((row) => {
+    const { captures, category, created_at, ...market } = row;
+    void category;
+    void created_at;
+    const latest = captures[0];
+    const trends = trendsFromPoints(market.entity_name, series.get(market.id) ?? []);
+    return rowToCapture({ ...latest, market }, trends);
+  });
+  return { items, total: count ?? items.length };
+}
+
+export function getMarketsPage({ page, sort }: { page: number; sort: SortMode }): Promise<MarketsPage> {
+  return memo(`${MARKETS_PREFIX}${sort}:${page}`, FEED_TTL_MS, async () => {
+    const from = (page - 1) * PAGE_SIZE;
+    const [listing, featured] = await Promise.all([
+      loadMarketRows(sort, from, from + PAGE_SIZE - 1),
+      getFeaturedMarkets(),
+    ]);
+    return { items: listing.items, featured, total: listing.total, page, pageSize: PAGE_SIZE };
+  });
+}
+
+// The hero's showcase: the most viral markets, whatever page is open.
+function getFeaturedMarkets(): Promise<Capture[]> {
+  return memo(`${MARKETS_PREFIX}featured`, FEED_TTL_MS, async () => {
+    const { items } = await loadMarketRows('virality', 0, FEATURED - 1);
+    return items;
   });
 }
 

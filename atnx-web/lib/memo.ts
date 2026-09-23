@@ -39,3 +39,11 @@ export function memo<T>(key: string, ttlMs: number, load: () => Promise<T>): Pro
 export function forget(key: string): void {
   values.delete(key);
 }
+
+// Drop every cached value under a key prefix: the paged market listings
+// after a write, where the page a reader lands on is not known in advance.
+export function forgetPrefix(prefix: string): void {
+  for (const key of values.keys()) {
+    if (key.startsWith(prefix)) values.delete(key);
+  }
+}
