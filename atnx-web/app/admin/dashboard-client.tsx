@@ -167,8 +167,18 @@ function MarketsTab({ markets }: { markets: MarketRow[] }) {
                   isDeleted ? "opacity-50" : ""
                 }`}
               >
-                <td className="py-2 px-2 text-atnx-cyan font-mono">
-                  {m.entity_name}
+                <td className="py-2 px-2 font-mono">
+                  {isDeleted ? (
+                    // A soft-deleted market's page answers 404.
+                    <span className="text-atnx-cyan">{m.entity_name}</span>
+                  ) : (
+                    <Link
+                      href={`/app/markets/${m.id}`}
+                      className="text-atnx-cyan hover:underline"
+                    >
+                      {m.entity_name}
+                    </Link>
+                  )}
                 </td>
                 <td className="py-2 px-2 text-secondary">
                   {m.entity_type ?? "\u2014"}
@@ -368,7 +378,13 @@ function CapturesTab({
                   {c.user?.handle ?? "\u2014"}
                 </td>
                 <td className="py-2 px-2 text-atnx-cyan font-mono">
-                  {c.market?.entity_name ?? "\u2014"}
+                  {c.market_id && c.market ? (
+                    <Link href={`/app/markets/${c.market_id}`} className="hover:underline">
+                      {c.market.entity_name}
+                    </Link>
+                  ) : (
+                    "\u2014"
+                  )}
                 </td>
                 <td className={`py-2 px-2 text-right font-mono ${confColor}`}>
                   {confidence === null
