@@ -121,6 +121,11 @@ export function ViSparkline({
           width={w}
           height={h}
           data={data}
+          // Recharts 3 makes the chart focusable by default, which drew the
+          // browser's focus ring around it on every tap. Nothing here is
+          // keyboard-driven: the sparkline is decoration and the market
+          // chart's tooltip follows the pointer.
+          accessibilityLayer={false}
           margin={{ top: overlay ? 2 : 4, right: 0, bottom: 0, left: 0 }}
         >
           <defs>
@@ -268,6 +273,7 @@ export function ViChart({
           width={w}
           height={h}
           data={data}
+          accessibilityLayer={false}
           margin={{ top: 12, right: 8, bottom: 0, left: 0 }}
         >
           <defs>
