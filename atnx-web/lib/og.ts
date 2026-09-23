@@ -27,8 +27,9 @@ const TIKTOK_HOSTS = /(^|\.)tiktok\.com$/i;
 
 // Generic platform artwork served in place of a real preview (TikTok's
 // logo on its bot page, Facebook/Instagram static assets on their login
-// pages). Treated as "no image" so the caller can ask for a screenshot.
-const PLACEHOLDER_IMAGE = /\/rsrc\.php\/|tiktok-logo\/|\/static\/images\/tiktok/i;
+// pages, Know Your Meme's own logo on its home and search pages). Treated
+// as "no image" so the caller can ask for a screenshot.
+const PLACEHOLDER_IMAGE = /\/rsrc\.php\/|tiktok-logo\/|\/static\/images\/tiktok|a\.kym-cdn\.com\/assets\//i;
 
 export interface UrlImage {
   imageBase64: string;

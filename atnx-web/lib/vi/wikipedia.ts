@@ -93,26 +93,42 @@ export async function fetchWikipediaSignal(term: string, aliases: string[] = [])
 // returns "GEO-Mobile Radio Interface". Only a title that is the term
 // itself (case, punctuation and a disambiguation suffix aside) counts as
 // the term's article; anything else is a different subject's pageviews.
-async function resolveArticleTitle(term: string): Promise<string | null> {
+export async function resolveArticleTitle(term: string): Promise<string | null> {
+  return (await resolveArticleTitles(term))[0] ?? null;
+}
+
+// Every OpenSearch candidate that is the term itself, in search order.
+// With `corporate`, a company suffix is ignored too, so "Apple" also
+// matches "Apple Inc." and "Meta" matches "Meta Platforms": the plain name
+// is often a different article (the fruit) or a disambiguation page.
+export async function resolveArticleTitles(term: string, { corporate = false } = {}): Promise<string[]> {
   const params = new URLSearchParams({
     action: 'opensearch',
     search: term,
-    limit: '5',
+    limit: '8',
     namespace: '0',
     format: 'json',
   });
   const res = await fetch(`${OPENSEARCH_URL}?${params}`, {
     headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
   });
-  if (!res.ok) return null;
+  if (!res.ok) return [];
   const body = (await res.json()) as [string, string[], string[], string[]];
-  const want = normalizeTitle(term);
-  for (const title of body?.[1] ?? []) {
-    const got = normalizeTitle(title.replace(/\s*\([^)]*\)\s*$/, ''));
-    if (got === want) return title;
-  }
-  return null;
+  return (body?.[1] ?? []).filter((title) => titleMatchesTerm(term, title, { corporate }));
 }
+
+// Whether an article title is the term itself: case, punctuation and a
+// disambiguation suffix aside, and with `corporate` a company suffix too.
+export function titleMatchesTerm(term: string, title: string, { corporate = false } = {}): boolean {
+  let bare = title.replace(/\s*\([^)]*\)\s*$/, '');
+  if (corporate) {
+    for (let i = 0; i < 3; i++) bare = bare.replace(CORPORATE_SUFFIX, '');
+  }
+  return normalizeTitle(bare) === normalizeTitle(term);
+}
+
+const CORPORATE_SUFFIX =
+  /[,.]?\s+(inc\.?|incorporated|corporation|corp\.?|company|co\.?|ltd\.?|limited|llc|plc|ag|sa|se|nv|gmbh|group|holdings?|platforms|technologies|technology|labs|international|global|entertainment|media|studios?|games|motors|systems|software|networks?|interactive)$/i;
 
 function normalizeTitle(s: string): string {
   return s
@@ -135,6 +151,141 @@ async function fetchDailyPageviews(title: string): Promise<{ date: string; views
     views: item.views,
   }));
 }
+
+export interface WikipediaPageImage {
+  url: string;
+  width: number;
+  height: number;
+  file: string;
+}
+
+// The article's lead image (MediaWiki's PageImages pick), rendered as a
+// raster at most `width` wide, so an SVG logo comes back as a PNG. Non-free
+// images are included: a company's logo on that company's market is the
+// point. Null when the article has no usable image.
+//
+// Redirects are not followed here or below: a title that redirects
+// ("Kirkiversary" into "Assassination of Charlie Kirk") is a section of a
+// broader subject, whose picture is not the title's.
+export async function fetchWikipediaPageImage(title: string, width = 1024): Promise<WikipediaPageImage | null> {
+  const params = new URLSearchParams({
+    action: 'query',
+    prop: 'pageimages',
+    piprop: 'thumbnail|name',
+    pithumbsize: String(width),
+    pilicense: 'any',
+    titles: title,
+    format: 'json',
+    formatversion: '2',
+  });
+  const res = await fetch(`${OPENSEARCH_URL}?${params}`, {
+    headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
+  });
+  if (!res.ok) throw new Error(`pageimages ${res.status}`);
+  const body = (await res.json()) as {
+    query?: { pages?: { thumbnail?: { source: string; width: number; height: number }; pageimage?: string }[] };
+  };
+  const page = body.query?.pages?.[0];
+  if (!page?.thumbnail?.source || !page.pageimage) return null;
+  return {
+    url: page.thumbnail.source,
+    width: page.thumbnail.width,
+    height: page.thumbnail.height,
+    file: page.pageimage,
+  };
+}
+
+const WIKIDATA_URL = 'https://www.wikidata.org/w/api.php';
+const COMMONS_FILE_URL = 'https://commons.wikimedia.org/wiki/Special:FilePath/';
+
+export interface ArticleFacts {
+  title: string;
+  // The article's Wikidata item, when it has one.
+  qid: string | null;
+  // Wikipedia's one-line description ("American technology company",
+  // "Internet meme", "Given name"), the cheapest way to tell what kind of
+  // thing an article is about.
+  shortDescription: string | null;
+  disambiguation: boolean;
+}
+
+// What kind of page a title is, from its page properties. Null when there
+// is no such page. Redirects are not followed (see fetchWikipediaPageImage).
+export async function fetchArticleFacts(title: string): Promise<ArticleFacts | null> {
+  const props = new URLSearchParams({
+    action: 'query',
+    prop: 'pageprops',
+    ppprop: 'wikibase_item|wikibase-shortdesc|disambiguation',
+    titles: title,
+    format: 'json',
+    formatversion: '2',
+  });
+  const res = await fetch(`${OPENSEARCH_URL}?${props}`, {
+    headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
+  });
+  if (!res.ok) throw new Error(`pageprops ${res.status}`);
+  const body = (await res.json()) as {
+    query?: {
+      pages?: {
+        title: string;
+        missing?: boolean;
+        pageprops?: { wikibase_item?: string; 'wikibase-shortdesc'?: string; disambiguation?: string };
+      }[];
+    };
+  };
+  const page = body.query?.pages?.[0];
+  if (!page || page.missing) return null;
+  return {
+    title: page.title,
+    qid: page.pageprops?.wikibase_item ?? null,
+    shortDescription: page.pageprops?.['wikibase-shortdesc'] ?? null,
+    disambiguation: page.pageprops?.disambiguation !== undefined,
+  };
+}
+
+// The values of one property on a Wikidata item, best rank first: item
+// ids for item-valued properties (P31 "instance of"), file names for
+// Commons media (P154 "logo image").
+export async function fetchWikidataValues(qid: string, property: string): Promise<string[]> {
+  const params = new URLSearchParams({ action: 'wbgetclaims', entity: qid, property, format: 'json' });
+  const res = await fetch(`${WIKIDATA_URL}?${params}`, {
+    headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
+  });
+  if (!res.ok) throw new Error(`wbgetclaims ${res.status}`);
+  const body = (await res.json()) as {
+    claims?: Record<
+      string,
+      { rank?: string; mainsnak?: { datavalue?: { value?: string | { id?: string } } } }[]
+    >;
+  };
+  const claims = (body.claims?.[property] ?? []).filter((c) => c.rank !== 'deprecated');
+  claims.sort((a, b) => (b.rank === 'preferred' ? 1 : 0) - (a.rank === 'preferred' ? 1 : 0));
+  const values: string[] = [];
+  for (const c of claims) {
+    const v = c.mainsnak?.datavalue?.value;
+    if (typeof v === 'string') values.push(v);
+    else if (v?.id) values.push(v.id);
+  }
+  return values;
+}
+
+// The Wikidata item for a human being (P31 "instance of").
+export const WIKIDATA_HUMAN = 'Q5';
+
+// The item's logo (P154 "logo image"), rendered by Commons as a raster at
+// most `width` wide. Null when the item has no logo.
+export async function fetchWikidataLogo(qid: string, width = 1024): Promise<WikipediaPageImage | null> {
+  const [file] = await fetchWikidataValues(qid, 'P154');
+  if (!file) return null;
+  return {
+    url: `${COMMONS_FILE_URL}${encodeURIComponent(file)}?width=${width}`,
+    width,
+    height: 0,
+    file,
+  };
+}
+
+export { USER_AGENT as WIKIMEDIA_USER_AGENT };
 
 function formatDate(d: Date): string {
   const y = d.getUTCFullYear();

@@ -32,6 +32,13 @@ export function polarityColor(points: ViPoint[]): string {
   return points[points.length - 1].value >= points[0].value ? UP : DOWN;
 }
 
+// Colour for a sparkline that sits beside a DeltaChip: the line follows the
+// same 24h delta as the chip, so the two never disagree. Cyan when there is
+// no delta to show, matching the chip's neutral state leaning up.
+export function deltaColor(change: number | null): string {
+  return change !== null && change < 0 ? DOWN : UP;
+}
+
 // Measure the wrapper ourselves and hand recharts explicit pixel dimensions.
 // Its ResponsiveContainer starts at -1×-1 and logs a warning on the first
 // paint; sizing the chart directly avoids that and a hidden wrapper simply

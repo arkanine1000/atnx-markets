@@ -23,14 +23,30 @@ export function sentimentColor(sentiment?: string): string {
   }
 }
 
-// Deterministic mock 24h change derived from a stable id — keeps the number
-// stable across renders without needing a backend column for it yet.
-export function mock24hChange(id: string, score: number): number {
-  let hash = 0;
-  for (let i = 0; i < id.length; i++) {
-    hash = (hash * 31 + id.charCodeAt(i)) | 0;
+const DAY_MS = 86_400_000;
+
+// Percent change of the Virality Index over the last day, from the market's
+// VI history (oldest first) and its current score. The baseline is the
+// reading nearest to 24h before the newest point; the newest point's own
+// time is the clock, not Date.now(), so the server and the client agree.
+// The newest point is never its own baseline. Null when there is nothing to
+// compare against (fewer than two readings, or a baseline of zero), which
+// the DeltaChip renders as a neutral dash.
+export function viChange24h(
+  points: { date: string; value: number }[],
+  current: number,
+): number | null {
+  if (points.length < 2) return null;
+  const target = new Date(points[points.length - 1].date).getTime() - DAY_MS;
+  let baseline = points[0];
+  let best = Infinity;
+  for (const p of points.slice(0, -1)) {
+    const gap = Math.abs(new Date(p.date).getTime() - target);
+    if (gap < best) {
+      best = gap;
+      baseline = p;
+    }
   }
-  const base = ((hash % 600) - 250) / 10;
-  const bias = score > 400 ? 5 : score > 200 ? 0 : -3;
-  return Math.round((base + bias) * 10) / 10;
+  if (!(baseline.value > 0)) return null;
+  return Math.round(((current - baseline.value) / baseline.value) * 1000) / 10;
 }

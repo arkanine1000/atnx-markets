@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
-import { ViSparkline, polarityColor } from "@/components/charts/ViArea";
+import { ViSparkline, deltaColor } from "@/components/charts/ViArea";
+import { LogoImage } from "@/components/LogoImage";
 import { Chip, DeltaChip, ScoreBadge } from "@/components/ui";
-import { mock24hChange } from "@/lib/capture-view";
+import { viChange24h } from "@/lib/capture-view";
 import type { Capture } from "@/lib/store";
 
 interface Props {
@@ -15,18 +15,34 @@ interface Props {
   compact?: boolean;
 }
 
-// Grid tile: the capture image is the hero and the VI history is drawn
+// The picture on a tile: the curated market image when the slow refresh
+// has found one (lib/thumbnails.ts), else the capture itself. A logo is a
+// mark on a transparent ground, often a wide wordmark, so it is drawn
+// whole with padding on a tile of its own (LogoImage) rather than cropped
+// to fill. A person's Wikipedia portrait is tall and cropped near the top
+// so the face stays in frame.
+export function tileImage(capture: Capture): { src: string; logo: boolean; portrait: boolean } {
+  const curated = Boolean(capture.marketImage);
+  return {
+    src: capture.marketImage || capture.screenshot,
+    logo: curated && capture.marketImageSource === "wikidata:logo",
+    portrait:
+      curated &&
+      capture.marketImageSource === "wikipedia:lead" &&
+      capture.analysis.type === "person",
+  };
+}
+
+// Grid tile: the market image is the hero and the VI history is drawn
 // straight over its lower half, the way pump.fun overlays a chart on the coin
 // art. Name, category, score and 24h delta sit underneath.
 export function MarketCard({ capture, captureCount, rank, compact }: Props) {
   const { analysis, trends, viralityScore, marketId } = capture;
   const points = trends?.dataPoints ?? [];
-  const change24h = useMemo(
-    () => mock24hChange(marketId ?? capture.id, viralityScore),
-    [marketId, capture.id, viralityScore],
-  );
-  const stroke = polarityColor(points);
+  const change24h = viChange24h(points, viralityScore);
+  const stroke = deltaColor(change24h);
   const pending = !marketId;
+  const image = tileImage(capture);
 
   const body = (
     <>
@@ -35,13 +51,19 @@ export function MarketCard({ capture, captureCount, rank, compact }: Props) {
           compact ? "aspect-[16/11]" : "aspect-[4/3]"
         }`}
       >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={capture.screenshot}
-          alt=""
-          loading="lazy"
-          className="absolute inset-0 w-full h-full object-cover"
-        />
+        {image.logo ? (
+          <LogoImage src={image.src} imgClassName="p-[12%] pb-[30%]" />
+        ) : (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={image.src}
+            alt=""
+            loading="lazy"
+            className={`absolute inset-0 w-full h-full object-cover ${
+              image.portrait ? "object-[50%_20%]" : ""
+            }`}
+          />
+        )}
         <div
           className="absolute inset-x-0 bottom-0 h-[62%]"
           style={{
@@ -117,24 +139,30 @@ export function MarketCard({ capture, captureCount, rank, compact }: Props) {
 export function MarketRow({ capture, captureCount, rank }: Props) {
   const { analysis, trends, viralityScore, marketId } = capture;
   const points = trends?.dataPoints ?? [];
-  const change24h = useMemo(
-    () => mock24hChange(marketId ?? capture.id, viralityScore),
-    [marketId, capture.id, viralityScore],
-  );
+  const change24h = viChange24h(points, viralityScore);
   const pending = !marketId;
+  const image = tileImage(capture);
 
   const body = (
     <div className="flex items-center gap-3 px-3 py-2.5">
       <span className="w-6 text-right text-xs text-tertiary font-mono tabular-nums shrink-0">
         {rank}
       </span>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={capture.screenshot}
-        alt=""
-        loading="lazy"
-        className="w-10 h-10 rounded-lg object-cover border border-surface shrink-0 bg-black"
-      />
+      {image.logo ? (
+        <span className="relative block w-10 h-10 rounded-lg overflow-hidden border border-surface shrink-0">
+          <LogoImage src={image.src} imgClassName="p-1" />
+        </span>
+      ) : (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={image.src}
+          alt=""
+          loading="lazy"
+          className={`w-10 h-10 rounded-lg border border-surface shrink-0 object-cover bg-black ${
+            image.portrait ? "object-[50%_20%]" : ""
+          }`}
+        />
+      )}
       <div className="min-w-0 flex-1">
         <div className="text-sm font-bold text-primary truncate flex items-center gap-2">
           <span className="truncate">{analysis.name || "Untitled"}</span>
@@ -148,7 +176,11 @@ export function MarketRow({ capture, captureCount, rank }: Props) {
         </div>
       </div>
       <div className="hidden sm:block w-28 shrink-0">
-        <ViSparkline dataPoints={points} height={36} />
+        <ViSparkline
+          dataPoints={points}
+          height={36}
+          color={deltaColor(change24h)}
+        />
       </div>
       <div className="hidden xs:block sm:w-20 shrink-0 text-right">
         <DeltaChip value={change24h} />
