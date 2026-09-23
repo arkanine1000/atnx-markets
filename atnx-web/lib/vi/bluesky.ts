@@ -149,13 +149,15 @@ export async function fetchBlueskySignal(term: string, aliases: string[] = []): 
 
     // Hourly rate now vs the average hourly rate over the window. Below one
     // post an hour most hours are empty and the ratio is noise, so only
-    // report momentum once the day count clears that bar. When a phrase hit
-    // the cap the posts fetched do not span 24 h, so the baseline rate is
-    // taken over the hours they actually cover; dividing by 24 made a busy
-    // market read as a 10x spike every hour.
+    // report momentum once the day count clears that bar. The baseline is
+    // taken over the hours the fetched posts actually span, never an
+    // assumed 24: the search index returns a truncated recent slice for
+    // busy phrases whatever `since` says (Google: 400 posts, 191 of them in
+    // the last hour), and dividing by 24 read that as a 10x spike every
+    // hour. A span under two hours has no baseline to speak of.
     const oldest = times.length ? Math.min(...times) : now;
-    const spanHours = capped ? Math.max(1, (now - oldest) / 3600_000) : 24;
-    const momentum = day < MOMENTUM_MIN_DAY ? null : hour / (day / spanHours);
+    const spanHours = (now - oldest) / 3600_000;
+    const momentum = day < MOMENTUM_MIN_DAY || spanHours < 2 ? null : hour / (day / spanHours);
 
     const result: SourceComponent = {
       source: 'bluesky',
