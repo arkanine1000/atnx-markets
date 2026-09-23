@@ -200,16 +200,6 @@ export default function PortfolioPage() {
           sub="balance + positions"
         />
         <StatTile
-          label="Available"
-          value={`$${balance.toFixed(2)}`}
-          sub="USDC"
-        />
-        <StatTile
-          label="Open positions"
-          value={positions.length}
-          sub={`$${totalSize.toFixed(0)} deployed`}
-        />
-        <StatTile
           label="Unrealized PnL"
           value={
             <span className={pnlTone}>
@@ -226,11 +216,6 @@ export default function PortfolioPage() {
             </span>
           }
           sub="half of every fee on markets you created"
-        />
-        <StatTile
-          label="Fees paid"
-          value={`$${fees.paid.toFixed(2)}`}
-          sub="1% of size on each open"
         />
       </div>
 
