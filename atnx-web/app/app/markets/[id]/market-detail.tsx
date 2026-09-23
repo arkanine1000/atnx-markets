@@ -138,7 +138,9 @@ export function MarketDetailClient({
   const selected = captures[selectedIdx] ?? captures[0];
   const latest = captures[0];
   const { analysis, viralityScore } = selected;
-  const name = latest.analysis.name || market.entity_name;
+  // The market's own name. Captures carry the name they were analysed
+  // under, which for older ones can differ from the market they sit on.
+  const name = market.entity_name || latest.analysis.name || "Untitled";
   const points = useMemo(() => trends?.dataPoints ?? [], [trends]);
   const trendInfo = getTrendIndicator(trends?.trend);
   const change24h = useMemo(

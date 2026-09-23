@@ -124,8 +124,10 @@ export function ViSparkline({
           // Recharts 3 makes the chart focusable by default, which drew the
           // browser's focus ring around it on every tap. Nothing here is
           // keyboard-driven: the sparkline is decoration and the market
-          // chart's tooltip follows the pointer.
+          // chart's tooltip follows the pointer. Its wrapper also sets
+          // cursor: default inline; inherit keeps the card link's pointer.
           accessibilityLayer={false}
+          style={{ cursor: "inherit" }}
           margin={{ top: overlay ? 2 : 4, right: 0, bottom: 0, left: 0 }}
         >
           <defs>
@@ -274,6 +276,7 @@ export function ViChart({
           height={h}
           data={data}
           accessibilityLayer={false}
+          style={{ cursor: "inherit" }}
           margin={{ top: 12, right: 8, bottom: 0, left: 0 }}
         >
           <defs>

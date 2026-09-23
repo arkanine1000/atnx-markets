@@ -115,6 +115,14 @@ a .recharts-wrapper {
   cursor: pointer !important;
 }
 
+/* Recharts 3 gives every drawing layer tabindex="-1", so a click or tap
+   focuses a <g> and the browser outlines it. Nothing in the charts is
+   keyboard-driven. */
+.recharts-wrapper :focus,
+.recharts-wrapper :focus-visible {
+  outline: none;
+}
+
 /* Hide number input spinners on the trade amount field */
 .no-spin::-webkit-outer-spin-button,
 .no-spin::-webkit-inner-spin-button {
