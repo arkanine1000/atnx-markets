@@ -59,6 +59,9 @@ export type MarketRow = {
   total_captures: number;
   thumbnail_url: string | null;
   thumbnail_source: string | null;
+  // One of the ten enum values (supabase/002), the market's own filing;
+  // captures display this, not whatever their analysis said.
+  category: string | null;
   // The market this one is about, if any (supabase/010). Display only.
   parent_market_id: string | null;
 };
@@ -119,7 +122,7 @@ async function uploadScreenshot(
 }
 
 const MARKET_COLUMNS =
-  'id, entity_name, entity_type, current_vi, vi_last_updated, total_captures, thumbnail_url, thumbnail_source, parent_market_id';
+  'id, entity_name, entity_type, current_vi, vi_last_updated, total_captures, thumbnail_url, thumbnail_source, category, parent_market_id';
 
 export async function getMarketById(id: string): Promise<MarketRow | null> {
   const { data, error } = await createAdminClient()
@@ -487,6 +490,10 @@ function rowToCapture(
 
   const cleanedAnalysis: Capture['analysis'] = { ...analysis };
   delete (cleanedAnalysis as Record<string, unknown>)._meta;
+  // The market's category is the filing the UI shows. Captures written
+  // before the enum carry free text here, and a capture matched to an
+  // existing market may carry nothing.
+  if (market?.category) cleanedAnalysis.category = market.category;
 
   return {
     id: row.id,
@@ -570,7 +577,6 @@ const MARKETS_PREFIX = 'markets:';
 const FEATURED = 5;
 
 type MarketPageRow = MarketRow & {
-  category: string | null;
   created_at: string;
   captures: Omit<CaptureRowWithMarket, 'market'>[];
 };
@@ -579,7 +585,7 @@ function marketsQuery(sort: SortMode) {
   let q = createAdminClient()
     .from('markets')
     .select(
-      `${MARKET_COLUMNS}, category, created_at, captures!inner(id, created_at, image_url, source_url, ocr_text, raw_ai_response, market_id)`,
+      `${MARKET_COLUMNS}, created_at, captures!inner(id, created_at, image_url, source_url, ocr_text, raw_ai_response, market_id)`,
       { count: 'exact' }
     )
     .is('deleted_at', null)
@@ -625,8 +631,7 @@ async function loadMarketRows(
     FEED_SERIES
   );
   const items = rows.map((row) => {
-    const { captures, category, created_at, ...market } = row;
-    void category;
+    const { captures, created_at, ...market } = row;
     void created_at;
     const latest = captures[0];
     const trends = trendsFromPoints(market.entity_name, series.get(market.id) ?? []);

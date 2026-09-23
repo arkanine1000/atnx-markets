@@ -13,6 +13,7 @@
     "backfill:embeddings": "node --env-file=.env.local scripts/backfill-embeddings.mjs",
     "vi:probe": "npx --yes tsx --env-file=.env.local scripts/vi-probe.ts",
     "aliases:backfill": "npx --yes tsx --env-file=.env.local scripts/backfill-aliases.ts",
+    "categories:backfill": "npx --yes tsx --env-file=.env.local scripts/backfill-categories.ts",
     "thumbs:backfill": "npx --yes tsx --env-file=.env.local scripts/backfill-thumbnails.ts"
   },
   "dependencies": {

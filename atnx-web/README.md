@@ -119,6 +119,7 @@ ignores for Gemini 3.x (measured: 18 s and truncated JSON versus 2.6 s).
 | `npm run eval:capture` | Posts the fixtures in `scripts/fixtures/` through the real route and checks each expected outcome, then resubmits to check dedup. Needs `EVAL_*` variables in `.env.local` and a running server. Run after any change to the pipeline. |
 | `npm run fixtures:render` | Regenerates the fixture images from `scripts/fixtures/manifest.json`. |
 | `npm run backfill:embeddings` | Embeds every live market without a vector. Run once after migration `001` and after any bulk seed. |
+| `npm run categories:backfill [--dry-run]` | Files every live market without a `category` into one of the ten enum values with one text-model call each. Run after any seed that inserts markets without one; `--dry-run` prints the proposals. |
 | `npm run seed:trending` | Seeds a fresh database with a hand-curated set of markets. |
 | `npm run thumbs:backfill [n] [--redo]` | Curates images for up to `n` (default 100) highlighted markets now, the same pass the hourly slow refresh runs a dozen at a time. `--redo` also replaces images an earlier pass chose (never one marked `manual`). Needs migration `008`. |
 
