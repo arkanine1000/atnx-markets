@@ -12,6 +12,23 @@ const JPEG_QUALITY = 0.85;
 const MAX_RAW_BYTES = 4 * 1024 * 1024;
 const IMAGE_EXT = /\.(png|jpe?g|webp|gif|heic|heif|avif|bmp)$/i;
 
+// A picked file is copied into memory the moment it arrives. On Android,
+// Chrome hands the page a File that points at a content URI whose read
+// permission can be gone by the time the preview draws or the upload runs
+// (Chromium issue 40123366, ERR_UPLOAD_FILE_CHANGED: a broken preview, then
+// "Failed to fetch"). Reading the bytes once, right away, either gives us a
+// copy nothing can revoke or fails here, where we can say so.
+async function copyIntoMemory(f: File): Promise<File> {
+  const bytes = await f.arrayBuffer();
+  if (bytes.byteLength === 0) throw new Error('empty');
+  return new File([bytes], f.name || 'image', { type: f.type || 'image/jpeg' });
+}
+
+function describeFile(f: File): string {
+  const kb = Math.round(f.size / 1024);
+  return `${f.name || 'unnamed'}, ${f.type || 'unknown type'}, ${kb} KB reported`;
+}
+
 type Outcome = "matched" | "linked" | "created" | "created_review" | "dedup";
 
 interface SuccessResponse {
@@ -132,11 +149,21 @@ interface SubmitFormProps {
   initialUrl?: string;
   initialText?: string;
   notice?: string;
+  // The share arrived without a usable image: make picking one the obvious
+  // next tap. (The picker cannot be opened without a user gesture.)
+  wantsImage?: boolean;
 }
 
-export function SubmitForm({ initialUrl = "", initialText = "", notice = "" }: SubmitFormProps) {
+export function SubmitForm({
+  initialUrl = "",
+  initialText = "",
+  notice = "",
+  wantsImage = false,
+}: SubmitFormProps) {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
+  // The picked file could not be read; what we know about it, for the notice.
+  const [unreadable, setUnreadable] = useState<string | null>(null);
   const [url, setUrl] = useState(initialUrl);
   const [text, setText] = useState(initialText);
   const [busy, setBusy] = useState(false);
@@ -159,14 +186,22 @@ export function SubmitForm({ initialUrl = "", initialText = "", notice = "" }: S
   }, [file]);
 
   // Android pickers sometimes hand over a file with an empty MIME type; the
-  // extension is the tie-breaker there.
+  // extension is the tie-breaker there. The bytes are copied at once (see
+  // copyIntoMemory); a file that cannot be read is reported, not kept.
   const takeFile = useCallback((f: File | null | undefined) => {
     if (!f) return;
     const looksLikeImage =
       f.type.startsWith("image/") || (!f.type && IMAGE_EXT.test(f.name));
     if (!looksLikeImage) return;
-    setFile(f);
     setResult(null);
+    setUnreadable(null);
+    copyIntoMemory(f).then(
+      (copy) => setFile(copy),
+      () => {
+        setFile(null);
+        setUnreadable(describeFile(f));
+      },
+    );
   }, []);
 
   // Paste anywhere on the page.
@@ -216,10 +251,13 @@ export function SubmitForm({ initialUrl = "", initialText = "", notice = "" }: S
 
   function reset() {
     setFile(null);
+    setUnreadable(null);
     setUrl("");
     setText("");
     setResult(null);
   }
+
+  const emphasizePicker = wantsImage && !file && !result;
 
   return (
     <form onSubmit={submit} className="space-y-4">
@@ -258,7 +296,9 @@ export function SubmitForm({ initialUrl = "", initialText = "", notice = "" }: S
           if (e.key === "Enter" || e.key === " ") inputRef.current?.click();
         }}
         className={`rounded-2xl border-2 border-dashed p-6 text-center cursor-pointer transition-colors ${
-          dragging ? "border-atnx-cyan bg-atnx-cyan/5" : "border-surface bg-surface"
+          dragging || emphasizePicker
+            ? "border-atnx-cyan bg-atnx-cyan/5"
+            : "border-surface bg-surface"
         }`}
       >
         <input
@@ -301,14 +341,40 @@ export function SubmitForm({ initialUrl = "", initialText = "", notice = "" }: S
               </button>
             </div>
           </div>
+        ) : unreadable ? (
+          <div className="text-left">
+            <div className="text-sm font-bold text-atnx-magenta">
+              That image could not be read
+            </div>
+            <div className="text-xs text-secondary mt-1 break-words">
+              Your phone offered it ({unreadable}) but would not let the
+              browser open it. This is a Chrome for Android bug with photos
+              from the picker or a cloud gallery.
+            </div>
+            <div className="text-xs text-tertiary mt-2">
+              Tap to pick it again. If it fails twice, take a fresh
+              screenshot of it or save it to the phone first.
+            </div>
+          </div>
         ) : (
           <>
             <div className="text-sm font-bold text-primary">
-              {showNotice ? "Add a screenshot" : "Drop a screenshot"}
+              {emphasizePicker
+                ? "Pick the screenshot"
+                : showNotice
+                  ? "Add a screenshot"
+                  : "Drop a screenshot"}
             </div>
             <div className="text-xs text-tertiary mt-1">
-              or tap to choose, or paste an image anywhere on this page
+              {emphasizePicker
+                ? "tap here and choose it from your gallery"
+                : "or tap to choose, or paste an image anywhere on this page"}
             </div>
+            {emphasizePicker && (
+              <span className="mt-3 inline-block rounded-full bg-atnx-cyan px-4 py-2 text-xs font-bold text-black">
+                Choose screenshot
+              </span>
+            )}
             <button
               type="button"
               onClick={(e) => {
@@ -374,7 +440,7 @@ export function SubmitForm({ initialUrl = "", initialText = "", notice = "" }: S
         >
           {busy ? "Working…" : "Submit"}
         </button>
-        {(file || url || text) && !busy && (
+        {(file || unreadable || url || text) && !busy && (
           <button
             type="button"
             onClick={reset}

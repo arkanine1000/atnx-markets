@@ -54,6 +54,11 @@ export default function manifest(): MetadataRoute.Manifest {
     // Android share target: tapping "Share" on an image in any app and
     // picking ATNX POSTs the image + optional text to /share, which runs
     // the same pipeline as /api/captures and redirects to the new market.
+    // `image/*` so HEIC, AVIF and apps that share with a generic image type
+    // are not filtered out before they reach us; the server decides what it
+    // can decode. Chrome rebuilds the installed WebAPK from a changed
+    // share_target a day or more after the app is next opened and fully
+    // closed, so this takes a while to reach phones.
     // Next's MetadataRoute.Manifest types `files` as File[] (incorrect —
     // the spec expects {name, accept} entries), so we cast.
     share_target: {
@@ -67,7 +72,7 @@ export default function manifest(): MetadataRoute.Manifest {
         files: [
           {
             name: 'image',
-            accept: ['image/png', 'image/jpeg', 'image/webp', 'image/gif'],
+            accept: ['image/*'],
           },
         ],
       },
