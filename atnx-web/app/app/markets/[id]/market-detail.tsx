@@ -15,7 +15,7 @@ import { TradePanel } from "@/components/TradePanel";
 import { TradeLog } from "@/components/TradeLog";
 import { Card, Chip, DeltaChip, Segmented, compactUsd, hostOf } from "@/components/ui";
 import { useDemoContext } from "@/context/DemoContext";
-import { mock24hChange, sentimentColor, timeAgo } from "@/lib/capture-view";
+import { sentimentColor, timeAgo, viChange24h } from "@/lib/capture-view";
 import type { Capture, MarketRow, TradeLogEvent } from "@/lib/store";
 import type { TrendsResult } from "@/lib/trends";
 import { viTier } from "@/lib/vi/score";
@@ -95,8 +95,8 @@ export function MarketDetailClient({
   const points = useMemo(() => trends?.dataPoints ?? [], [trends]);
   const trendInfo = getTrendIndicator(trends?.trend);
   const change24h = useMemo(
-    () => mock24hChange(market.id, viralityScore),
-    [market.id, viralityScore],
+    () => viChange24h(points, viralityScore),
+    [points, viralityScore],
   );
   const openPos = positions.find((p) => p.marketId === market.id);
 

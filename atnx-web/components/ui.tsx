@@ -68,23 +68,34 @@ export function Segmented<T extends string>({
   );
 }
 
-/** Signed percentage with a direction glyph. Cyan up, magenta down. */
+/** Signed percentage with a direction glyph. Cyan up, magenta down. A null
+ *  value (no baseline to measure against) is a neutral dash. */
 export function DeltaChip({
   value,
   suffix = "",
   size = "sm",
   className = "",
 }: {
-  value: number;
+  value: number | null;
   suffix?: string;
   size?: "sm" | "md";
   className?: string;
 }) {
+  const pad = size === "sm" ? "px-1.5 py-0.5 text-[11px]" : "px-2 py-1 text-xs";
+  if (value === null) {
+    return (
+      <span
+        className={`inline-flex items-center rounded-md border font-mono font-bold tabular-nums whitespace-nowrap text-tertiary bg-elevated border-surface ${pad} ${className}`}
+        title="Not enough history yet"
+      >
+        —{suffix}
+      </span>
+    );
+  }
   const up = value >= 0;
   const tone = up
     ? "text-atnx-cyan light:text-atnx-cyan-light bg-atnx-cyan/10 border-atnx-cyan/25"
     : "text-atnx-magenta light:text-atnx-magenta-light bg-atnx-magenta/10 border-atnx-magenta/25";
-  const pad = size === "sm" ? "px-1.5 py-0.5 text-[11px]" : "px-2 py-1 text-xs";
   return (
     <span
       className={`inline-flex items-center gap-1 rounded-md border font-mono font-bold tabular-nums whitespace-nowrap ${pad} ${tone} ${className}`}

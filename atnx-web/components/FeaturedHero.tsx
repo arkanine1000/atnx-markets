@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ViSparkline, polarityColor } from "@/components/charts/ViArea";
 import { Card, Chip, DeltaChip } from "@/components/ui";
 import { HowItWorksModal } from "@/components/HowItWorksModal";
-import { mock24hChange } from "@/lib/capture-view";
+import { viChange24h } from "@/lib/capture-view";
 import type { Capture } from "@/lib/store";
 
 const ROTATE_MS = 6000;
@@ -194,7 +194,7 @@ function Showcase({ items }: { items: Capture[] }) {
   const c = items[safeIdx];
   const points = c.trends?.dataPoints ?? [];
   const stroke = polarityColor(points);
-  const change24h = mock24hChange(c.marketId ?? c.id, c.viralityScore);
+  const change24h = viChange24h(points, c.viralityScore);
 
   return (
     <Card

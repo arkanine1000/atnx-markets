@@ -1,10 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
 import { ViSparkline, polarityColor } from "@/components/charts/ViArea";
 import { Chip, DeltaChip, ScoreBadge } from "@/components/ui";
-import { mock24hChange } from "@/lib/capture-view";
+import { viChange24h } from "@/lib/capture-view";
 import type { Capture } from "@/lib/store";
 
 interface Props {
@@ -21,10 +20,7 @@ interface Props {
 export function MarketCard({ capture, captureCount, rank, compact }: Props) {
   const { analysis, trends, viralityScore, marketId } = capture;
   const points = trends?.dataPoints ?? [];
-  const change24h = useMemo(
-    () => mock24hChange(marketId ?? capture.id, viralityScore),
-    [marketId, capture.id, viralityScore],
-  );
+  const change24h = viChange24h(points, viralityScore);
   const stroke = polarityColor(points);
   const pending = !marketId;
 
@@ -117,10 +113,7 @@ export function MarketCard({ capture, captureCount, rank, compact }: Props) {
 export function MarketRow({ capture, captureCount, rank }: Props) {
   const { analysis, trends, viralityScore, marketId } = capture;
   const points = trends?.dataPoints ?? [];
-  const change24h = useMemo(
-    () => mock24hChange(marketId ?? capture.id, viralityScore),
-    [marketId, capture.id, viralityScore],
-  );
+  const change24h = viChange24h(points, viralityScore);
   const pending = !marketId;
 
   const body = (

@@ -88,7 +88,7 @@ How a submission is decided, stage by stage, is in [`atnx-web/README.md`](atnx-w
 - **`store.ts`** — `createMarket` (unique normalised name; re-selects on conflict), `addCapture`, `recordVi`, `getCaptures`, `getMarketDetail`.
 - **`og.ts`** — Fetches a link's preview image and title for URL submissions and the share target: YouTube thumbnails directly, TikTok via oEmbed or the page's hydration JSON, everything else from `og:image` with a browser user agent first and Facebook's crawler user agent second (Facebook, Instagram and Threads are tried crawler-first). Login walls and placeholder logos count as no image.
 - **`trends-cache.ts`** — 5 min in-memory cache keyed by lowercased term.
-- **`capture-view.ts`** — UI helpers (`timeAgo`, `sentimentColor`, deterministic 24h % ticker).
+- **`capture-view.ts`** — UI helpers (`timeAgo`, `sentimentColor`, `viChange24h` from the VI history).
 - **`supabase/cookie-options.ts`** — Forces `SameSite=None; Secure` so the extension can attach the auth cookie on cross-origin fetches.
 
 ### React context + components
