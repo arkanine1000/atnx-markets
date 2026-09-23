@@ -16,12 +16,17 @@
 //   person   the Wikipedia article's lead image, which is the portrait.
 //   meme,    the image of the reference page a capture came from (Know
 //   trend,   Your Meme, a fandom wiki, Wikipedia), which is the meme itself
-//   other    rather than one post about it; then the article's lead image.
+//   other    rather than one post about it; then the Know Your Meme entry
+//            guessed from the name (its slugs are the title); then the
+//            Wikipedia lead image.
 //
-// The Wikipedia article counts only when its title is the market's own
-// name: an alias is too loose for a picture ("Verity" the sculpture is not
-// "Verity (Minecraft ARG)"). A market nothing knows a picture for keeps its
-// screenshot and is looked at again a week later, not every hour.
+// A page counts only when its title is the market's own name: a listing
+// or search page hands out the site's logo as its preview, and a Wikipedia
+// alias match is too loose ("Verity" the sculpture is not "Verity
+// (Minecraft ARG)"). An image that several markets share is a site
+// placeholder by definition and is dropped for the screenshot. A market
+// nothing knows a picture for keeps its screenshot and is looked at again
+// a week later, not every hour.
 import { fetchImageFromUrl } from './og';
 import { createAdminClient } from './supabase/admin';
 import type { Components } from './vi/score';
@@ -61,6 +66,7 @@ const LEGACY_SOURCE = 'wikipedia';
 // it. A capture submitted from one of these hands us the canonical picture.
 const REFERENCE_HOSTS =
   /(^|\.)(knowyourmeme\.com|fandom\.com|wikipedia\.org|wiktionary\.org|urbandictionary\.com|tvtropes\.org)$/i;
+const KYM_ENTRY_URL = 'https://knowyourmeme.com/memes/';
 
 const EXT_BY_TYPE: Record<string, string> = {
   'image/png': 'png',
@@ -74,7 +80,7 @@ export interface ThumbnailRefreshResult {
   considered: number;
   // Got a curated image this run.
   set: number;
-  // Looked, nothing found; marked checked.
+  // Looked, nothing found; marked checked (a placeholder it had is gone).
   none: number;
   // A lookup or upload threw; left for the next run.
   failed: number;
@@ -106,6 +112,8 @@ type Candidate = MarketForImage & {
   thumbnail_url: string | null;
   thumbnail_source: string | null;
   thumbnail_checked_at: string | null;
+  // The image it has is one other markets have too: a placeholder.
+  duplicate: boolean;
 };
 
 export interface FoundImage {
@@ -116,7 +124,8 @@ export interface FoundImage {
 }
 
 // Looks up curated images for at most `limit` highlighted markets that
-// have none (or, with redo, whose image the job chose earlier). One pass is
+// have none, carry one from the first version of the job or one that is
+// a shared placeholder (or, with redo, any the job chose). One pass is
 // bounded so the hourly cron finishes; anything left over is picked up
 // next hour.
 export async function refreshThumbnails({ limit = 12, redo = false }: RefreshOptions = {}): Promise<ThumbnailRefreshResult> {
@@ -131,13 +140,28 @@ export async function refreshThumbnails({ limit = 12, redo = false }: RefreshOpt
     .is('deleted_at', null)
     .order('current_vi', { ascending: false, nullsFirst: false });
   if (error) throw error;
-  const markets = (data ?? []).map((m) => ({ ...m, sourceUrls: [] as string[] })) as Candidate[];
+
+  // Stored images by file name (which carries the content digest), so an
+  // image several markets share, or one about to be stored again, is
+  // recognised as a placeholder.
+  const holders = new Map<string, Set<string>>();
+  for (const m of data ?? []) {
+    const key = imageKey(m.thumbnail_url);
+    if (!key) continue;
+    holders.set(key, (holders.get(key) ?? new Set()).add(m.id));
+  }
+  const markets: Candidate[] = (data ?? []).map((m) => ({
+    ...m,
+    vi_components: m.vi_components as Components | null,
+    sourceUrls: [],
+    duplicate: (holders.get(imageKey(m.thumbnail_url) ?? '')?.size ?? 0) > 1,
+  }));
 
   const cutoff = Date.now() - RECHECK_MS;
   const due = markets.filter((m, rank) => {
     const highlighted = rank < HIGHLIGHT_RANK || Number(m.total_volume_usd ?? 0) >= HIGHLIGHT_VOLUME_USD;
     if (!highlighted || m.thumbnail_source === MANUAL_SOURCE) return false;
-    if (m.thumbnail_url) return redo || m.thumbnail_source === LEGACY_SOURCE;
+    if (m.thumbnail_url) return redo || m.duplicate || m.thumbnail_source === LEGACY_SOURCE;
     const checked = m.thumbnail_checked_at ? new Date(m.thumbnail_checked_at).getTime() : 0;
     return checked < cutoff;
   });
@@ -165,11 +189,22 @@ export async function refreshThumbnails({ limit = 12, redo = false }: RefreshOpt
   for (const market of batch) {
     market.sourceUrls = byMarket.get(market.id) ?? [];
     try {
-      const found = await findImage(market);
-      const replacing = Boolean(market.thumbnail_url);
-      const outcome = found ? await storeImage(market, found, replacing) : await markChecked(market);
+      let found = await findImage(market);
+      let note = found ? ` (${found.source})` : '';
+      if (found) {
+        // The same bytes on another market: a site's generic artwork.
+        const key = await fileNameFor(found);
+        const others = [...(holders.get(key) ?? [])].filter((id) => id !== market.id);
+        if (others.length > 0) {
+          note = ` (${found.source} is a placeholder, dropped)`;
+          found = null;
+        } else {
+          holders.set(key, (holders.get(key) ?? new Set()).add(market.id));
+        }
+      }
+      const outcome = found ? await storeImage(market, found) : await markChecked(market);
       result[outcome]++;
-      result.log.push(`${market.entity_name}: ${outcome}${found ? ` (${found.source})` : ''}`);
+      result.log.push(`${market.entity_name}: ${outcome}${note}`);
     } catch (err) {
       result.failed++;
       result.log.push(`${market.entity_name}: failed`);
@@ -204,7 +239,7 @@ function strategiesFor(entityType: string | null): Strategy[] {
     case 'person':
       return [wikipediaLeadImage, referencePageImage];
     default:
-      return [referencePageImage, wikipediaLeadImage];
+      return [referencePageImage, knowYourMemeEntry, wikipediaLeadImage];
   }
 }
 
@@ -233,7 +268,9 @@ async function wikipediaLeadImage(market: MarketForImage): Promise<FoundImage | 
   return { ...(await download(image.url)), source: 'wikipedia:lead' };
 }
 
-// The preview image of the first capture source that is a reference page.
+// The preview image of the first capture source that is a reference page
+// about this market. A capture taken on the site's home, feed or search
+// page has a title that is not the market's, and is skipped.
 async function referencePageImage(market: MarketForImage): Promise<FoundImage | null> {
   for (const url of market.sourceUrls) {
     let host: string;
@@ -243,21 +280,54 @@ async function referencePageImage(market: MarketForImage): Promise<FoundImage | 
       continue;
     }
     if (!REFERENCE_HOSTS.test(host)) continue;
-    const image = await fetchImageFromUrl(url);
-    return {
-      buffer: Buffer.from(image.imageBase64, 'base64'),
-      contentType: image.mediaType,
-      source: `page:${host.replace(/^www\./, '')}`,
-    };
+    const found = await pageImage(url, market.entity_name).catch((err: Error) => {
+      console.warn(`[thumbnails] ${market.entity_name}: ${url}: ${err.message}`);
+      return null;
+    });
+    if (found) return found;
   }
   return null;
 }
 
-async function storeImage(market: Candidate, found: FoundImage, replacing: boolean): Promise<'set'> {
+// Know Your Meme names its entries by the title, slugified, and redirects
+// to the right section (people/, subcultures/) from the bare slug. One
+// request either lands on the entry or on a 404.
+async function knowYourMemeEntry(market: MarketForImage): Promise<FoundImage | null> {
+  const slug = market.entity_name
+    .toLowerCase()
+    .replace(/['’]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+  if (slug.length < 3) return null;
+  return pageImage(`${KYM_ENTRY_URL}${slug}`, market.entity_name).catch(() => null);
+}
+
+// A page's preview image, accepted only when the page is titled with the
+// market's name ("Verity (Minecraft ARG) | Know Your Meme").
+async function pageImage(url: string, name: string): Promise<FoundImage | null> {
+  const image = await fetchImageFromUrl(url);
+  if (!image.pageTitle || !pageTitleNames(image.pageTitle, name)) return null;
+  return {
+    buffer: Buffer.from(image.imageBase64, 'base64'),
+    contentType: image.mediaType,
+    source: `page:${new URL(url).hostname.replace(/^www\./, '')}`,
+  };
+}
+
+// Whether a page title is about the name: the title's first segment
+// (before the site's " | Know Your Meme" or " - Wikipedia") is the name,
+// or the name appears in it whole.
+function pageTitleNames(pageTitle: string, name: string): boolean {
+  const norm = (s: string) => s.toLowerCase().replace(/[‘’'"“”]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+  const want = norm(name);
+  if (!want) return false;
+  const head = norm(pageTitle.split(/\s[|–—-]\s/)[0]);
+  return head === want || ` ${norm(pageTitle)} `.includes(` ${want} `);
+}
+
+async function storeImage(market: Candidate, found: FoundImage): Promise<'set'> {
   const supabase = createAdminClient();
-  const ext = EXT_BY_TYPE[found.contentType] ?? 'jpg';
-  const digest = await sha1Hex(found.buffer);
-  const path = `${STORAGE_FOLDER}/${market.id}/${digest.slice(0, 12)}.${ext}`;
+  const path = `${STORAGE_FOLDER}/${market.id}/${await fileNameFor(found)}`;
 
   const { error: uploadErr } = await supabase.storage
     .from(STORAGE_BUCKET)
@@ -275,7 +345,7 @@ async function storeImage(market: Candidate, found: FoundImage, replacing: boole
       thumbnail_checked_at: new Date().toISOString(),
     })
     .eq('id', market.id);
-  update = replacing
+  update = market.thumbnail_url
     ? update.or(`thumbnail_source.is.null,thumbnail_source.neq.${MANUAL_SOURCE}`)
     : update.is('thumbnail_url', null);
   const { error: updateErr } = await update;
@@ -283,21 +353,39 @@ async function storeImage(market: Candidate, found: FoundImage, replacing: boole
   return 'set';
 }
 
-// Nothing better found. A legacy image that survives the new strategy is
-// relabelled as what it is, the Wikipedia lead image, so it is not looked
-// at again every hour.
+// Nothing better found. A shared placeholder is cleared so the card goes
+// back to the capture; a legacy image that survives the new strategy is
+// relabelled as what it is, the Wikipedia lead image, so neither is
+// looked at again every hour.
 async function markChecked(market: Candidate): Promise<'none'> {
-  const { error } = await createAdminClient()
-    .from('markets')
-    .update({
-      thumbnail_checked_at: new Date().toISOString(),
-      ...(market.thumbnail_url && market.thumbnail_source === LEGACY_SOURCE
-        ? { thumbnail_source: 'wikipedia:lead' }
-        : {}),
-    })
-    .eq('id', market.id);
+  const patch: { thumbnail_checked_at: string; thumbnail_url?: null; thumbnail_source?: string | null } = {
+    thumbnail_checked_at: new Date().toISOString(),
+  };
+  if (market.thumbnail_url && market.duplicate) {
+    patch.thumbnail_url = null;
+    patch.thumbnail_source = null;
+  } else if (market.thumbnail_url && market.thumbnail_source === LEGACY_SOURCE) {
+    patch.thumbnail_source = 'wikipedia:lead';
+  }
+  const { error } = await createAdminClient().from('markets').update(patch).eq('id', market.id);
   if (error) throw error;
   return 'none';
+}
+
+// The stored file name: content digest plus extension, so the same bytes
+// always land on the same name and can be recognised across markets.
+async function fileNameFor(found: FoundImage): Promise<string> {
+  const ext = EXT_BY_TYPE[found.contentType] ?? 'jpg';
+  const hash = await crypto.subtle.digest('SHA-1', new Uint8Array(found.buffer));
+  const digest = Array.from(new Uint8Array(hash), (b) => b.toString(16).padStart(2, '0')).join('');
+  return `${digest.slice(0, 12)}.${ext}`;
+}
+
+// The file name at the end of a stored thumbnail URL, or null.
+function imageKey(url: string | null): string | null {
+  if (!url) return null;
+  const name = url.split('?')[0].split('/').pop();
+  return name || null;
 }
 
 async function download(url: string): Promise<{ buffer: Buffer; contentType: string }> {
@@ -319,9 +407,4 @@ async function download(url: string): Promise<{ buffer: Buffer; contentType: str
   } finally {
     clearTimeout(timer);
   }
-}
-
-async function sha1Hex(buffer: Buffer): Promise<string> {
-  const hash = await crypto.subtle.digest('SHA-1', new Uint8Array(buffer));
-  return Array.from(new Uint8Array(hash), (b) => b.toString(16).padStart(2, '0')).join('');
 }
