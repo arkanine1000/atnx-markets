@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ViSparkline, polarityColor } from "@/components/charts/ViArea";
+import { ViSparkline, deltaColor } from "@/components/charts/ViArea";
 import { Card, Chip, DeltaChip } from "@/components/ui";
 import { HowItWorksModal } from "@/components/HowItWorksModal";
 import { viChange24h } from "@/lib/capture-view";
@@ -193,8 +193,8 @@ function Showcase({ items }: { items: Capture[] }) {
 
   const c = items[safeIdx];
   const points = c.trends?.dataPoints ?? [];
-  const stroke = polarityColor(points);
   const change24h = viChange24h(points, c.viralityScore);
+  const stroke = deltaColor(change24h);
 
   return (
     <Card

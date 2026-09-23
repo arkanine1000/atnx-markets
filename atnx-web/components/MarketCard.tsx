@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ViSparkline, polarityColor } from "@/components/charts/ViArea";
+import { ViSparkline, deltaColor } from "@/components/charts/ViArea";
 import { Chip, DeltaChip, ScoreBadge } from "@/components/ui";
 import { viChange24h } from "@/lib/capture-view";
 import type { Capture } from "@/lib/store";
@@ -21,7 +21,7 @@ export function MarketCard({ capture, captureCount, rank, compact }: Props) {
   const { analysis, trends, viralityScore, marketId } = capture;
   const points = trends?.dataPoints ?? [];
   const change24h = viChange24h(points, viralityScore);
-  const stroke = polarityColor(points);
+  const stroke = deltaColor(change24h);
   const pending = !marketId;
 
   const body = (
@@ -141,7 +141,11 @@ export function MarketRow({ capture, captureCount, rank }: Props) {
         </div>
       </div>
       <div className="hidden sm:block w-28 shrink-0">
-        <ViSparkline dataPoints={points} height={36} />
+        <ViSparkline
+          dataPoints={points}
+          height={36}
+          color={deltaColor(change24h)}
+        />
       </div>
       <div className="hidden xs:block sm:w-20 shrink-0 text-right">
         <DeltaChip value={change24h} />
