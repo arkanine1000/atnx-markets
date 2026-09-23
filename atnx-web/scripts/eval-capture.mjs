@@ -96,7 +96,7 @@ async function seedMarkets() {
     }
     const { data: created, error: insErr } = await admin
       .from('markets')
-      .insert({ entity_name: s.name, entity_name_normalized: norm, entity_type: s.type })
+      .insert({ entity_name: s.name, entity_name_normalized: norm, entity_type: s.type, category: s.category ?? null })
       .select('id')
       .single();
     if (insErr) throw insErr;

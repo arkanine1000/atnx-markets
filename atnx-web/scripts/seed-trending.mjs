@@ -23,11 +23,16 @@ import { createClient } from '@supabase/supabase-js';
 // the dashboard's trend chip (spiking / rising / falling / stable / new)
 // comes out the way the item actually feels right now.
 
+// `category` is one of the values markets.category accepts (supabase/002);
+// `label` is the free-text line drawn on the placeholder art.
+const CATEGORIES = ['memes', 'crypto', 'politics', 'sports', 'music', 'film_tv', 'gaming', 'tech', 'people', 'other'];
+
 const TRENDING = [
   {
     name: 'Superman Tornado Squirrel',
     type: 'meme',
-    category: 'reaction meme',
+    category: 'memes',
+    label: 'reaction meme',
     description:
       'A squirrel calmly waving goodbye before a tornado sweeps it away, edited into the Man of Steel Jonathan Kent scene. The go-to "it\'s over, I\'m cooked" reaction of late summer 2026.',
     platforms: ['X', 'TikTok', 'Reddit'],
@@ -41,7 +46,8 @@ const TRENDING = [
   {
     name: 'iPhone Duo',
     type: 'brand',
-    category: 'tech launch',
+    category: 'tech',
+    label: 'tech launch',
     description:
       "Apple's first foldable iPhone, announced September 9. The internet's reaction is a flood of \"Apple invented folding\" jokes, with Samsung and Duolingo heckling from the sidelines.",
     platforms: ['X', 'YouTube', 'Reddit', 'TikTok'],
@@ -55,7 +61,8 @@ const TRENDING = [
   {
     name: 'Zip It, Movie Lady',
     type: 'event',
-    category: 'awards show moment',
+    category: 'film_tv',
+    label: 'awards show moment',
     description:
       "Emmys 2026 host Mariska Hargitay recreated Nicole Kidman's AMC monologue, Kidman shut it down, and Hargitay fired back \"zip it, movie lady, it's TV's turn tonight.\" The clip of the night.",
     platforms: ['X', 'TikTok', 'Instagram'],
@@ -68,7 +75,8 @@ const TRENDING = [
   {
     name: 'My American Girl Doll',
     type: 'trend',
-    category: 'TikTok audio',
+    category: 'memes',
+    label: 'TikTok audio',
     description:
       'A 2009 clip of a kid screaming "MY AMERICAN GIRL DOLL MIA" recycled as the reveal for whatever ordinary thing you are currently obsessed with. Childhood excitement, adult purchase.',
     platforms: ['TikTok', 'Instagram', 'YouTube'],
@@ -81,7 +89,8 @@ const TRENDING = [
   {
     name: 'Kinda Chic',
     type: 'trend',
-    category: 'caption format',
+    category: 'memes',
+    label: 'caption format',
     description:
       'Posts that open every line with "kinda chic to..." followed by something unglamorous and healthy: going to bed early, reading, taking care of your mental health. Started on Instagram in April, everywhere by September.',
     platforms: ['Instagram', 'TikTok'],
@@ -94,7 +103,8 @@ const TRENDING = [
   {
     name: 'How Could This Day Get Any Better',
     type: 'trend',
-    category: 'TikTok format',
+    category: 'memes',
+    label: 'TikTok format',
     description:
       'One mundane object, then the upgraded version of it revealed on a bass drop. Format-first comedy: a repeatable premise with a hard punchline.',
     platforms: ['TikTok', 'Instagram'],
@@ -107,7 +117,8 @@ const TRENDING = [
   {
     name: 'Allison Janney Shocked Reaction',
     type: 'meme',
-    category: 'reaction image',
+    category: 'film_tv',
+    label: 'reaction image',
     description:
       'Janney\'s open-mouthed, hands-up face when she won Supporting Actress at the 2026 Emmys after giving herself a 2% chance. A brand-new "I did not expect that" template.',
     platforms: ['X', 'Instagram', 'Reddit'],
@@ -121,7 +132,8 @@ const TRENDING = [
   {
     name: 'Down Goes the Whiskey',
     type: 'trend',
-    category: 'comment roast',
+    category: 'music',
+    label: 'comment roast',
     description:
       'Luke Bryan\'s single getting roasted in the comments with "blank goes the blank" rhyme parodies. Brands like Southwest have joined the pile-on.',
     platforms: ['TikTok', 'X'],
@@ -134,7 +146,8 @@ const TRENDING = [
   {
     name: '2026 Is the New 2016',
     type: 'trend',
-    category: 'nostalgia',
+    category: 'memes',
+    label: 'nostalgia',
     description:
       'The idea that this year is a rerun of 2016: the fashion, the music, the memes. Started late 2025, peaked in the spring, now settling into a slow-burn nostalgia format.',
     platforms: ['TikTok', 'YouTube', 'X'],
@@ -147,7 +160,8 @@ const TRENDING = [
   {
     name: 'The Ancestor Photo Prank',
     type: 'trend',
-    category: 'prank format',
+    category: 'memes',
+    label: 'prank format',
     description:
       'Send your parents a fake vintage photo of a celebrity and claim it is a family ancestor from the 1800s. The reaction texts are the content.',
     platforms: ['TikTok', 'Instagram'],
@@ -238,7 +252,7 @@ function fallbackCard(item, i) {
   <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${a}"/><stop offset="1" stop-color="${b}"/></linearGradient></defs>
   <rect width="1200" height="630" fill="#0f0f0f"/>
   <rect x="24" y="24" width="1152" height="582" rx="28" fill="url(#g)" opacity="0.92"/>
-  <text x="60" y="110" font-family="ui-monospace,monospace" font-size="26" letter-spacing="6" fill="rgba(10,10,10,0.7)">${esc(item.category.toUpperCase())}</text>
+  <text x="60" y="110" font-family="ui-monospace,monospace" font-size="26" letter-spacing="6" fill="rgba(10,10,10,0.7)">${esc(item.label.toUpperCase())}</text>
   <text x="60" y="${330 - (lines.length - 1) * 32}" font-family="ui-monospace,monospace" font-size="60" font-weight="700" fill="#0a0a0a">${text}</text>
   <text x="60" y="560" font-family="ui-monospace,monospace" font-size="24" fill="rgba(10,10,10,0.7)">${esc(item.platforms.join(' · '))}</text>
 </svg>`;
@@ -298,6 +312,12 @@ function fakeSeries(item, seed) {
 }
 
 // --- Main -------------------------------------------------------------------
+
+for (const item of TRENDING) {
+  if (!CATEGORIES.includes(item.category)) {
+    throw new Error(`${item.name}: category "${item.category}" is not one of ${CATEGORIES.join(', ')}`);
+  }
+}
 
 function analysisFor(item) {
   return {
@@ -390,6 +410,7 @@ async function main() {
         entity_name: item.name,
         entity_name_normalized: normalized,
         entity_type: item.type,
+        category: item.category,
         thumbnail_url: imageUrl,
         current_vi: item.vi,
         vi_last_updated: new Date().toISOString(),
