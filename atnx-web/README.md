@@ -84,7 +84,7 @@ ignores for Gemini 3.x (measured: 18 s and truncated JSON versus 2.6 s).
 | `npm run fixtures:render` | Regenerates the fixture images from `scripts/fixtures/manifest.json`. |
 | `npm run backfill:embeddings` | Embeds every live market without a vector. Run once after migration `001` and after any bulk seed. |
 | `npm run seed:trending` | Seeds a fresh database with a hand-curated set of markets. |
-| `npm run thumbs:backfill [n]` | Curates images for up to `n` (default 100) highlighted markets now, the same pass the hourly slow refresh runs a dozen at a time. Needs migration `008`. |
+| `npm run thumbs:backfill [n] [--redo]` | Curates images for up to `n` (default 100) highlighted markets now, the same pass the hourly slow refresh runs a dozen at a time. `--redo` also replaces images an earlier pass chose (never one marked `manual`). Needs migration `008`. |
 
 ## Layout
 

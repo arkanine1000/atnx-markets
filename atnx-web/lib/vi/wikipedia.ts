@@ -114,6 +114,12 @@ export async function resolveArticleTitle(term: string): Promise<string | null> 
   return null;
 }
 
+// Whether an article title is the term itself, by the same rule as
+// resolveArticleTitle: case, punctuation and a disambiguation suffix aside.
+export function titleMatchesTerm(term: string, title: string): boolean {
+  return normalizeTitle(title.replace(/\s*\([^)]*\)\s*$/, '')) === normalizeTitle(term);
+}
+
 function normalizeTitle(s: string): string {
   return s
     .toLowerCase()
@@ -173,6 +179,52 @@ export async function fetchWikipediaPageImage(title: string, width = 1024): Prom
     width: page.thumbnail.width,
     height: page.thumbnail.height,
     file: page.pageimage,
+  };
+}
+
+const WIKIDATA_URL = 'https://www.wikidata.org/w/api.php';
+const COMMONS_FILE_URL = 'https://commons.wikimedia.org/wiki/Special:FilePath/';
+
+// The entity's logo from Wikidata (property P154, "logo image"), reached
+// through the article's Wikidata item. Rendered by Commons as a raster at
+// most `width` wide. Null when the article has no item or the item has
+// no logo.
+export async function fetchWikidataLogo(title: string, width = 1024): Promise<WikipediaPageImage | null> {
+  const props = new URLSearchParams({
+    action: 'query',
+    prop: 'pageprops',
+    ppprop: 'wikibase_item',
+    redirects: '1',
+    titles: title,
+    format: 'json',
+    formatversion: '2',
+  });
+  const pageRes = await fetch(`${OPENSEARCH_URL}?${props}`, {
+    headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
+  });
+  if (!pageRes.ok) throw new Error(`pageprops ${pageRes.status}`);
+  const pageBody = (await pageRes.json()) as { query?: { pages?: { pageprops?: { wikibase_item?: string } }[] } };
+  const qid = pageBody.query?.pages?.[0]?.pageprops?.wikibase_item;
+  if (!qid) return null;
+
+  const claims = new URLSearchParams({ action: 'wbgetclaims', entity: qid, property: 'P154', format: 'json' });
+  const claimRes = await fetch(`${WIKIDATA_URL}?${claims}`, {
+    headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
+  });
+  if (!claimRes.ok) throw new Error(`wbgetclaims ${claimRes.status}`);
+  const claimBody = (await claimRes.json()) as {
+    claims?: { P154?: { rank?: string; mainsnak?: { datavalue?: { value?: string } } }[] };
+  };
+  const logos = claimBody.claims?.P154 ?? [];
+  // A preferred-rank statement is the current logo; otherwise the first.
+  const pick = logos.find((c) => c.rank === 'preferred') ?? logos[0];
+  const file = pick?.mainsnak?.datavalue?.value;
+  if (!file) return null;
+  return {
+    url: `${COMMONS_FILE_URL}${encodeURIComponent(file)}?width=${width}`,
+    width,
+    height: 0,
+    file,
   };
 }
 

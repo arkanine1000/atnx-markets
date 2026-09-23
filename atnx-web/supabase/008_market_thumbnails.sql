@@ -8,8 +8,10 @@
 -- that image came from and when the market was last looked at, so a market
 -- with no image available is retried weekly rather than hourly.
 --
--- A thumbnail_url set by hand is never overwritten: the job only fills
--- empty ones. Set thumbnail_source to 'manual' for the record.
+-- A thumbnail_url set by hand is never overwritten: set thumbnail_source to
+-- 'manual' with it and the job leaves the row alone. Its own values name
+-- the strategy that found the image: 'wikidata:logo', 'wikipedia:lead',
+-- 'page:<host>' (the reference page a capture came from).
 --
 -- Idempotent.
 
@@ -20,6 +22,6 @@ alter table public.markets
 comment on column public.markets.thumbnail_url is
   'Curated image for cards and the featured hero; falls back to the newest capture when null.';
 comment on column public.markets.thumbnail_source is
-  'Where thumbnail_url came from: wikipedia, manual.';
+  'Where thumbnail_url came from: wikidata:logo, wikipedia:lead, page:<host>, or manual (never overwritten).';
 comment on column public.markets.thumbnail_checked_at is
   'When lib/thumbnails.ts last looked for an image, set or not.';

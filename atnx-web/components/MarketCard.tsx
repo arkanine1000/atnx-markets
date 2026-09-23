@@ -15,10 +15,16 @@ interface Props {
 }
 
 // The picture on a tile: the curated market image when the slow refresh
-// has found one (lib/thumbnails.ts), else the capture itself.
-function tileImage(capture: Capture): string {
-  return capture.marketImage || capture.screenshot;
+// has found one (lib/thumbnails.ts), else the capture itself. A logo is a
+// dark mark on a transparent ground, often a wide wordmark, so it is drawn
+// whole with padding on a light tile rather than cropped to fill.
+export function tileImage(capture: Capture): { src: string; logo: boolean } {
+  const src = capture.marketImage || capture.screenshot;
+  const logo = Boolean(capture.marketImage) && capture.marketImageSource === "wikidata:logo";
+  return { src, logo };
 }
+
+const LOGO_TILE = "#F0F0F0";
 
 // Grid tile: the market image is the hero and the VI history is drawn
 // straight over its lower half, the way pump.fun overlays a chart on the coin
@@ -29,6 +35,7 @@ export function MarketCard({ capture, captureCount, rank, compact }: Props) {
   const change24h = viChange24h(points, viralityScore);
   const stroke = deltaColor(change24h);
   const pending = !marketId;
+  const image = tileImage(capture);
 
   const body = (
     <>
@@ -36,13 +43,16 @@ export function MarketCard({ capture, captureCount, rank, compact }: Props) {
         className={`relative overflow-hidden rounded-t-2xl bg-black ${
           compact ? "aspect-[16/11]" : "aspect-[4/3]"
         }`}
+        style={image.logo ? { background: LOGO_TILE } : undefined}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={tileImage(capture)}
+          src={image.src}
           alt=""
           loading="lazy"
-          className="absolute inset-0 w-full h-full object-cover"
+          className={`absolute inset-0 w-full h-full ${
+            image.logo ? "object-contain p-[12%] pb-[30%]" : "object-cover"
+          }`}
         />
         <div
           className="absolute inset-x-0 bottom-0 h-[62%]"
@@ -121,6 +131,7 @@ export function MarketRow({ capture, captureCount, rank }: Props) {
   const points = trends?.dataPoints ?? [];
   const change24h = viChange24h(points, viralityScore);
   const pending = !marketId;
+  const image = tileImage(capture);
 
   const body = (
     <div className="flex items-center gap-3 px-3 py-2.5">
@@ -129,10 +140,13 @@ export function MarketRow({ capture, captureCount, rank }: Props) {
       </span>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src={tileImage(capture)}
+        src={image.src}
         alt=""
         loading="lazy"
-        className="w-10 h-10 rounded-lg object-cover border border-surface shrink-0 bg-black"
+        className={`w-10 h-10 rounded-lg border border-surface shrink-0 ${
+          image.logo ? "object-contain p-1" : "object-cover bg-black"
+        }`}
+        style={image.logo ? { background: LOGO_TILE } : undefined}
       />
       <div className="min-w-0 flex-1">
         <div className="text-sm font-bold text-primary truncate flex items-center gap-2">

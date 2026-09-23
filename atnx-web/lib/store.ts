@@ -20,6 +20,9 @@ export interface Capture {
   // lib/thumbnails.ts for highlighted markets). Cards prefer it over the
   // screenshot when set; the market page keeps showing the captures.
   marketImage?: string | null;
+  // Which strategy found it (markets.thumbnail_source). A logo is drawn
+  // contained on a light tile; everything else fills the frame.
+  marketImageSource?: string | null;
   analysis: {
     type?: string;
     name?: string;
@@ -52,6 +55,7 @@ export type MarketRow = {
   vi_last_updated: string | null;
   total_captures: number;
   thumbnail_url: string | null;
+  thumbnail_source: string | null;
 };
 
 type CaptureRowWithMarket = {
@@ -109,7 +113,8 @@ async function uploadScreenshot(
   return data.publicUrl;
 }
 
-const MARKET_COLUMNS = 'id, entity_name, entity_type, current_vi, vi_last_updated, total_captures, thumbnail_url';
+const MARKET_COLUMNS =
+  'id, entity_name, entity_type, current_vi, vi_last_updated, total_captures, thumbnail_url, thumbnail_source';
 
 export async function getMarketById(id: string): Promise<MarketRow | null> {
   const { data, error } = await createAdminClient()
@@ -449,6 +454,7 @@ export async function addCapture(
       timestamp: captureRow.created_at as string,
       screenshot: image_url ?? TEXT_PLACEHOLDER_IMAGE,
       marketImage: market.thumbnail_url ?? null,
+      marketImageSource: market.thumbnail_source ?? null,
       viralityScore: vi,
     },
     isNew,
@@ -476,6 +482,7 @@ function rowToCapture(
     pageTitle: meta?.page_title ?? '',
     screenshot: row.image_url ?? TEXT_PLACEHOLDER_IMAGE,
     marketImage: market?.thumbnail_url ?? null,
+    marketImageSource: market?.thumbnail_source ?? null,
     analysis: cleanedAnalysis,
     trends,
     viralityScore: Math.round(market?.current_vi ?? 0),

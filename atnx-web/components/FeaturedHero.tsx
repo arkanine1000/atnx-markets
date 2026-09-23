@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ViSparkline, deltaColor } from "@/components/charts/ViArea";
+import { tileImage } from "@/components/MarketCard";
 import { Card, Chip, DeltaChip } from "@/components/ui";
 import { HowItWorksModal } from "@/components/HowItWorksModal";
 import { viChange24h } from "@/lib/capture-view";
@@ -195,8 +196,9 @@ function Showcase({ items }: { items: Capture[] }) {
   const points = c.trends?.dataPoints ?? [];
   const change24h = viChange24h(points, c.viralityScore);
   const stroke = deltaColor(change24h);
-  // Curated market image when one has been found, else the capture.
-  const image = c.marketImage || c.screenshot;
+  // Curated market image when one has been found, else the capture. A logo
+  // sits on a light ground instead of a blurred copy of itself.
+  const image = tileImage(c);
 
   return (
     <Card
@@ -216,21 +218,26 @@ function Showcase({ items }: { items: Capture[] }) {
           // Wider than tall on phones so the name and score sit within
           // the first screen instead of a scroll below the image.
           className="relative block aspect-[16/10] sm:aspect-auto sm:min-h-[320px] lg:min-h-0 bg-black overflow-hidden"
+          style={image.logo ? { background: "#F0F0F0" } : undefined}
         >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            key={`bg-${c.id}`}
-            src={image}
-            alt=""
-            aria-hidden="true"
-            className="absolute inset-0 w-full h-full object-cover scale-125 blur-2xl opacity-60"
-          />
+          {!image.logo && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              key={`bg-${c.id}`}
+              src={image.src}
+              alt=""
+              aria-hidden="true"
+              className="absolute inset-0 w-full h-full object-cover scale-125 blur-2xl opacity-60"
+            />
+          )}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             key={c.id}
-            src={image}
+            src={image.src}
             alt=""
-            className="absolute inset-0 w-full h-full object-contain p-3"
+            className={`absolute inset-0 w-full h-full object-contain ${
+              image.logo ? "p-[10%] pb-[36%]" : "p-3"
+            }`}
           />
           <div
             className="absolute inset-x-0 bottom-0 h-[55%]"
