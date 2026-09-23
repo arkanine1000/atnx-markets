@@ -1,108 +1,32 @@
-"use client";
-
-import { useState } from "react";
-import { createClient } from "@/lib/supabase/client";
-import { validateHandle } from "@/lib/handle";
-
+// The account's identity, read-only. Handles are fixed (supabase/014): the
+// leaderboard, the trade log and the fee ledger name people by handle, so
+// a change would let a record walk away from its owner. The fields keep
+// the form's shape so the page reads as settings, greyed and with the
+// default cursor to say they are not editable.
 export function SettingsForm({
-  userId,
   email,
-  initialHandle,
+  handle,
 }: {
-  userId: string;
   email: string | null;
-  initialHandle: string;
+  handle: string;
 }) {
-  const [handle, setHandle] = useState(initialHandle);
-  const [savedHandle, setSavedHandle] = useState(initialHandle);
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<{ tone: "ok" | "err"; text: string } | null>(
-    null
-  );
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    const result = validateHandle(handle, savedHandle);
-    if (!result.ok) {
-      setMsg({ tone: "err", text: result.error });
-      return;
-    }
-
-    setBusy(true);
-    setMsg(null);
-    const supabase = createClient();
-    const { error } = await supabase
-      .from("user_profiles")
-      .update({ handle: handle.trim(), updated_at: new Date().toISOString() })
-      .eq("id", userId);
-
-    setBusy(false);
-    if (error?.code === "23505") {
-      setMsg({ tone: "err", text: "That handle is taken" });
-      return;
-    }
-    if (error) {
-      setMsg({ tone: "err", text: `Update failed: ${error.message}` });
-      return;
-    }
-    setSavedHandle(handle.trim());
-    setMsg({ tone: "ok", text: "Handle updated" });
-  }
-
-  const dirty = handle.trim() !== savedHandle;
-
+  const field =
+    "w-full bg-elevated border border-surface rounded px-3 py-2.5 text-secondary font-mono text-sm cursor-default select-text";
   return (
-    <form onSubmit={handleSubmit} className="space-y-5">
+    <div className="space-y-5">
       <div>
-        <label className="text-xs text-secondary font-mono uppercase tracking-wider block mb-2">
+        <div className="text-xs text-tertiary font-mono uppercase tracking-wider mb-2">
           Email
-        </label>
-        <div className="bg-surface border border-surface rounded px-3 py-2.5 text-primary font-mono text-sm">
-          {email ?? "\u2014"}
         </div>
+        <div className={field}>{email ?? "—"}</div>
       </div>
 
       <div>
-        <label
-          htmlFor="handle"
-          className="text-xs text-secondary font-mono uppercase tracking-wider block mb-2"
-        >
+        <div className="text-xs text-tertiary font-mono uppercase tracking-wider mb-2">
           Handle
-        </label>
-        <input
-          id="handle"
-          type="text"
-          value={handle}
-          onChange={(e) => {
-            setHandle(e.target.value);
-            setMsg(null);
-          }}
-          minLength={3}
-          maxLength={24}
-          className="w-full bg-surface border border-surface rounded px-3 py-2.5 text-primary font-mono text-sm focus:border-atnx-cyan outline-none"
-        />
-        <p className="text-xs text-tertiary mt-1.5">
-          3-24 chars. Letters, numbers, _ and # only.
-        </p>
-      </div>
-
-      {msg && (
-        <div
-          className={`text-sm ${
-            msg.tone === "ok" ? "text-atnx-cyan" : "text-atnx-magenta"
-          }`}
-        >
-          {msg.text}
         </div>
-      )}
-
-      <button
-        type="submit"
-        disabled={busy || !dirty}
-        className="px-6 py-2.5 rounded btn-magenta font-bold text-sm disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-      >
-        {busy ? "Saving\u2026" : "Save"}
-      </button>
-    </form>
+        <div className={field}>{handle ? `@${handle}` : "—"}</div>
+      </div>
+    </div>
   );
 }

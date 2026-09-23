@@ -31,15 +31,14 @@ export default async function SettingsPage() {
             </div>
             <div className="text-xs text-tertiary mt-0.5">
               Your face on the leaderboard and in the header, drawn from your
-              account in the three inks. It stays the same if you change your
-              handle.
+              account in the three inks. Your handle is fixed: the leaderboard
+              and the trade log know you by it.
             </div>
           </div>
         </div>
         <SettingsForm
-          userId={user.id}
           email={profile?.email ?? user.email ?? null}
-          initialHandle={profile?.handle ?? ""}
+          handle={profile?.handle ?? ""}
         />
       </div>
     </div>
