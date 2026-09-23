@@ -51,6 +51,11 @@ const STORAGE_FOLDER = 'markets';
 
 // A thumbnail_source set by a person; the job never touches these.
 export const MANUAL_SOURCE = 'manual';
+// What the first version of this job wrote, before the strategy depended
+// on the entity type: the Wikipedia lead image for everything, which gave
+// companies their head office. Markets still carrying it are redone on
+// sight, no flag needed.
+const LEGACY_SOURCE = 'wikipedia';
 
 // Pages whose preview image is the subject itself rather than a post about
 // it. A capture submitted from one of these hands us the canonical picture.
@@ -132,7 +137,7 @@ export async function refreshThumbnails({ limit = 12, redo = false }: RefreshOpt
   const due = markets.filter((m, rank) => {
     const highlighted = rank < HIGHLIGHT_RANK || Number(m.total_volume_usd ?? 0) >= HIGHLIGHT_VOLUME_USD;
     if (!highlighted || m.thumbnail_source === MANUAL_SOURCE) return false;
-    if (m.thumbnail_url) return redo;
+    if (m.thumbnail_url) return redo || m.thumbnail_source === LEGACY_SOURCE;
     const checked = m.thumbnail_checked_at ? new Date(m.thumbnail_checked_at).getTime() : 0;
     return checked < cutoff;
   });
@@ -161,7 +166,8 @@ export async function refreshThumbnails({ limit = 12, redo = false }: RefreshOpt
     market.sourceUrls = byMarket.get(market.id) ?? [];
     try {
       const found = await findImage(market);
-      const outcome = found ? await storeImage(market, found, redo) : await markChecked(market);
+      const replacing = Boolean(market.thumbnail_url);
+      const outcome = found ? await storeImage(market, found, replacing) : await markChecked(market);
       result[outcome]++;
       result.log.push(`${market.entity_name}: ${outcome}${found ? ` (${found.source})` : ''}`);
     } catch (err) {
@@ -247,7 +253,7 @@ async function referencePageImage(market: MarketForImage): Promise<FoundImage | 
   return null;
 }
 
-async function storeImage(market: Candidate, found: FoundImage, redo: boolean): Promise<'set'> {
+async function storeImage(market: Candidate, found: FoundImage, replacing: boolean): Promise<'set'> {
   const supabase = createAdminClient();
   const ext = EXT_BY_TYPE[found.contentType] ?? 'jpg';
   const digest = await sha1Hex(found.buffer);
@@ -259,8 +265,8 @@ async function storeImage(market: Candidate, found: FoundImage, redo: boolean): 
   if (uploadErr) throw uploadErr;
   const { data: pub } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(path);
 
-  // Fill the slot, or on a redo replace what the job set earlier. An image
-  // set by hand since the select is left alone either way.
+  // Fill the slot, or replace what the job set earlier. An image set by
+  // hand since the select is left alone either way.
   let update = supabase
     .from('markets')
     .update({
@@ -269,7 +275,7 @@ async function storeImage(market: Candidate, found: FoundImage, redo: boolean): 
       thumbnail_checked_at: new Date().toISOString(),
     })
     .eq('id', market.id);
-  update = redo
+  update = replacing
     ? update.or(`thumbnail_source.is.null,thumbnail_source.neq.${MANUAL_SOURCE}`)
     : update.is('thumbnail_url', null);
   const { error: updateErr } = await update;
@@ -277,10 +283,18 @@ async function storeImage(market: Candidate, found: FoundImage, redo: boolean): 
   return 'set';
 }
 
+// Nothing better found. A legacy image that survives the new strategy is
+// relabelled as what it is, the Wikipedia lead image, so it is not looked
+// at again every hour.
 async function markChecked(market: Candidate): Promise<'none'> {
   const { error } = await createAdminClient()
     .from('markets')
-    .update({ thumbnail_checked_at: new Date().toISOString() })
+    .update({
+      thumbnail_checked_at: new Date().toISOString(),
+      ...(market.thumbnail_url && market.thumbnail_source === LEGACY_SOURCE
+        ? { thumbnail_source: 'wikipedia:lead' }
+        : {}),
+    })
     .eq('id', market.id);
   if (error) throw error;
   return 'none';
