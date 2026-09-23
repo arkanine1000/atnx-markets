@@ -191,6 +191,6 @@ export async function fetchTrendsSignal(term: string, aliases: string[] = []): P
 export function normalizeSearchTerm(analysis: { name?: string } | null | undefined): string {
   let term = analysis?.name || '';
   term = term.replace(/["“”'‘’]/g, '');
-  term = term.replace(/[\/|:;,\-–—•·_]+/g, ' ');
+  term = term.replace(/[\/|:;,\-–—•·_()\[\]]+/g, ' ');
   return term.replace(/\s+/g, ' ').trim();
 }

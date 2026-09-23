@@ -142,15 +142,20 @@ export async function fetchBlueskySignal(term: string, aliases: string[] = []): 
       }
     }
     const day = seen.size;
-    const hour = [...seen.values()].filter((t) => t >= now - 3600 * 1000).length;
+    const times = [...seen.values()];
+    const hour = times.filter((t) => t >= now - 3600 * 1000).length;
     // A phrase that hit the cap means the true count is higher.
     const capped = perPhrase.some((p) => (p?.length ?? 0) >= COUNT_CAP);
 
-    // Hourly rate now vs the average hourly rate over the day. Below one
+    // Hourly rate now vs the average hourly rate over the window. Below one
     // post an hour most hours are empty and the ratio is noise, so only
-    // report momentum once the day count clears that bar. When the count
-    // is capped, the ratio is a floor.
-    const momentum = day < MOMENTUM_MIN_DAY ? null : hour / (day / 24);
+    // report momentum once the day count clears that bar. When a phrase hit
+    // the cap the posts fetched do not span 24 h, so the baseline rate is
+    // taken over the hours they actually cover; dividing by 24 made a busy
+    // market read as a 10x spike every hour.
+    const oldest = times.length ? Math.min(...times) : now;
+    const spanHours = capped ? Math.max(1, (now - oldest) / 3600_000) : 24;
+    const momentum = day < MOMENTUM_MIN_DAY ? null : hour / (day / spanHours);
 
     const result: SourceComponent = {
       source: 'bluesky',

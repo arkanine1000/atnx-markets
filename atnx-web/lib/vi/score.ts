@@ -173,14 +173,18 @@ export function isGenericTerm(term: string, wikipediaTitle: string | null): bool
   return wikipediaTitle.trim().toLowerCase() !== term.trim().toLowerCase();
 }
 
-// An alias is used as a search phrase. A single short or common word
-// would match far more than the subject, so it is not searchable.
+// An alias is used as a search phrase. A single word matches far more
+// than the subject, whatever its length: "Verity" (an ARG) found a novel
+// and everyone with that name, "Alphabet" (Google) found alphabets. Only
+// multi-word aliases are searchable, plus single tokens that carry a
+// digit, a symbol or an internal capital ("atnx.app", "7x7", "AndrewTate"),
+// which are handles and codes, not words.
 export function isSearchableAlias(alias: string): boolean {
   const tokens = alias.trim().split(/\s+/).filter(Boolean);
   if (tokens.length === 0) return false;
   if (tokens.length >= 2) return true;
   const t = tokens[0];
-  return t.length >= 6 && !FUNCTION_WORDS.has(t.toLowerCase());
+  return (/[^a-z]/i.test(t) || /[a-z][A-Z]/.test(t)) && !FUNCTION_WORDS.has(t.toLowerCase());
 }
 
 const FUNCTION_WORDS = new Set([
