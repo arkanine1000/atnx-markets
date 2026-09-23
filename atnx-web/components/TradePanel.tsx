@@ -256,9 +256,7 @@ export function TradePanel({
           onClick={submit}
           disabled={!canSubmit}
           className={`w-full py-3 rounded-xl font-bold text-sm cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
-            isLong
-              ? "border border-atnx-cyan bg-elevated text-atnx-cyan light:text-atnx-cyan-light transition-all hover:bg-atnx-cyan hover:text-black hover:shadow-[0_0_20px_rgba(0,212,255,0.3)]"
-              : "btn-magenta"
+            isLong ? "btn-cyan" : "btn-magenta"
           }`}
         >
           {busy
