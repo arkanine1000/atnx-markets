@@ -94,31 +94,41 @@ export async function fetchWikipediaSignal(term: string, aliases: string[] = [])
 // itself (case, punctuation and a disambiguation suffix aside) counts as
 // the term's article; anything else is a different subject's pageviews.
 export async function resolveArticleTitle(term: string): Promise<string | null> {
+  return (await resolveArticleTitles(term))[0] ?? null;
+}
+
+// Every OpenSearch candidate that is the term itself, in search order.
+// With `corporate`, a company suffix is ignored too, so "Apple" also
+// matches "Apple Inc." and "Meta" matches "Meta Platforms": the plain name
+// is often a different article (the fruit) or a disambiguation page.
+export async function resolveArticleTitles(term: string, { corporate = false } = {}): Promise<string[]> {
   const params = new URLSearchParams({
     action: 'opensearch',
     search: term,
-    limit: '5',
+    limit: '8',
     namespace: '0',
     format: 'json',
   });
   const res = await fetch(`${OPENSEARCH_URL}?${params}`, {
     headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
   });
-  if (!res.ok) return null;
+  if (!res.ok) return [];
   const body = (await res.json()) as [string, string[], string[], string[]];
-  const want = normalizeTitle(term);
-  for (const title of body?.[1] ?? []) {
-    const got = normalizeTitle(title.replace(/\s*\([^)]*\)\s*$/, ''));
-    if (got === want) return title;
-  }
-  return null;
+  return (body?.[1] ?? []).filter((title) => titleMatchesTerm(term, title, { corporate }));
 }
 
-// Whether an article title is the term itself, by the same rule as
-// resolveArticleTitle: case, punctuation and a disambiguation suffix aside.
-export function titleMatchesTerm(term: string, title: string): boolean {
-  return normalizeTitle(title.replace(/\s*\([^)]*\)\s*$/, '')) === normalizeTitle(term);
+// Whether an article title is the term itself: case, punctuation and a
+// disambiguation suffix aside, and with `corporate` a company suffix too.
+export function titleMatchesTerm(term: string, title: string, { corporate = false } = {}): boolean {
+  let bare = title.replace(/\s*\([^)]*\)\s*$/, '');
+  if (corporate) {
+    for (let i = 0; i < 3; i++) bare = bare.replace(CORPORATE_SUFFIX, '');
+  }
+  return normalizeTitle(bare) === normalizeTitle(term);
 }
+
+const CORPORATE_SUFFIX =
+  /[,.]?\s+(inc\.?|incorporated|corporation|corp\.?|company|co\.?|ltd\.?|limited|llc|plc|ag|sa|se|nv|gmbh|group|holdings?|platforms|technologies|technology|labs|international|global|entertainment|media|studios?|games|motors|systems|software|networks?|interactive)$/i;
 
 function normalizeTitle(s: string): string {
   return s
@@ -188,39 +198,84 @@ export async function fetchWikipediaPageImage(title: string, width = 1024): Prom
 const WIKIDATA_URL = 'https://www.wikidata.org/w/api.php';
 const COMMONS_FILE_URL = 'https://commons.wikimedia.org/wiki/Special:FilePath/';
 
-// The entity's logo from Wikidata (property P154, "logo image"), reached
-// through the article's Wikidata item. Rendered by Commons as a raster at
-// most `width` wide. Null when the article has no item or the item has
-// no logo.
-export async function fetchWikidataLogo(title: string, width = 1024): Promise<WikipediaPageImage | null> {
+export interface ArticleFacts {
+  title: string;
+  // The article's Wikidata item, when it has one.
+  qid: string | null;
+  // Wikipedia's one-line description ("American technology company",
+  // "Internet meme", "Given name"), the cheapest way to tell what kind of
+  // thing an article is about.
+  shortDescription: string | null;
+  disambiguation: boolean;
+}
+
+// What kind of page a title is, from its page properties. Null when there
+// is no such page. Redirects are not followed (see fetchWikipediaPageImage).
+export async function fetchArticleFacts(title: string): Promise<ArticleFacts | null> {
   const props = new URLSearchParams({
     action: 'query',
     prop: 'pageprops',
-    ppprop: 'wikibase_item',
+    ppprop: 'wikibase_item|wikibase-shortdesc|disambiguation',
     titles: title,
     format: 'json',
     formatversion: '2',
   });
-  const pageRes = await fetch(`${OPENSEARCH_URL}?${props}`, {
+  const res = await fetch(`${OPENSEARCH_URL}?${props}`, {
     headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
   });
-  if (!pageRes.ok) throw new Error(`pageprops ${pageRes.status}`);
-  const pageBody = (await pageRes.json()) as { query?: { pages?: { pageprops?: { wikibase_item?: string } }[] } };
-  const qid = pageBody.query?.pages?.[0]?.pageprops?.wikibase_item;
-  if (!qid) return null;
-
-  const claims = new URLSearchParams({ action: 'wbgetclaims', entity: qid, property: 'P154', format: 'json' });
-  const claimRes = await fetch(`${WIKIDATA_URL}?${claims}`, {
-    headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
-  });
-  if (!claimRes.ok) throw new Error(`wbgetclaims ${claimRes.status}`);
-  const claimBody = (await claimRes.json()) as {
-    claims?: { P154?: { rank?: string; mainsnak?: { datavalue?: { value?: string } } }[] };
+  if (!res.ok) throw new Error(`pageprops ${res.status}`);
+  const body = (await res.json()) as {
+    query?: {
+      pages?: {
+        title: string;
+        missing?: boolean;
+        pageprops?: { wikibase_item?: string; 'wikibase-shortdesc'?: string; disambiguation?: string };
+      }[];
+    };
   };
-  const logos = claimBody.claims?.P154 ?? [];
-  // A preferred-rank statement is the current logo; otherwise the first.
-  const pick = logos.find((c) => c.rank === 'preferred') ?? logos[0];
-  const file = pick?.mainsnak?.datavalue?.value;
+  const page = body.query?.pages?.[0];
+  if (!page || page.missing) return null;
+  return {
+    title: page.title,
+    qid: page.pageprops?.wikibase_item ?? null,
+    shortDescription: page.pageprops?.['wikibase-shortdesc'] ?? null,
+    disambiguation: page.pageprops?.disambiguation !== undefined,
+  };
+}
+
+// The values of one property on a Wikidata item, best rank first: item
+// ids for item-valued properties (P31 "instance of"), file names for
+// Commons media (P154 "logo image").
+export async function fetchWikidataValues(qid: string, property: string): Promise<string[]> {
+  const params = new URLSearchParams({ action: 'wbgetclaims', entity: qid, property, format: 'json' });
+  const res = await fetch(`${WIKIDATA_URL}?${params}`, {
+    headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
+  });
+  if (!res.ok) throw new Error(`wbgetclaims ${res.status}`);
+  const body = (await res.json()) as {
+    claims?: Record<
+      string,
+      { rank?: string; mainsnak?: { datavalue?: { value?: string | { id?: string } } } }[]
+    >;
+  };
+  const claims = (body.claims?.[property] ?? []).filter((c) => c.rank !== 'deprecated');
+  claims.sort((a, b) => (b.rank === 'preferred' ? 1 : 0) - (a.rank === 'preferred' ? 1 : 0));
+  const values: string[] = [];
+  for (const c of claims) {
+    const v = c.mainsnak?.datavalue?.value;
+    if (typeof v === 'string') values.push(v);
+    else if (v?.id) values.push(v.id);
+  }
+  return values;
+}
+
+// The Wikidata item for a human being (P31 "instance of").
+export const WIKIDATA_HUMAN = 'Q5';
+
+// The item's logo (P154 "logo image"), rendered by Commons as a raster at
+// most `width` wide. Null when the item has no logo.
+export async function fetchWikidataLogo(qid: string, width = 1024): Promise<WikipediaPageImage | null> {
+  const [file] = await fetchWikidataValues(qid, 'P154');
   if (!file) return null;
   return {
     url: `${COMMONS_FILE_URL}${encodeURIComponent(file)}?width=${width}`,

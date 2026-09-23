@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ViSparkline, deltaColor } from "@/components/charts/ViArea";
+import { LogoImage } from "@/components/LogoImage";
 import { tileImage } from "@/components/MarketCard";
 import { Card, Chip, DeltaChip } from "@/components/ui";
 import { HowItWorksModal } from "@/components/HowItWorksModal";
@@ -218,27 +219,28 @@ function Showcase({ items }: { items: Capture[] }) {
           // Wider than tall on phones so the name and score sit within
           // the first screen instead of a scroll below the image.
           className="relative block aspect-[16/10] sm:aspect-auto sm:min-h-[320px] lg:min-h-0 bg-black overflow-hidden"
-          style={image.logo ? { background: "#F0F0F0" } : undefined}
         >
-          {!image.logo && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              key={`bg-${c.id}`}
-              src={image.src}
-              alt=""
-              aria-hidden="true"
-              className="absolute inset-0 w-full h-full object-cover scale-125 blur-2xl opacity-60"
-            />
+          {image.logo ? (
+            <LogoImage key={c.id} src={image.src} imgClassName="p-[10%] pb-[36%]" />
+          ) : (
+            <>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                key={`bg-${c.id}`}
+                src={image.src}
+                alt=""
+                aria-hidden="true"
+                className="absolute inset-0 w-full h-full object-cover scale-125 blur-2xl opacity-60"
+              />
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                key={c.id}
+                src={image.src}
+                alt=""
+                className="absolute inset-0 w-full h-full object-contain p-3"
+              />
+            </>
           )}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            key={c.id}
-            src={image.src}
-            alt=""
-            className={`absolute inset-0 w-full h-full object-contain ${
-              image.logo ? "p-[10%] pb-[36%]" : "p-3"
-            }`}
-          />
           <div
             className="absolute inset-x-0 bottom-0 h-[55%]"
             style={{

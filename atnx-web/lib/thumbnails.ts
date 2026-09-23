@@ -12,13 +12,18 @@
 // Where the image comes from depends on what the market is:
 //
 //   brand    the logo, from Wikidata (P154) through the Wikipedia article;
-//            the article's own lead image is usually the head office.
-//   person   the Wikipedia article's lead image, which is the portrait.
+//            the article's own lead image is usually the head office. The
+//            article must be about a company or product: "Apple" the fruit
+//            is not the brand, "Apple Inc." is.
+//   person   the Wikipedia article's lead image, which is the portrait, and
+//            only when Wikidata says the article is about a human.
 //   meme,    the image of the reference page a capture came from (Know
 //   trend,   Your Meme, a fandom wiki, Wikipedia), which is the meme itself
 //   other    rather than one post about it; then the Know Your Meme entry
 //            guessed from the name (its slugs are the title); then the
-//            Wikipedia lead image.
+//            Wikipedia lead image, unless the article is about an ordinary
+//            thing that happens to share the name (a given name, a fruit,
+//            a planet), or for a meme is not about internet culture at all.
 //
 // A page counts only when its title is the market's own name: a listing
 // or search page hands out the site's logo as its preview, and a Wikipedia
@@ -31,11 +36,15 @@ import { fetchImageFromUrl } from './og';
 import { createAdminClient } from './supabase/admin';
 import type { Components } from './vi/score';
 import {
+  fetchArticleFacts,
   fetchWikidataLogo,
+  fetchWikidataValues,
   fetchWikipediaPageImage,
-  resolveArticleTitle,
+  resolveArticleTitles,
   titleMatchesTerm,
+  WIKIDATA_HUMAN,
   WIKIMEDIA_USER_AGENT,
+  type ArticleFacts,
 } from './vi/wikipedia';
 
 // A market is highlighted when it is in the top HIGHLIGHT_RANK live markets
@@ -67,6 +76,17 @@ const LEGACY_SOURCE = 'wikipedia';
 const REFERENCE_HOSTS =
   /(^|\.)(knowyourmeme\.com|fandom\.com|wikipedia\.org|wiktionary\.org|urbandictionary\.com|tvtropes\.org)$/i;
 const KYM_ENTRY_URL = 'https://knowyourmeme.com/memes/';
+
+// Wikipedia short descriptions, used to tell what an article is about.
+// A brand's article describes an organisation or a product.
+const BRAND_DESCRIPTION =
+  /compan|corporat|brand|business|manufactur|organi[sz]ation|website|platform|service|startup|developer|studio|team|club|league|agency|network|software|product|device|app\b|game|airline|bank|retailer|label|publisher|newspaper|magazine|channel|conglomerate|firm|enterprise|cryptocurrency|blockchain|exchange|chain|franchise|university|party|operator|provider|subsidiary|automaker|carmaker|search engine|social media|streaming|video game|smartphone|model|vehicle|rocket|spacecraft|launch/i;
+// An article about an ordinary thing that shares a name with a market.
+const ORDINARY_DESCRIPTION =
+  /given name|first name|surname|family name|species|genus|plant|fruit|vegetable|animal|bird|fish|insect|mammal|tree|flower|chemical element|planet|dwarf planet|moon of|star in|constellation|deity|god of|goddess|river|lake|island|mountain|town|village|city|municipality|county|province|country|language|letter|numeral|number|year|month|day of|colou?r|mineral|disease|virus|unit of|word|term|concept/i;
+// A meme's article is about internet culture, media or a character.
+const CULTURE_DESCRIPTION =
+  /meme|internet|viral|online|video|slang|catchphrase|phenomen|trend|challenge|prank|hoax|game|song|single|album|character|series|film|show|web|youtube|tiktok|twitter|reddit|streamer|youtuber|creepypasta|alternate reality|subculture|fad|dance|hashtag|campaign|comic|cartoon|animat|mascot|joke|parody|remix|art|image|photograph|template|format|expression|gesture|emoji|movement|controversy|incident|event|scandal|feud|drama|debate|theory|conspiracy|community|fandom/i;
 
 const EXT_BY_TYPE: Record<string, string> = {
   'image/png': 'png',
@@ -235,35 +255,83 @@ type Strategy = (market: MarketForImage) => Promise<FoundImage | null>;
 function strategiesFor(entityType: string | null): Strategy[] {
   switch (entityType) {
     case 'brand':
-      return [wikidataLogo, wikipediaLeadImage, referencePageImage];
+      return [brandImage, referencePageImage];
     case 'person':
-      return [wikipediaLeadImage, referencePageImage];
+      return [personImage, referencePageImage];
     default:
-      return [referencePageImage, knowYourMemeEntry, wikipediaLeadImage];
+      return [referencePageImage, knowYourMemeEntry, subjectLeadImage];
   }
 }
 
-// The Wikipedia article that is this market's own name, or null. The slow
-// refresh stores the title it scored against, but that may have come from
-// an alias; only a title that is the name itself is used for a picture.
-async function articleFor(market: MarketForImage): Promise<string | null> {
+// The Wikipedia articles that could be this market's own, best first: the
+// title the slow refresh scored against when it is the name itself (it may
+// have come from an alias), then every search result that is the name.
+async function articlesFor(market: MarketForImage, { corporate = false } = {}): Promise<string[]> {
+  const titles: string[] = [];
   const stored = (market.vi_components?.wikipedia?.meta?.title as string | undefined) ?? null;
-  if (stored && titleMatchesTerm(market.entity_name, stored)) return stored;
-  return resolveArticleTitle(market.entity_name);
+  if (stored && titleMatchesTerm(market.entity_name, stored, { corporate })) titles.push(stored);
+  for (const t of await resolveArticleTitles(market.entity_name, { corporate })) {
+    if (!titles.includes(t)) titles.push(t);
+  }
+  return titles;
 }
 
-async function wikidataLogo(market: MarketForImage): Promise<FoundImage | null> {
-  const title = await articleFor(market);
-  if (!title) return null;
-  const logo = await fetchWikidataLogo(title);
-  if (!logo) return null;
-  return { ...(await download(logo.url)), source: 'wikidata:logo' };
+// Brand: the first candidate article that is about a company or product,
+// its logo if Wikidata has one, else its lead image. An article with a
+// logo on Wikidata is a brand whatever its description says.
+async function brandImage(market: MarketForImage): Promise<FoundImage | null> {
+  for (const title of await articlesFor(market, { corporate: true })) {
+    const facts = await fetchArticleFacts(title);
+    if (!facts || facts.disambiguation) continue;
+    const logo = facts.qid ? await fetchWikidataLogo(facts.qid) : null;
+    if (logo) return { ...(await download(logo.url)), source: 'wikidata:logo' };
+    if (!facts.shortDescription || !BRAND_DESCRIPTION.test(facts.shortDescription)) continue;
+    const lead = await leadImage(facts);
+    if (lead) return lead;
+  }
+  return null;
 }
 
-async function wikipediaLeadImage(market: MarketForImage): Promise<FoundImage | null> {
-  const title = await articleFor(market);
-  if (!title) return null;
-  const image = await fetchWikipediaPageImage(title);
+// Person: the lead image of the first candidate article that Wikidata
+// says is about a human. That is the portrait. When the plain name is a
+// disambiguation page, several notable people share it and no picture can
+// be trusted to be this one's ("John Smith").
+async function personImage(market: MarketForImage): Promise<FoundImage | null> {
+  for (const title of await articlesFor(market)) {
+    const facts = await fetchArticleFacts(title);
+    if (!facts) continue;
+    if (facts.disambiguation) {
+      if (!/\(.*\)\s*$/.test(title)) return null;
+      continue;
+    }
+    if (!facts.qid) continue;
+    const kinds = await fetchWikidataValues(facts.qid, 'P31');
+    if (!kinds.includes(WIKIDATA_HUMAN)) continue;
+    const lead = await leadImage(facts);
+    if (lead) return lead;
+  }
+  return null;
+}
+
+// Everything else: the lead image of the first candidate article that is
+// not about an ordinary thing sharing the name, and for a meme is about
+// internet culture (an article with no description at all is not trusted
+// for a meme).
+async function subjectLeadImage(market: MarketForImage): Promise<FoundImage | null> {
+  for (const title of await articlesFor(market)) {
+    const facts = await fetchArticleFacts(title);
+    if (!facts || facts.disambiguation) continue;
+    const desc = facts.shortDescription;
+    if (desc && ORDINARY_DESCRIPTION.test(desc) && !CULTURE_DESCRIPTION.test(desc)) continue;
+    if (market.entity_type === 'meme' && !(desc && CULTURE_DESCRIPTION.test(desc))) continue;
+    const lead = await leadImage(facts);
+    if (lead) return lead;
+  }
+  return null;
+}
+
+async function leadImage(facts: ArticleFacts): Promise<FoundImage | null> {
+  const image = await fetchWikipediaPageImage(facts.title);
   if (!image) return null;
   return { ...(await download(image.url)), source: 'wikipedia:lead' };
 }
@@ -350,6 +418,12 @@ async function storeImage(market: Candidate, found: FoundImage): Promise<'set'> 
     : update.is('thumbnail_url', null);
   const { error: updateErr } = await update;
   if (updateErr) throw updateErr;
+
+  // The file this replaced is ours and no longer referenced.
+  const old = market.thumbnail_url ? storagePath(market.thumbnail_url) : null;
+  if (old && old !== path && old.startsWith(`${STORAGE_FOLDER}/${market.id}/`)) {
+    await supabase.storage.from(STORAGE_BUCKET).remove([old]);
+  }
   return 'set';
 }
 
@@ -386,6 +460,14 @@ function imageKey(url: string | null): string | null {
   if (!url) return null;
   const name = url.split('?')[0].split('/').pop();
   return name || null;
+}
+
+// The object path inside our bucket for a public URL of ours, or null.
+function storagePath(url: string): string | null {
+  const marker = `/${STORAGE_BUCKET}/`;
+  const i = url.indexOf(marker);
+  if (i < 0) return null;
+  return decodeURIComponent(url.slice(i + marker.length).split('?')[0]);
 }
 
 async function download(url: string): Promise<{ buffer: Buffer; contentType: string }> {

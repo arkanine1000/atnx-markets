@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { ViSparkline, deltaColor } from "@/components/charts/ViArea";
+import { LogoImage } from "@/components/LogoImage";
 import { Chip, DeltaChip, ScoreBadge } from "@/components/ui";
 import { viChange24h } from "@/lib/capture-view";
 import type { Capture } from "@/lib/store";
@@ -16,15 +17,21 @@ interface Props {
 
 // The picture on a tile: the curated market image when the slow refresh
 // has found one (lib/thumbnails.ts), else the capture itself. A logo is a
-// dark mark on a transparent ground, often a wide wordmark, so it is drawn
-// whole with padding on a light tile rather than cropped to fill.
-export function tileImage(capture: Capture): { src: string; logo: boolean } {
-  const src = capture.marketImage || capture.screenshot;
-  const logo = Boolean(capture.marketImage) && capture.marketImageSource === "wikidata:logo";
-  return { src, logo };
+// mark on a transparent ground, often a wide wordmark, so it is drawn
+// whole with padding on a tile of its own (LogoImage) rather than cropped
+// to fill. A person's Wikipedia portrait is tall and cropped near the top
+// so the face stays in frame.
+export function tileImage(capture: Capture): { src: string; logo: boolean; portrait: boolean } {
+  const curated = Boolean(capture.marketImage);
+  return {
+    src: capture.marketImage || capture.screenshot,
+    logo: curated && capture.marketImageSource === "wikidata:logo",
+    portrait:
+      curated &&
+      capture.marketImageSource === "wikipedia:lead" &&
+      capture.analysis.type === "person",
+  };
 }
-
-const LOGO_TILE = "#F0F0F0";
 
 // Grid tile: the market image is the hero and the VI history is drawn
 // straight over its lower half, the way pump.fun overlays a chart on the coin
@@ -43,17 +50,20 @@ export function MarketCard({ capture, captureCount, rank, compact }: Props) {
         className={`relative overflow-hidden rounded-t-2xl bg-black ${
           compact ? "aspect-[16/11]" : "aspect-[4/3]"
         }`}
-        style={image.logo ? { background: LOGO_TILE } : undefined}
       >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={image.src}
-          alt=""
-          loading="lazy"
-          className={`absolute inset-0 w-full h-full ${
-            image.logo ? "object-contain p-[12%] pb-[30%]" : "object-cover"
-          }`}
-        />
+        {image.logo ? (
+          <LogoImage src={image.src} imgClassName="p-[12%] pb-[30%]" />
+        ) : (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={image.src}
+            alt=""
+            loading="lazy"
+            className={`absolute inset-0 w-full h-full object-cover ${
+              image.portrait ? "object-[50%_20%]" : ""
+            }`}
+          />
+        )}
         <div
           className="absolute inset-x-0 bottom-0 h-[62%]"
           style={{
@@ -138,16 +148,21 @@ export function MarketRow({ capture, captureCount, rank }: Props) {
       <span className="w-6 text-right text-xs text-tertiary font-mono tabular-nums shrink-0">
         {rank}
       </span>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={image.src}
-        alt=""
-        loading="lazy"
-        className={`w-10 h-10 rounded-lg border border-surface shrink-0 ${
-          image.logo ? "object-contain p-1" : "object-cover bg-black"
-        }`}
-        style={image.logo ? { background: LOGO_TILE } : undefined}
-      />
+      {image.logo ? (
+        <span className="relative block w-10 h-10 rounded-lg overflow-hidden border border-surface shrink-0">
+          <LogoImage src={image.src} imgClassName="p-1" />
+        </span>
+      ) : (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={image.src}
+          alt=""
+          loading="lazy"
+          className={`w-10 h-10 rounded-lg border border-surface shrink-0 object-cover bg-black ${
+            image.portrait ? "object-[50%_20%]" : ""
+          }`}
+        />
+      )}
       <div className="min-w-0 flex-1">
         <div className="text-sm font-bold text-primary truncate flex items-center gap-2">
           <span className="truncate">{analysis.name || "Untitled"}</span>
