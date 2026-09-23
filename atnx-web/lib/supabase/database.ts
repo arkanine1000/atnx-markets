@@ -630,6 +630,10 @@ export type Database = {
         Args: { market_id: string; parent_id: string | null; reason?: string | null };
         Returns: null;
       };
+      admin_purge_market: {
+        Args: { market_id: string; reason?: string | null };
+        Returns: Json;
+      };
       admin_soft_delete_capture: {
         Args: { capture_id: string; reason?: string | null };
         Returns: null;

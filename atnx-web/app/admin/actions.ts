@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export interface AdminActionResult {
   success: boolean;
@@ -35,6 +36,51 @@ async function callRpc<Args extends Record<string, unknown>>(
   revalidatePath("/app");
   for (const path of extraPaths) revalidatePath(path);
   return { success: true };
+}
+
+// Permanently deletes a soft-deleted market: the row, its captures and
+// their images, its VI history and its curated image. The RPC refuses a
+// market that is live or has trades on record (those stay soft-deleted)
+// and writes the moderation_log row; the files are removed here, since
+// storage is not reachable from SQL.
+export async function purgeMarket(marketId: string): Promise<AdminActionResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: "Not signed in" };
+
+  const { data, error } = await supabase.rpc("admin_purge_market", {
+    market_id: marketId,
+    reason: "purged from the admin dashboard",
+  });
+  if (error) return { success: false, error: error.message };
+
+  const purged = (data ?? {}) as { image_urls?: string[]; thumbnail_url?: string | null };
+  const admin = createAdminClient();
+  const bucket = admin.storage.from("captures");
+  const paths = (purged.image_urls ?? [])
+    .concat(purged.thumbnail_url ? [purged.thumbnail_url] : [])
+    .map(storagePath)
+    .filter((p): p is string => p !== null);
+  // Curated images live in a per-market folder; sweep whatever is in it.
+  const { data: curated } = await bucket.list(`markets/${marketId}`);
+  for (const f of curated ?? []) paths.push(`markets/${marketId}/${f.name}`);
+  if (paths.length > 0) {
+    const { error: rmErr } = await bucket.remove([...new Set(paths)]);
+    if (rmErr) console.warn("[admin] purge: could not remove files", rmErr.message);
+  }
+
+  revalidatePath("/admin");
+  revalidatePath("/app");
+  return { success: true };
+}
+
+// The object path inside the captures bucket for one of its public URLs.
+function storagePath(url: string): string | null {
+  const marker = "/storage/v1/object/public/captures/";
+  const i = url.indexOf(marker);
+  return i === -1 ? null : decodeURIComponent(url.slice(i + marker.length));
 }
 
 // Points a market at the subject it is about, or clears the pointer with a

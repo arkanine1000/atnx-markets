@@ -11,6 +11,7 @@ import {
   reassignCapture,
   approveCapture,
   setParentMarket,
+  purgeMarket,
 } from "./actions";
 
 interface MarketRow {
@@ -243,17 +244,29 @@ function MarketsTab({ markets }: { markets: MarketRow[] }) {
                     </button>
                   )}
                   {isDeleted ? (
-                    <button
-                      disabled={busy}
-                      onClick={() => {
-                        const reason = promptReason("restore");
-                        if (reason === null) return;
-                        run(m.id, () => restoreMarket(m.id, reason));
-                      }}
-                      className="text-atnx-cyan hover:text-atnx-cyan-dim cursor-pointer disabled:opacity-40"
-                    >
-                      Restore
-                    </button>
+                    <>
+                      <button
+                        disabled={busy}
+                        onClick={() => {
+                          const reason = promptReason("restore");
+                          if (reason === null) return;
+                          run(m.id, () => restoreMarket(m.id, reason));
+                        }}
+                        className="text-atnx-cyan hover:text-atnx-cyan-dim mr-3 cursor-pointer disabled:opacity-40"
+                      >
+                        Restore
+                      </button>
+                      {/* Permanent, no prompt: it only appears on rows already
+                          soft-deleted, and the server refuses one with trades. */}
+                      <button
+                        disabled={busy}
+                        onClick={() => run(m.id, () => purgeMarket(m.id))}
+                        title="Delete permanently: the market, its captures, images and VI history. Refused if anything was traded on it."
+                        className="text-atnx-magenta hover:opacity-80 cursor-pointer disabled:opacity-40"
+                      >
+                        Purge
+                      </button>
+                    </>
                   ) : (
                     <button
                       disabled={busy}
