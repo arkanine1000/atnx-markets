@@ -44,7 +44,7 @@ const LINKS: NavLink[] = [
     href: "/app/portfolio",
     label: "Portfolio",
     match: (p: string) => p === "/app/portfolio",
-    icon: () => null,
+    icon: () => <PortfolioIcon />,
   },
   {
     href: "/app/leaderboard",
@@ -55,9 +55,9 @@ const LINKS: NavLink[] = [
 ];
 
 // Phones get a bottom bar with the three actions a thumb reaches for:
-// Markets, Create (a plain + like YouTube's), Leaderboard. Portfolio lives
+// Markets, Create (a plain + like YouTube's), Portfolio. Leaderboard lives
 // under the account menu there. The desktop pill keeps all four.
-const BOTTOM_BAR = ["/app", "/app/submit", "/app/leaderboard"];
+const BOTTOM_BAR = ["/app", "/app/submit", "/app/portfolio"];
 
 function PlusIcon({ size = 12 }: { size?: number }) {
   return (
@@ -98,6 +98,23 @@ function MarketsIcon() {
         strokeLinecap="round"
         strokeLinejoin="round"
       />
+    </svg>
+  );
+}
+
+// A wallet, drawn with the same stroke as the chart and the trophy.
+function PortfolioIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width={22} height={22} aria-hidden="true">
+      <path
+        d="M4 7.5A2.5 2.5 0 0 1 6.5 5H17a1 1 0 0 1 1 1v2M4 7.5V17a2 2 0 0 0 2 2h13a1 1 0 0 0 1-1v-7a1 1 0 0 0-1-1H6.5A2.5 2.5 0 0 1 4 7.5z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={1.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle cx="16" cy="14.5" r="1.2" fill="currentColor" />
     </svg>
   );
 }

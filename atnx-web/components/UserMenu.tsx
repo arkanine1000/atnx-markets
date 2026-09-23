@@ -89,14 +89,14 @@ export function UserMenu() {
               {name}
             </span>
           </div>
-          {/* Portfolio is not in the phone bottom bar, so it lives here on
+          {/* Leaderboard is not in the phone bottom bar, so it lives here on
               phones. From sm up the header pill has it already. */}
           <Link
-            href="/app/portfolio"
+            href="/app/leaderboard"
             onClick={() => setOpen(false)}
             className="block sm:hidden px-3 py-2 text-xs text-primary hover:bg-surface transition-colors"
           >
-            Portfolio
+            Leaderboard
           </Link>
           <Link
             href="/app/settings"
