@@ -14,7 +14,13 @@ interface Props {
   compact?: boolean;
 }
 
-// Grid tile: the capture image is the hero and the VI history is drawn
+// The picture on a tile: the curated market image when the slow refresh
+// has found one (lib/thumbnails.ts), else the capture itself.
+function tileImage(capture: Capture): string {
+  return capture.marketImage || capture.screenshot;
+}
+
+// Grid tile: the market image is the hero and the VI history is drawn
 // straight over its lower half, the way pump.fun overlays a chart on the coin
 // art. Name, category, score and 24h delta sit underneath.
 export function MarketCard({ capture, captureCount, rank, compact }: Props) {
@@ -33,7 +39,7 @@ export function MarketCard({ capture, captureCount, rank, compact }: Props) {
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={capture.screenshot}
+          src={tileImage(capture)}
           alt=""
           loading="lazy"
           className="absolute inset-0 w-full h-full object-cover"
@@ -123,7 +129,7 @@ export function MarketRow({ capture, captureCount, rank }: Props) {
       </span>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src={capture.screenshot}
+        src={tileImage(capture)}
         alt=""
         loading="lazy"
         className="w-10 h-10 rounded-lg object-cover border border-surface shrink-0 bg-black"

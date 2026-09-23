@@ -35,6 +35,7 @@ Supabase SQL editor, in order:
 | `005_vi_history_series.sql` | `vi_history_series()`: bucketed, median-per-bucket VI history packed as JSON per market, for the portfolio chart's 1D/1W/1M/ALL ranges. Until it is applied the endpoint falls back to the newest 1,000 raw rows per market. |
 | `006_trading_integrity.sql` | Trading and profile hardening: `open_position()` / `close_position()` do the accounting atomically and validate size and leverage; users can no longer write `positions` or `sim_balances` directly; `user_profiles.role` changes need an admin; profiles are readable by their owner and admins only. **The trading actions require this migration.** |
 | `007_trade_volume.sql` | Trade volume: `open_position()` / `close_position()` add each trade's size to `markets.total_volume_usd` (every open and every close counts once, at size), and the column is backfilled from `positions`. The market page and the leaderboard aggregate `positions` themselves, so they show volume with or without this file. |
+| `008_market_thumbnails.sql` | Curated market images: adds `markets.thumbnail_source` and `thumbnail_checked_at` beside the baseline's unused `thumbnail_url`, which the hourly slow refresh now fills for highlighted markets (`lib/thumbnails.ts`). Cards fall back to the newest capture until it is set, so nothing breaks before this file is applied except the curation pass itself. |
 
 After a migration, update `lib/supabase/database.ts` by hand to match. After
 `001`, run `npm run backfill:embeddings` once so markets that predate it get a
@@ -83,6 +84,7 @@ ignores for Gemini 3.x (measured: 18 s and truncated JSON versus 2.6 s).
 | `npm run fixtures:render` | Regenerates the fixture images from `scripts/fixtures/manifest.json`. |
 | `npm run backfill:embeddings` | Embeds every live market without a vector. Run once after migration `001` and after any bulk seed. |
 | `npm run seed:trending` | Seeds a fresh database with a hand-curated set of markets. |
+| `npm run thumbs:backfill [n]` | Curates images for up to `n` (default 100) highlighted markets now, the same pass the hourly slow refresh runs a dozen at a time. Needs migration `008`. |
 
 ## Layout
 

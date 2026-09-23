@@ -93,7 +93,7 @@ export async function fetchWikipediaSignal(term: string, aliases: string[] = [])
 // returns "GEO-Mobile Radio Interface". Only a title that is the term
 // itself (case, punctuation and a disambiguation suffix aside) counts as
 // the term's article; anything else is a different subject's pageviews.
-async function resolveArticleTitle(term: string): Promise<string | null> {
+export async function resolveArticleTitle(term: string): Promise<string | null> {
   const params = new URLSearchParams({
     action: 'opensearch',
     search: term,
@@ -135,6 +135,48 @@ async function fetchDailyPageviews(title: string): Promise<{ date: string; views
     views: item.views,
   }));
 }
+
+export interface WikipediaPageImage {
+  url: string;
+  width: number;
+  height: number;
+  file: string;
+}
+
+// The article's lead image (MediaWiki's PageImages pick), rendered as a
+// raster at most `width` wide, so an SVG logo comes back as a PNG. Non-free
+// images are included: a company's logo on that company's market is the
+// point. Null when the article has no usable image.
+export async function fetchWikipediaPageImage(title: string, width = 1024): Promise<WikipediaPageImage | null> {
+  const params = new URLSearchParams({
+    action: 'query',
+    prop: 'pageimages',
+    piprop: 'thumbnail|name',
+    pithumbsize: String(width),
+    pilicense: 'any',
+    redirects: '1',
+    titles: title,
+    format: 'json',
+    formatversion: '2',
+  });
+  const res = await fetch(`${OPENSEARCH_URL}?${params}`, {
+    headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
+  });
+  if (!res.ok) throw new Error(`pageimages ${res.status}`);
+  const body = (await res.json()) as {
+    query?: { pages?: { thumbnail?: { source: string; width: number; height: number }; pageimage?: string }[] };
+  };
+  const page = body.query?.pages?.[0];
+  if (!page?.thumbnail?.source || !page.pageimage) return null;
+  return {
+    url: page.thumbnail.source,
+    width: page.thumbnail.width,
+    height: page.thumbnail.height,
+    file: page.pageimage,
+  };
+}
+
+export { USER_AGENT as WIKIMEDIA_USER_AGENT };
 
 function formatDate(d: Date): string {
   const y = d.getUTCFullYear();

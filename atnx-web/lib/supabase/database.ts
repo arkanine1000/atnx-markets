@@ -28,6 +28,8 @@ export type Database = {
           entity_name_normalized: string;
           entity_type: string | null;
           thumbnail_url: string | null;
+          thumbnail_source: string | null;
+          thumbnail_checked_at: string | null;
           current_vi: number;
           vi_last_updated: string | null;
           vi_components: Json | null;
@@ -54,6 +56,8 @@ export type Database = {
           entity_name_normalized: string;
           entity_type?: string | null;
           thumbnail_url?: string | null;
+          thumbnail_source?: string | null;
+          thumbnail_checked_at?: string | null;
           current_vi?: number;
           vi_last_updated?: string | null;
           vi_components?: Json | null;
@@ -80,6 +84,8 @@ export type Database = {
           entity_name_normalized?: string;
           entity_type?: string | null;
           thumbnail_url?: string | null;
+          thumbnail_source?: string | null;
+          thumbnail_checked_at?: string | null;
           current_vi?: number;
           vi_last_updated?: string | null;
           vi_components?: Json | null;

@@ -16,6 +16,10 @@ export interface Capture {
   pageUrl: string;
   pageTitle: string;
   screenshot: string; // storage public URL (was base64 pre-Chunk 1)
+  // Curated image for the market (markets.thumbnail_url, filled in by
+  // lib/thumbnails.ts for highlighted markets). Cards prefer it over the
+  // screenshot when set; the market page keeps showing the captures.
+  marketImage?: string | null;
   analysis: {
     type?: string;
     name?: string;
@@ -47,6 +51,7 @@ export type MarketRow = {
   current_vi: number;
   vi_last_updated: string | null;
   total_captures: number;
+  thumbnail_url: string | null;
 };
 
 type CaptureRowWithMarket = {
@@ -104,7 +109,7 @@ async function uploadScreenshot(
   return data.publicUrl;
 }
 
-const MARKET_COLUMNS = 'id, entity_name, entity_type, current_vi, vi_last_updated, total_captures';
+const MARKET_COLUMNS = 'id, entity_name, entity_type, current_vi, vi_last_updated, total_captures, thumbnail_url';
 
 export async function getMarketById(id: string): Promise<MarketRow | null> {
   const { data, error } = await createAdminClient()
@@ -443,6 +448,7 @@ export async function addCapture(
       marketId: market.id,
       timestamp: captureRow.created_at as string,
       screenshot: image_url ?? TEXT_PLACEHOLDER_IMAGE,
+      marketImage: market.thumbnail_url ?? null,
       viralityScore: vi,
     },
     isNew,
@@ -469,6 +475,7 @@ function rowToCapture(
     pageUrl: row.source_url ?? '',
     pageTitle: meta?.page_title ?? '',
     screenshot: row.image_url ?? TEXT_PLACEHOLDER_IMAGE,
+    marketImage: market?.thumbnail_url ?? null,
     analysis: cleanedAnalysis,
     trends,
     viralityScore: Math.round(market?.current_vi ?? 0),
@@ -500,7 +507,7 @@ async function loadCaptures(limit: number): Promise<Capture[]> {
   const { data, error } = await supabase
     .from('captures')
     .select(
-      'id, created_at, image_url, source_url, ocr_text, raw_ai_response, market_id, market:markets!inner(id, entity_name, entity_type, current_vi, vi_last_updated, total_captures)'
+      `id, created_at, image_url, source_url, ocr_text, raw_ai_response, market_id, market:markets!inner(${MARKET_COLUMNS})`
     )
     .is('deleted_at', null)
     .is('market.deleted_at', null)
@@ -563,9 +570,7 @@ export async function getMarketDetail(
 
   const { data: market, error: marketErr } = await supabase
     .from('markets')
-    .select(
-      'id, entity_name, entity_type, current_vi, vi_last_updated, total_captures'
-    )
+    .select(MARKET_COLUMNS)
     .eq('id', marketId)
     .is('deleted_at', null)
     .maybeSingle();
@@ -575,7 +580,7 @@ export async function getMarketDetail(
   const { data: captureRows, error: captureErr } = await supabase
     .from('captures')
     .select(
-      'id, created_at, image_url, source_url, ocr_text, raw_ai_response, market_id, market:markets(id, entity_name, entity_type, current_vi, vi_last_updated, total_captures)'
+      `id, created_at, image_url, source_url, ocr_text, raw_ai_response, market_id, market:markets(${MARKET_COLUMNS})`
     )
     .eq('market_id', marketId)
     .is('deleted_at', null)

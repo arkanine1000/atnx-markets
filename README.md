@@ -74,7 +74,7 @@ How a submission is decided, stage by stage, is in [`atnx-web/README.md`](atnx-w
 | `GET /api/captures` | Dashboard feed (grouped by market, latest first); also feeds the extension side panel's top markets |
 | `GET /api/portfolio` | Extension side panel: handle, sim balance, realized/unrealized PnL, total value, open positions (with latest capture thumbnail), and a 7-day portfolio-value series rebuilt from each open position's `vi_history` (401 when signed out) |
 | `GET /api/markets/refresh` | Cron-only, every 5 min; re-reads the fast VI sources (Google Trends, Bluesky) for every live market, combines them with the stored slow readings, appends an EMA-smoothed point to `vi_history` |
-| `GET /api/markets/refresh-slow` | Cron-only, hourly; same for the slow sources (GDELT, Wikipedia) |
+| `GET /api/markets/refresh-slow` | Cron-only, hourly; same for the slow sources (GDELT, Wikipedia). Then curates images for up to a dozen highlighted markets that still show a raw capture (see `thumbnails.ts`) |
 
 ### Key libraries (`atnx-web/lib/`)
 
@@ -86,6 +86,7 @@ How a submission is decided, stage by stage, is in [`atnx-web/README.md`](atnx-w
 - **`trends.ts`** — Google Trends (7d interest), virality score = 0.35 × current + 0.30 × momentum + 0.20 × spike + 0.15 × consistency, all × 10. `normalizeSearchTerm` strips separators so titles like `Foo / Bar` don't tank queries.
 - **`wikipedia.ts`** — OpenSearch → per-article-daily pageviews (30d, 2-day lag). Score = `log10(peak + 10) × 200 − 200`. User-Agent required by Wikimedia. 1h cache.
 - **`store.ts`** — `createMarket` (unique normalised name; re-selects on conflict), `addCapture`, `recordVi`, `getCaptures`, `getMarketDetail`.
+- **`thumbnails.ts`** — The hybrid between pump.fun's user-chosen art and Polymarket's curated images. Every card starts with the newest user capture. For highlighted markets (top 24 by VI, or ≥ $1,000 traded) the hourly slow refresh looks up the entity's Wikipedia lead image after the fact, copies it into the `captures` bucket under `markets/`, and writes `markets.thumbnail_url`; cards, list rows and the featured hero prefer it, the market page keeps showing the captures. A market with no image is retried weekly. Never overwrites a `thumbnail_url` set by hand. `npm run thumbs:backfill` runs a pass now.
 - **`og.ts`** — Fetches a link's preview image and title for URL submissions and the share target: YouTube thumbnails directly, TikTok via oEmbed or the page's hydration JSON, everything else from `og:image` with a browser user agent first and Facebook's crawler user agent second (Facebook, Instagram and Threads are tried crawler-first). Login walls and placeholder logos count as no image.
 - **`trends-cache.ts`** — 5 min in-memory cache keyed by lowercased term.
 - **`capture-view.ts`** — UI helpers (`timeAgo`, `sentimentColor`, `viChange24h` from the VI history).

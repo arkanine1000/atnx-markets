@@ -195,6 +195,8 @@ function Showcase({ items }: { items: Capture[] }) {
   const points = c.trends?.dataPoints ?? [];
   const change24h = viChange24h(points, c.viralityScore);
   const stroke = deltaColor(change24h);
+  // Curated market image when one has been found, else the capture.
+  const image = c.marketImage || c.screenshot;
 
   return (
     <Card
@@ -218,7 +220,7 @@ function Showcase({ items }: { items: Capture[] }) {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             key={`bg-${c.id}`}
-            src={c.screenshot}
+            src={image}
             alt=""
             aria-hidden="true"
             className="absolute inset-0 w-full h-full object-cover scale-125 blur-2xl opacity-60"
@@ -226,7 +228,7 @@ function Showcase({ items }: { items: Capture[] }) {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             key={c.id}
-            src={c.screenshot}
+            src={image}
             alt=""
             className="absolute inset-0 w-full h-full object-contain p-3"
           />
