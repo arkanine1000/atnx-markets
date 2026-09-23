@@ -47,25 +47,37 @@ const FRESH_FOR: Record<Cadence, SourceName[]> = {
   all: [...FAST_SOURCES, ...SLOW_SOURCES],
 };
 
+// A market with no stored breakdown has never been scored (its capture-time
+// scoring did not land). It fetches every source whatever the cadence: on
+// the fast pass alone, a single-word name ("Meta") has no Wikipedia title
+// yet, the generic-term guard drops both fast sources, and the market
+// sits at zero until the hourly pass.
+function neverScored(r: ScoreRequest): boolean {
+  return !r.stored || Object.keys(r.stored).length === 0;
+}
+
 // Scores many terms at once so Trends can batch them.
 export async function scoreTerms(requests: ScoreRequest[], cadence: Cadence): Promise<SignalResult[]> {
   const fresh = new Set(FRESH_FOR[cadence]);
+  const all = new Set(FRESH_FOR.all);
 
-  const trendsMap: Map<string, TrendsSignal> = fresh.has('trends')
-    ? await fetchTrendsSignals(requests.map((r) => ({ term: r.term, aliases: (r.aliases ?? []).filter(isSearchableAlias) }))).catch(() => new Map())
+  const trendsRequests = requests.filter((r) => fresh.has('trends') || neverScored(r));
+  const trendsMap: Map<string, TrendsSignal> = trendsRequests.length
+    ? await fetchTrendsSignals(trendsRequests.map((r) => ({ term: r.term, aliases: (r.aliases ?? []).filter(isSearchableAlias) }))).catch(() => new Map())
     : new Map();
 
   return Promise.all(
     requests.map(async ({ term, stored, ...req }) => {
+      const want = neverScored({ term, stored, ...req }) ? all : fresh;
       const aliases = (req.aliases ?? []).filter(isSearchableAlias);
       const components: Components = { ...(stored ?? {}) };
       const trends = trendsMap.get(term);
       if (trends) components.trends = trends;
 
       const [bluesky, gdelt, wikipedia] = await Promise.all([
-        fresh.has('bluesky') ? fetchBlueskySignal(term, aliases).catch(() => null) : null,
-        fresh.has('gdelt') ? fetchGdeltSignal(term, aliases).catch(() => null) : null,
-        fresh.has('wikipedia') ? fetchWikipediaSignal(term, aliases).catch(() => null) : null,
+        want.has('bluesky') ? fetchBlueskySignal(term, aliases).catch(() => null) : null,
+        want.has('gdelt') ? fetchGdeltSignal(term, aliases).catch(() => null) : null,
+        want.has('wikipedia') ? fetchWikipediaSignal(term, aliases).catch(() => null) : null,
       ]);
       if (bluesky) components.bluesky = bluesky;
       if (gdelt) components.gdelt = gdelt;
