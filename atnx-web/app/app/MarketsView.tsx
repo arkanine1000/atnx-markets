@@ -212,6 +212,7 @@ export function MarketsView({ initialCaptures }: { initialCaptures: Capture[] })
           <Segmented
             ariaLabel="Sort markets"
             tone="accent"
+            itemClassName="w-24"
             value={sortMode}
             onChange={setSortMode}
             options={[

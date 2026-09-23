@@ -52,7 +52,7 @@ export function UserMenu() {
     return (
       <button
         onClick={openLoginModal}
-        className="text-xs px-3 py-1.5 rounded border border-atnx-magenta bg-atnx-magenta/10 text-atnx-magenta hover:bg-atnx-magenta hover:text-white cursor-pointer transition-colors font-bold whitespace-nowrap"
+        className="h-8 px-3.5 inline-flex items-center rounded-full btn-magenta text-xs font-bold cursor-pointer whitespace-nowrap"
       >
         Login
       </button>
@@ -71,7 +71,7 @@ export function UserMenu() {
         aria-expanded={open}
         aria-label={`${name} menu`}
         title={name}
-        className={`h-8 w-8 rounded-full border-2 cursor-pointer transition-colors ${
+        className={`h-8 w-8 inline-flex items-center justify-center overflow-hidden rounded-full border-2 cursor-pointer transition-colors ${
           open ? "border-atnx-cyan" : "border-surface hover:border-atnx-cyan/60"
         }`}
       >

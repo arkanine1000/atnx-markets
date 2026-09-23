@@ -188,7 +188,6 @@ export function Nav() {
               </span>
               Create
             </Link>
-            <UserMenu />
             {mounted && (
               <button
                 type="button"
@@ -202,6 +201,7 @@ export function Nav() {
                 {activeTheme === "dark" ? "☀️" : "🌙"}
               </button>
             )}
+            <UserMenu />
           </div>
         </div>
       </header>

@@ -22,6 +22,8 @@ interface SegmentedProps<T extends string> {
   tone?: "accent" | "neutral";
   size?: "sm" | "md";
   className?: string;
+  /** Classes for every option, e.g. a fixed width so the pills line up. */
+  itemClassName?: string;
   ariaLabel?: string;
 }
 
@@ -32,6 +34,7 @@ export function Segmented<T extends string>({
   tone = "neutral",
   size = "sm",
   className = "",
+  itemClassName = "",
   ariaLabel,
 }: SegmentedProps<T>) {
   const pad = size === "sm" ? "px-3 py-1.5 text-xs" : "px-4 py-2 text-sm";
@@ -56,7 +59,7 @@ export function Segmented<T extends string>({
             disabled={o.disabled}
             title={o.title}
             onClick={() => onChange(o.value)}
-            className={`${pad} rounded-full font-bold whitespace-nowrap transition-colors cursor-pointer disabled:opacity-35 disabled:cursor-not-allowed ${
+            className={`${pad} ${itemClassName} inline-flex items-center justify-center rounded-full font-bold whitespace-nowrap transition-colors cursor-pointer disabled:opacity-35 disabled:cursor-not-allowed ${
               active ? activeCls : "text-secondary hover:text-primary"
             }`}
           >
