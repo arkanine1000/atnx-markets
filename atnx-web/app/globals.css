@@ -28,8 +28,9 @@
 
   --breakpoint-xs: 30rem;
 
-  --font-mono: 'JetBrains Mono', 'Fira Code', 'Consolas', ui-monospace, monospace;
-  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-display: var(--font-archivo), 'Archivo', system-ui, sans-serif;
+  --font-sans: var(--font-instrument-sans), 'Instrument Sans', system-ui, sans-serif;
+  --font-mono: var(--font-martian-mono), 'Martian Mono', ui-monospace, monospace;
 }
 
 /* `light:` utility variant, keyed off the .light class the theme toggle sets */
@@ -40,7 +41,7 @@ body {
   --page-bg: var(--color-dark-primary);
   background: var(--page-bg);
   color: #F0F0F0;
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
 }
 
 .light body {
@@ -49,11 +50,50 @@ body {
   color: #0A0A0A;
 }
 
+/* The ATNX wordmark: Archivo, heavy. */
+.wordmark {
+  font-family: var(--font-display);
+  font-weight: 800;
+}
+
 /* Sticky app header: page colour at ~85% over a blur so content scrolls under it */
 .nav-blur {
   background: color-mix(in srgb, var(--page-bg) 85%, transparent);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
+}
+
+/* Magenta action button. Solid magenta is reserved for active tabs, so
+   buttons carry it as a 1px border on the elevated surface and only fill on
+   hover. */
+.btn-magenta {
+  border: 1px solid var(--color-atnx-magenta);
+  background: var(--color-dark-elevated);
+  color: var(--color-atnx-magenta);
+  transition: background-color 200ms ease, color 200ms ease, box-shadow 200ms ease;
+}
+.light .btn-magenta {
+  background: var(--color-light-elevated);
+  color: var(--color-atnx-magenta-light);
+  border-color: var(--color-atnx-magenta-light);
+}
+.btn-magenta:hover:not(:disabled),
+.light .btn-magenta:hover:not(:disabled) {
+  background: var(--color-atnx-magenta);
+  color: #fff;
+  box-shadow: 0 0 20px rgba(255, 0, 229, 0.3);
+}
+
+/* Quiet hover for neutral surface buttons: the fill steps up one level
+   (surface → elevated) instead of taking an accent. */
+.hover-lift {
+  transition: background-color 200ms ease, border-color 200ms ease;
+}
+.hover-lift:hover:not(:disabled) {
+  background: var(--color-dark-elevated);
+}
+.light .hover-lift:hover:not(:disabled) {
+  background: var(--color-light-elevated);
 }
 
 /* Interactive card: lift + cyan edge on hover */

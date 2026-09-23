@@ -103,11 +103,11 @@ export function MarketCard({ capture, captureCount, rank, compact }: Props) {
       <div className={`flex items-start gap-3 ${compact ? "p-3" : "p-3.5"}`}>
         <div className="min-w-0 flex-1">
           <div
-            className={`font-bold text-primary truncate ${compact ? "text-[13px]" : "text-sm"}`}
+            className={`font-bold text-primary truncate ${compact ? "text-[15px]" : "text-base"}`}
           >
             {analysis.name || "Untitled"}
           </div>
-          <div className="text-xs text-tertiary truncate mt-0.5">
+          <div className={`text-tertiary truncate mt-0.5 ${compact ? "text-[13px]" : "text-sm"}`}>
             {analysis.category || "—"}
           </div>
         </div>

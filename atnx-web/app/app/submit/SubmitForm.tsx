@@ -334,7 +334,7 @@ export function SubmitForm({ initialUrl = "", initialText = "", notice = "" }: S
       </div>
 
       <label className="block">
-        <span className="text-xs uppercase tracking-wider text-tertiary">Link</span>
+        <span className="text-xs font-mono uppercase tracking-wider text-tertiary">Link</span>
         <input
           type="url"
           inputMode="url"
@@ -352,7 +352,7 @@ export function SubmitForm({ initialUrl = "", initialText = "", notice = "" }: S
       </label>
 
       <label className="block">
-        <span className="text-xs uppercase tracking-wider text-tertiary">Text</span>
+        <span className="text-xs font-mono uppercase tracking-wider text-tertiary">Text</span>
         <textarea
           value={text}
           onChange={(e) => {

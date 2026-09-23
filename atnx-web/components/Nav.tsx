@@ -142,14 +142,14 @@ export function Nav() {
               height={32}
               className="w-8 h-8 rounded-md shrink-0 object-contain"
             />
-            <div className="text-lg font-bold text-primary tracking-[0.2em] leading-none group-hover:text-atnx-cyan transition-colors">
+            <div className="wordmark text-lg text-primary tracking-[0.1em] leading-none group-hover:text-atnx-cyan transition-colors">
               ATNX
             </div>
           </Link>
 
           <nav
             aria-label="App"
-            className="hidden sm:inline-flex items-center gap-0.5 p-1 rounded-full bg-surface border border-surface text-xs"
+            className="hidden sm:inline-flex items-center gap-0.5 p-1 rounded-full bg-surface border border-surface text-sm"
           >
             {LINKS.filter((l) => !l.plus).map((l) => {
               const active = l.match(pathname);
@@ -158,7 +158,7 @@ export function Nav() {
                   key={l.href}
                   href={l.href}
                   aria-current={active ? "page" : undefined}
-                  className={`inline-flex items-center gap-1 px-3.5 py-1.5 rounded-full font-bold whitespace-nowrap transition-colors ${
+                  className={`inline-flex items-center justify-center w-28 py-1.5 rounded-full font-bold whitespace-nowrap transition-colors ${
                     active
                       ? "bg-atnx-magenta text-white shadow-[0_0_16px_rgba(255,0,229,0.25)]"
                       : "text-secondary hover:text-primary"
@@ -177,10 +177,10 @@ export function Nav() {
               href="/app/submit"
               title="Create a market"
               aria-current={pathname === "/app/submit" ? "page" : undefined}
-              className={`hidden sm:inline-flex items-center gap-1.5 h-8 pl-2.5 pr-3.5 rounded-full border bg-surface text-xs font-bold text-primary transition-colors ${
+              className={`hidden sm:inline-flex items-center gap-1.5 h-9 pl-2.5 pr-4 rounded-full border bg-surface hover-lift text-sm font-bold text-primary ${
                 pathname === "/app/submit"
                   ? "border-atnx-magenta/70 shadow-[0_0_16px_rgba(255,0,229,0.25)]"
-                  : "border-surface hover:border-atnx-magenta/60"
+                  : "border-surface"
               }`}
             >
               <span className="text-atnx-magenta light:text-atnx-magenta-light inline-flex">
@@ -235,7 +235,7 @@ export function Nav() {
                 key={l.href}
                 href={l.href}
                 aria-current={active ? "page" : undefined}
-                className={`justify-self-center inline-flex flex-col items-center gap-0.5 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.12em] transition-colors ${
+                className={`justify-self-center inline-flex flex-col items-center gap-0.5 px-3 py-1 text-[10px] font-bold font-mono uppercase tracking-[0.12em] transition-colors ${
                   active
                     ? "text-atnx-cyan light:text-atnx-cyan-light"
                     : "text-tertiary"

@@ -123,7 +123,7 @@ function PositionRow({
           </span>
         </span>
         <span className="text-right whitespace-nowrap">
-          <span className="block font-bold text-sm text-primary font-mono tabular-nums">{usd.format(p.valueUsd)}</span>
+          <span className="block font-display font-bold text-[15px] text-primary tabular-nums">{usd.format(p.valueUsd)}</span>
           <span className={`block text-[11px] font-mono tabular-nums ${up ? UP : DOWN}`}>
             {signed(p.pnlPercent, (x) => x.toFixed(1))}%
           </span>
@@ -131,16 +131,16 @@ function PositionRow({
       </button>
       {open && (
         <div className="px-3.5 pb-3.5">
-          <dl className="grid grid-cols-4 gap-1.5 text-xs">
+          <dl className="grid grid-cols-4 gap-3 pt-2.5 border-t border-surface">
             {[
               ["Entry", String(p.entryVi), "text-atnx-yellow light:text-atnx-yellow-light"],
               ["Now", String(p.currentVi), "text-atnx-yellow light:text-atnx-yellow-light"],
               ["PnL", signed(p.pnlUsd, (x) => usd.format(x)), up ? UP : DOWN],
               ["Opened", timeAgo(p.openedAt), "text-primary"],
             ].map(([k, v, cls]) => (
-              <div key={k} className="rounded-lg bg-elevated px-2 py-1.5 min-w-0">
-                <dt className="text-[9px] uppercase tracking-wider text-tertiary">{k}</dt>
-                <dd className={`mt-0.5 text-[12px] font-mono tabular-nums truncate ${cls}`}>{v}</dd>
+              <div key={k} className="min-w-0">
+                <dt className="text-[10px] font-mono uppercase tracking-wider text-tertiary">{k}</dt>
+                <dd className={`mt-0.5 text-[13px] font-mono tabular-nums truncate ${cls}`}>{v}</dd>
               </div>
             ))}
           </dl>
@@ -155,7 +155,7 @@ function PositionRow({
               type="button"
               disabled={closing}
               onClick={onClose}
-              className="text-[11px] px-3 py-1.5 rounded-full border border-surface text-secondary hover:border-atnx-magenta/50 hover:text-atnx-magenta cursor-pointer transition-colors disabled:opacity-50"
+              className="text-[11px] px-3 py-1.5 rounded-full border border-surface bg-surface hover-lift text-secondary hover:text-primary cursor-pointer disabled:opacity-50"
             >
               {closing ? "Closing…" : "Close position"}
             </button>
@@ -276,7 +276,7 @@ export function PortfolioMobile({
       {/* Value tile */}
       <Card className="px-4 pt-4 pb-3">
         <div className="flex items-baseline justify-between gap-2">
-          <span className="text-[10px] uppercase tracking-[0.15em] text-tertiary">Portfolio value</span>
+          <span className="text-[10px] font-mono uppercase tracking-[0.15em] text-tertiary">Portfolio value</span>
           {data && (
             <span className={`text-xs font-bold whitespace-nowrap font-mono tabular-nums ${up ? UP : DOWN}`}>
               {signed(data.changeUsd, (x) => usdCompact.format(x))} ({signed(data.changePercent, (x) => x.toFixed(1))}%){" "}
@@ -284,7 +284,7 @@ export function PortfolioMobile({
             </span>
           )}
         </div>
-        <div className="mt-0.5 mb-2 text-3xl font-bold tracking-tight text-primary font-mono tabular-nums">
+        <div className="mt-0.5 mb-2 font-display text-3xl font-bold tracking-tight text-primary tabular-nums">
           {data ? usd.format(data.totalValueUsd) : error ? "—" : "…"}
         </div>
         <PortfolioSparkline
@@ -317,7 +317,7 @@ export function PortfolioMobile({
       {/* Positions */}
       <section>
         <div className="flex items-center justify-between mb-2">
-          <h3 className="text-[11px] font-semibold uppercase tracking-[0.15em] text-tertiary">Portfolio</h3>
+          <h3 className="text-[11px] font-semibold font-mono uppercase tracking-[0.15em] text-tertiary">Portfolio</h3>
           <button
             type="button"
             onClick={() => load(range)}
@@ -359,15 +359,15 @@ export function PortfolioMobile({
                 className="w-full grid grid-cols-[1fr_1fr_auto_20px] items-center gap-2.5 px-3.5 py-3 text-left cursor-pointer active:bg-elevated transition-colors"
               >
                 <span className="min-w-0">
-                  <span className="block text-[10px] uppercase tracking-wider text-tertiary mb-0.5">Balance</span>
-                  <span className="block text-[15px] font-bold font-mono tabular-nums truncate text-atnx-yellow light:text-atnx-yellow-light">
+                  <span className="block text-[10px] font-mono uppercase tracking-wider text-tertiary mb-0.5">Balance</span>
+                  <span className="block font-display text-lg font-bold leading-none tabular-nums truncate text-atnx-yellow light:text-atnx-yellow-light">
                     {usd.format(data.balanceUsd)}
                   </span>
                 </span>
                 <span className="min-w-0">
-                  <span className="block text-[10px] uppercase tracking-wider text-tertiary mb-0.5">Unrealized</span>
+                  <span className="block text-[10px] font-mono uppercase tracking-wider text-tertiary mb-0.5">Unrealized</span>
                   <span
-                    className={`block text-[15px] font-bold font-mono tabular-nums truncate ${
+                    className={`block font-display text-lg font-bold leading-none tabular-nums truncate ${
                       data.unrealizedPnlUsd >= 0 ? UP : DOWN
                     }`}
                   >
@@ -375,8 +375,8 @@ export function PortfolioMobile({
                   </span>
                 </span>
                 <span className="min-w-0 text-right">
-                  <span className="block text-[10px] uppercase tracking-wider text-tertiary mb-0.5">Open</span>
-                  <span className="block text-[15px] font-bold font-mono tabular-nums text-primary">
+                  <span className="block text-[10px] font-mono uppercase tracking-wider text-tertiary mb-0.5">Open</span>
+                  <span className="block font-display text-lg font-bold leading-none tabular-nums text-primary">
                     {data.positions.length}
                   </span>
                 </span>

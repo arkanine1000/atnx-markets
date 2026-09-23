@@ -27,7 +27,7 @@ export default async function SubmitPage({
 
   return (
     <div className="max-w-2xl mx-auto w-full">
-      <h1 className="text-xl font-bold text-primary mb-1">Create</h1>
+      <h1 className="font-display text-xl font-bold text-primary mb-1">Create</h1>
       <p className="text-sm text-secondary mb-6">
         A screenshot, a link, or a line of text. You get back the market it
         belongs to, a new market, or a reason it was turned away.

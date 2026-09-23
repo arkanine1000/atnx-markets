@@ -81,11 +81,12 @@ export function DeltaChip({
   size?: "sm" | "md";
   className?: string;
 }) {
-  const pad = size === "sm" ? "px-1.5 py-0.5 text-[11px]" : "px-2 py-1 text-xs";
+  // A ticker readout, not a pill: colour and weight do the work.
+  const sz = size === "sm" ? "text-xs" : "text-sm";
   if (value === null) {
     return (
       <span
-        className={`inline-flex items-center rounded-md border font-mono font-bold tabular-nums whitespace-nowrap text-tertiary bg-elevated border-surface ${pad} ${className}`}
+        className={`inline-flex items-center font-mono font-bold tabular-nums whitespace-nowrap text-tertiary ${sz} ${className}`}
         title="Not enough history yet"
       >
         —{suffix}
@@ -94,13 +95,13 @@ export function DeltaChip({
   }
   const up = value >= 0;
   const tone = up
-    ? "text-atnx-cyan light:text-atnx-cyan-light bg-atnx-cyan/10 border-atnx-cyan/25"
-    : "text-atnx-magenta light:text-atnx-magenta-light bg-atnx-magenta/10 border-atnx-magenta/25";
+    ? "text-atnx-cyan light:text-atnx-cyan-light"
+    : "text-atnx-magenta light:text-atnx-magenta-light";
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-md border font-mono font-bold tabular-nums whitespace-nowrap ${pad} ${tone} ${className}`}
+      className={`inline-flex items-center gap-1 font-mono font-bold tabular-nums whitespace-nowrap ${sz} ${tone} ${className}`}
     >
-      <span aria-hidden="true">{up ? "▲" : "▼"}</span>
+      <span aria-hidden="true" className="text-[0.8em]">{up ? "▲" : "▼"}</span>
       {up ? "+" : "-"}
       {Math.abs(value).toFixed(1)}%{suffix}
     </span>
@@ -117,15 +118,12 @@ export function ScoreBadge({
   size?: "sm" | "md" | "lg";
   className?: string;
 }) {
+  // Bare number in the display face; yellow is the VI's colour everywhere.
   const sz =
-    size === "lg"
-      ? "px-3 py-1 text-2xl"
-      : size === "md"
-        ? "px-2.5 py-1 text-lg"
-        : "px-2 py-0.5 text-sm";
+    size === "lg" ? "text-3xl" : size === "md" ? "text-2xl" : "text-lg";
   return (
     <span
-      className={`inline-flex items-center justify-center rounded-lg border border-atnx-yellow/25 bg-atnx-yellow/10 text-atnx-yellow light:text-atnx-yellow-light font-mono font-bold tabular-nums ${sz} ${className}`}
+      className={`inline-flex items-center justify-end leading-none text-atnx-yellow light:text-atnx-yellow-light font-display font-bold tabular-nums ${sz} ${className}`}
       title={`Virality Index · ${viTier(value).label}`}
     >
       {value}
@@ -152,7 +150,7 @@ export function Chip({
   };
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider whitespace-nowrap ${tones[tone]} ${className}`}
+      className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-bold font-mono uppercase tracking-wider whitespace-nowrap ${tones[tone]} ${className}`}
     >
       {children}
     </span>
@@ -193,14 +191,12 @@ export function StatTile({
 }) {
   return (
     <Card className={`p-4 sm:p-5 min-w-0 ${className}`}>
-      <div className="text-[10px] sm:text-[11px] uppercase tracking-[0.15em] text-tertiary mb-1.5">
+      <div className="text-[10px] sm:text-[11px] font-mono uppercase tracking-[0.15em] text-tertiary mb-1.5">
         {label}
       </div>
       <div
-        className={`font-mono text-primary truncate ${
-          hero
-            ? "text-2xl sm:text-3xl font-bold"
-            : "text-xl sm:text-2xl font-semibold"
+        className={`font-display font-bold tabular-nums text-primary truncate ${
+          hero ? "text-2xl sm:text-3xl" : "text-xl sm:text-2xl"
         }`}
       >
         {value}
@@ -211,6 +207,31 @@ export function StatTile({
         </div>
       )}
     </Card>
+  );
+}
+
+/** Label-over-value pair with no container. Lay several out in a grid and
+ *  let a hairline above the row do the separating. */
+export function Readout({
+  label,
+  value,
+  className = "",
+  valueClassName = "",
+}: {
+  label: ReactNode;
+  value: ReactNode;
+  className?: string;
+  valueClassName?: string;
+}) {
+  return (
+    <div className={`min-w-0 ${className}`}>
+      <div className="text-[10px] font-mono uppercase tracking-wider text-tertiary">
+        {label}
+      </div>
+      <div className={`mt-0.5 text-sm font-mono tabular-nums truncate ${valueClassName}`}>
+        {value}
+      </div>
+    </div>
   );
 }
 
@@ -225,7 +246,7 @@ export function EmptyState({
 }) {
   return (
     <Card className="p-10 sm:p-14 text-center">
-      <div className="mx-auto mb-4 h-12 w-12 rounded-2xl bg-atnx-magenta/10 border border-atnx-magenta/25 flex items-center justify-center text-atnx-magenta text-xl">
+      <div className="mx-auto mb-4 h-12 w-12 rounded-2xl bg-elevated border border-surface flex items-center justify-center text-tertiary text-xl">
         {"⌘"}
       </div>
       <p className="text-primary text-sm font-bold">{title}</p>

@@ -268,7 +268,7 @@ export function HowItWorksModal({ onClose }: { onClose: () => void }) {
       >
         {/* header */}
         <div className="flex items-center justify-between px-5 pt-4 pb-3">
-          <div className="text-[10px] uppercase tracking-[0.2em] text-tertiary">
+          <div className="text-[10px] font-mono uppercase tracking-[0.2em] text-tertiary">
             How ATNX works
           </div>
           <div className="flex items-center gap-2">
@@ -315,7 +315,7 @@ export function HowItWorksModal({ onClose }: { onClose: () => void }) {
             >
               {s.n}
             </span>
-            <h2 id="hiw-title" className="text-lg font-bold text-primary">
+            <h2 id="hiw-title" className="font-display text-lg font-bold text-primary">
               {s.title}
             </h2>
           </div>
@@ -360,7 +360,7 @@ export function HowItWorksModal({ onClose }: { onClose: () => void }) {
             <button
               type="button"
               onClick={() => (last ? onClose() : setStep(step + 1))}
-              className="px-4 py-2 rounded-full bg-atnx-magenta text-white text-xs font-bold hover:bg-atnx-magenta-dim hover:shadow-[0_0_20px_rgba(255,0,229,0.3)] cursor-pointer transition-all"
+              className="px-4 py-2 rounded-full btn-magenta text-xs font-bold cursor-pointer"
             >
               {last ? "Got it" : "Next →"}
             </button>
@@ -400,7 +400,7 @@ function DeviceToggle({
             role="radio"
             aria-checked={active}
             onClick={() => onChange(d.id)}
-            className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-[0.12em] cursor-pointer transition-colors ${
+            className={`px-2.5 py-1 rounded-full text-[10px] font-bold font-mono uppercase tracking-[0.12em] cursor-pointer transition-colors ${
               active
                 ? "bg-surface text-primary shadow-sm"
                 : "text-tertiary hover:text-secondary"

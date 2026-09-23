@@ -32,6 +32,16 @@ const BG_COLORS = {
 };
 
 const TEXT = "ATNX";
+
+// The wordmark face, resolved from the next/font variable so the canvas draws
+// the same self-hosted Archivo the page uses. Heavy weight.
+function brandFamily(): string {
+  const v = getComputedStyle(document.documentElement).getPropertyValue("--font-archivo").trim();
+  return v || "Archivo";
+}
+function brandFont(px: number): string {
+  return `800 ${px}px ${brandFamily()}, system-ui, sans-serif`;
+}
 const EYE_PUPIL = 0.52; // pupil radius as a fraction of the eye's half-height
 const EYE_HEIGHT = 1.15; // eye height relative to the wordmark's cap height
 const MOUSE_RADIUS = 80;
@@ -137,7 +147,7 @@ function sampleText(w: number, h: number, gap: number): Target[] {
   // room doesn't shrink the wordmark.
   const fontSize = (h / (1 + BURST_ROOM)) * 0.7;
   ctx.fillStyle = "#fff";
-  ctx.font = `bold ${fontSize}px "JetBrains Mono", "Fira Code", monospace`;
+  ctx.font = brandFont(fontSize);
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillText(TEXT, w / 2, h / 2);
@@ -526,9 +536,9 @@ export function DotMatrixLogo() {
       // Sample the wordmark only once the brand font is actually available,
       // otherwise the dots trace the fallback font's glyphs.
       try {
-        await document.fonts.load(`bold ${Math.round(h * 0.7)}px "JetBrains Mono"`);
+        await document.fonts.load(brandFont(Math.round(h * 0.7)));
       } catch {
-        /* fall back to whatever monospace is installed */
+        /* fall back to whatever sans is installed */
       }
       if (cancelled) return;
 

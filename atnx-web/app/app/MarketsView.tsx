@@ -195,7 +195,7 @@ export function MarketsView({ initialCaptures }: { initialCaptures: Capture[] })
         className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-4 scroll-mt-24"
       >
         <div>
-          <h2 className="text-lg sm:text-xl font-bold text-primary tracking-tight">
+          <h2 className="font-display text-lg sm:text-xl font-bold text-primary tracking-tight">
             All markets
           </h2>
           <p className="text-xs text-tertiary mt-1 flex items-center gap-2">
@@ -259,7 +259,7 @@ export function MarketsView({ initialCaptures }: { initialCaptures: Capture[] })
         </div>
       ) : (
         <div>
-          <div className="flex items-center gap-3 px-3 py-1.5 text-[11px] uppercase tracking-wider text-tertiary">
+          <div className="flex items-center gap-3 px-3 py-1.5 text-[11px] font-mono uppercase tracking-wider text-tertiary">
             <span className="w-6 text-right shrink-0">#</span>
             <span className="w-10 shrink-0" />
             <span className="flex-1">Market</span>

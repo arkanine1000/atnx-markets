@@ -109,7 +109,7 @@ export function TradePanel({
         <div className="flex items-center justify-between mb-1.5">
           <label
             htmlFor="trade-amount"
-            className="text-[11px] uppercase tracking-wider text-tertiary"
+            className="text-[11px] font-mono uppercase tracking-wider text-tertiary"
           >
             Amount
           </label>
@@ -160,7 +160,7 @@ export function TradePanel({
 
       {/* Leverage */}
       <div className="flex items-center justify-between gap-3">
-        <span className="text-[11px] uppercase tracking-wider text-tertiary">
+        <span className="text-[11px] font-mono uppercase tracking-wider text-tertiary">
           Leverage
         </span>
         <Segmented
@@ -223,10 +223,10 @@ export function TradePanel({
           type="button"
           onClick={submit}
           disabled={!canSubmit}
-          className={`w-full py-3 rounded-xl font-bold text-sm cursor-pointer transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
+          className={`w-full py-3 rounded-xl font-bold text-sm cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
             isLong
-              ? "bg-atnx-cyan text-black hover:bg-atnx-cyan-dim hover:shadow-[0_0_24px_rgba(0,212,255,0.3)]"
-              : "bg-atnx-magenta text-white hover:bg-atnx-magenta-dim hover:shadow-[0_0_24px_rgba(255,0,229,0.3)]"
+              ? "border border-atnx-cyan bg-elevated text-atnx-cyan light:text-atnx-cyan-light transition-all hover:bg-atnx-cyan hover:text-black hover:shadow-[0_0_20px_rgba(0,212,255,0.3)]"
+              : "btn-magenta"
           }`}
         >
           {busy
@@ -238,7 +238,7 @@ export function TradePanel({
           type="button"
           onClick={openLoginModal}
           disabled={authLoading}
-          className="w-full py-3 rounded-xl font-bold text-sm cursor-pointer transition-colors border border-atnx-magenta text-atnx-magenta hover:bg-atnx-magenta hover:text-white disabled:opacity-40"
+          className="w-full py-3 rounded-xl btn-magenta font-bold text-sm cursor-pointer disabled:opacity-40"
         >
           Login to trade
         </button>
@@ -253,7 +253,7 @@ export function TradePanel({
           href="/app/portfolio"
           className="block rounded-xl border border-surface bg-elevated p-3 hover:border-atnx-cyan/40 transition-colors"
         >
-          <div className="flex items-center justify-between text-[11px] uppercase tracking-wider text-tertiary mb-1">
+          <div className="flex items-center justify-between text-[11px] font-mono uppercase tracking-wider text-tertiary mb-1">
             <span>Your position</span>
             <span
               className={

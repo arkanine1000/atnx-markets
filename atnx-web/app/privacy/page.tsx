@@ -16,7 +16,7 @@ export default function PrivacyPage() {
         ← atnx.app
       </Link>
 
-      <h1 className="mt-6 text-2xl font-bold text-primary">Privacy Policy</h1>
+      <h1 className="font-display mt-6 text-2xl font-bold text-primary">Privacy Policy</h1>
       <p className="mt-1 text-xs text-tertiary">Last updated {UPDATED}</p>
 
       <p className="mt-6 text-sm text-secondary leading-relaxed">

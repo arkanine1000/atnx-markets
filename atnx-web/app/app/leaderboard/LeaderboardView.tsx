@@ -24,21 +24,25 @@ function signedUsd(n: number) {
 
 // Top three get the brand's three inks; everyone else a quiet number.
 const RANK_TONE: Record<number, string> = {
-  1: "bg-atnx-yellow/15 text-atnx-yellow light:text-atnx-yellow-light border-atnx-yellow/40",
-  2: "bg-atnx-cyan/10 text-atnx-cyan light:text-atnx-cyan-light border-atnx-cyan/30",
-  3: "bg-atnx-magenta/10 text-atnx-magenta light:text-atnx-magenta-light border-atnx-magenta/30",
+  1: "text-atnx-yellow light:text-atnx-yellow-light",
+  2: "text-atnx-cyan light:text-atnx-cyan-light",
+  3: "text-atnx-magenta light:text-atnx-magenta-light",
 };
 
-function RankBadge({ rank }: { rank: number }) {
-  const tone = RANK_TONE[rank] ?? "bg-elevated text-tertiary border-surface";
+function Rank({ rank }: { rank: number }) {
+  const tone = RANK_TONE[rank] ?? "text-tertiary";
   return (
     <span
-      className={`h-7 w-9 shrink-0 inline-flex items-center justify-center rounded-lg border font-mono font-bold tabular-nums text-xs ${tone}`}
+      className={`w-7 shrink-0 text-right font-mono font-bold tabular-nums text-sm ${tone}`}
     >
       {rank}
     </span>
   );
 }
+
+// Column widths shared by the header row and every data row.
+const COL_PNL = "hidden md:block w-24 text-right";
+const COL_EQUITY = "w-24 sm:w-28 text-right";
 
 function Row({ row, me }: { row: LeaderboardRow; me: boolean }) {
   const pnlTone = (n: number) =>
@@ -47,19 +51,17 @@ function Row({ row, me }: { row: LeaderboardRow; me: boolean }) {
       : "text-atnx-magenta light:text-atnx-magenta-light";
   return (
     <div
-      className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-colors ${
-        me
-          ? "bg-atnx-cyan/5 border-atnx-cyan/40"
-          : "bg-surface border-surface hover:border-atnx-cyan/35"
+      className={`flex items-center gap-3 px-3 py-2.5 border-l-2 hover-lift ${
+        me ? "bg-atnx-cyan/5 border-l-atnx-cyan" : "border-l-transparent"
       }`}
     >
-      <RankBadge rank={row.rank} />
+      <Rank rank={row.rank} />
       <Identicon seed={row.userId} size={32} className="border border-surface" />
       <div className="min-w-0 flex-1">
         <div className="text-sm font-bold text-primary truncate flex items-center gap-2">
           <span className="truncate">@{row.handle}</span>
           {me && (
-            <span className="rounded-md border border-atnx-cyan/30 bg-atnx-cyan/10 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-atnx-cyan light:text-atnx-cyan-light">
+            <span className="rounded-md border border-atnx-cyan/30 bg-atnx-cyan/10 px-1.5 py-0.5 text-[10px] font-bold font-mono uppercase tracking-wider text-atnx-cyan light:text-atnx-cyan-light">
               you
             </span>
           )}
@@ -70,19 +72,17 @@ function Row({ row, me }: { row: LeaderboardRow; me: boolean }) {
           {row.volumeUsd > 0 && ` · ${compactUsd(row.volumeUsd)} vol`}
         </div>
       </div>
-      <div className="hidden md:block w-24 text-right font-mono text-xs tabular-nums">
-        <div className="text-[10px] uppercase tracking-wider text-tertiary">Realized</div>
-        <div className={pnlTone(row.realizedPnl)}>{signedUsd(row.realizedPnl)}</div>
+      <div className={`${COL_PNL} font-mono text-xs tabular-nums ${pnlTone(row.realizedPnl)}`}>
+        {signedUsd(row.realizedPnl)}
       </div>
-      <div className="hidden md:block w-24 text-right font-mono text-xs tabular-nums">
-        <div className="text-[10px] uppercase tracking-wider text-tertiary">Unrealized</div>
-        <div className={pnlTone(row.unrealizedPnl)}>{signedUsd(row.unrealizedPnl)}</div>
+      <div className={`${COL_PNL} font-mono text-xs tabular-nums ${pnlTone(row.unrealizedPnl)}`}>
+        {signedUsd(row.unrealizedPnl)}
       </div>
-      <div className="text-right shrink-0">
-        <div className="font-mono font-bold text-primary tabular-nums text-sm sm:text-base">
+      <div className={`${COL_EQUITY} shrink-0`}>
+        <div className="font-display font-bold text-primary tabular-nums text-[15px] sm:text-base leading-none">
           {usd.format(row.equity)}
         </div>
-        <DeltaChip value={row.returnPct} className="mt-0.5" />
+        <DeltaChip value={row.returnPct} className="mt-1" />
       </div>
     </div>
   );
@@ -109,7 +109,7 @@ export function LeaderboardView({ rows }: { rows: LeaderboardRow[] }) {
   return (
     <div>
       <div className="mb-5">
-        <h2 className="text-xl sm:text-2xl font-bold text-primary tracking-tight">
+        <h2 className="font-display text-xl sm:text-2xl font-bold text-primary tracking-tight">
           Leaderboard
         </h2>
         <p className="text-xs text-tertiary mt-1">
@@ -155,25 +155,35 @@ export function LeaderboardView({ rows }: { rows: LeaderboardRow[] }) {
           action={
             <Link
               href="/app"
-              className="inline-block text-xs px-5 py-2.5 rounded-full bg-atnx-magenta text-white font-bold hover:bg-atnx-magenta-dim transition-colors"
+              className="inline-block text-xs px-5 py-2.5 rounded-full btn-magenta font-bold"
             >
               Browse markets
             </Link>
           }
         />
       ) : (
-        <div className="space-y-1.5">
-          {top.map((r) => (
-            <Row key={r.userId} row={r} me={r.userId === user?.id} />
-          ))}
-          {pinned && (
-            <>
-              <div className="text-center text-[11px] text-tertiary py-1" aria-hidden="true">
-                ···
-              </div>
-              <Row row={pinned} me />
-            </>
-          )}
+        <div>
+          <div className="flex items-center gap-3 px-3 py-1.5 text-[11px] font-mono uppercase tracking-wider text-tertiary">
+            <span className="w-7 text-right shrink-0">#</span>
+            <span className="w-8 shrink-0" />
+            <span className="flex-1">Trader</span>
+            <span className={COL_PNL}>Realized</span>
+            <span className={COL_PNL}>Unrealized</span>
+            <span className={`${COL_EQUITY} shrink-0`}>Equity</span>
+          </div>
+          <Card className="overflow-hidden divide-y divide-(--color-dark-border) light:divide-(--color-light-border)">
+            {top.map((r) => (
+              <Row key={r.userId} row={r} me={r.userId === user?.id} />
+            ))}
+            {pinned && (
+              <>
+                <div className="text-center text-[11px] text-tertiary py-1" aria-hidden="true">
+                  ···
+                </div>
+                <Row row={pinned} me />
+              </>
+            )}
+          </Card>
         </div>
       )}
 
@@ -183,11 +193,11 @@ export function LeaderboardView({ rows }: { rows: LeaderboardRow[] }) {
         </p>
       )}
 
-      <Card className="mt-6 p-4 text-xs text-tertiary leading-relaxed">
+      <p className="mt-6 text-xs text-tertiary leading-relaxed max-w-prose">
         Simulated trading only. Equity counts realised results already in
         your balance plus what your open positions would be worth if closed
         now, so it moves with every VI refresh.
-      </Card>
+      </p>
     </div>
   );
 }

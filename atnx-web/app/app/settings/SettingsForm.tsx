@@ -54,7 +54,7 @@ export function SettingsForm({
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
       <div>
-        <label className="text-xs text-secondary uppercase tracking-wider block mb-2">
+        <label className="text-xs text-secondary font-mono uppercase tracking-wider block mb-2">
           Email
         </label>
         <div className="bg-surface border border-surface rounded px-3 py-2.5 text-primary font-mono text-sm">
@@ -65,7 +65,7 @@ export function SettingsForm({
       <div>
         <label
           htmlFor="handle"
-          className="text-xs text-secondary uppercase tracking-wider block mb-2"
+          className="text-xs text-secondary font-mono uppercase tracking-wider block mb-2"
         >
           Handle
         </label>
@@ -99,7 +99,7 @@ export function SettingsForm({
       <button
         type="submit"
         disabled={busy || !dirty}
-        className="px-6 py-2.5 rounded bg-atnx-magenta text-white font-mono font-bold text-sm hover:bg-atnx-magenta-dim disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
+        className="px-6 py-2.5 rounded btn-magenta font-bold text-sm disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
       >
         {busy ? "Saving\u2026" : "Save"}
       </button>
