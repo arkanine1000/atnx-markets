@@ -143,7 +143,8 @@ export async function fetchBlueskySignal(term: string, aliases: string[] = []): 
     let hour = 0;
     let baselineRate = 0; // posts per hour, summed over phrases with a usable span
     let minSpan = Infinity;
-    for (const posts of perPhrase) {
+    let nameTruncated = false;
+    for (const [i, posts] of perPhrase.entries()) {
       let n = 0;
       let recent = 0;
       let oldest = now;
@@ -170,6 +171,8 @@ export async function fetchBlueskySignal(term: string, aliases: string[] = []): 
       if (spanHours >= 2) {
         baselineRate += n / spanHours;
         hour += recent;
+      } else if (i === 0) {
+        nameTruncated = true;
       }
     }
     // A phrase that hit the cap means the true count is higher.
@@ -178,7 +181,10 @@ export async function fetchBlueskySignal(term: string, aliases: string[] = []): 
     // Hourly rate now vs the baseline rate, both over the phrases with a
     // real span. Below one post an hour most hours are empty and the ratio
     // is noise, so momentum also needs the day count to clear that bar.
-    const momentum = day < MOMENTUM_MIN_DAY || baselineRate <= 0 ? null : hour / baselineRate;
+    // When the name phrase itself is truncated the aliases alone would be
+    // judged, which is not the market's momentum; report unknown instead.
+    const momentum =
+      day < MOMENTUM_MIN_DAY || baselineRate <= 0 || nameTruncated ? null : hour / baselineRate;
 
     const result: SourceComponent = {
       source: 'bluesky',
