@@ -74,6 +74,9 @@ export interface SignalResult {
 
 export type Cadence = 'fast' | 'slow' | 'all';
 
+// How long a stored reading stands in for a source that is not answering.
+export const MAX_KEPT_MS = 48 * 3600 * 1000;
+
 const FRESH_FOR: Record<Cadence, SourceName[]> = {
   fast: FAST_SOURCES,
   slow: SLOW_SOURCES,
@@ -138,13 +141,26 @@ export async function scoreTerms(
       }
 
       // A source that answered "unknown" this pass must not erase a real
-      // earlier reading; keep the stored one.
+      // earlier reading; keep the stored one. But not forever: a reading
+      // older than MAX_KEPT_MS describes a different week, and a market
+      // is better scored without it than frozen on it.
       const fetched: SourceName[] = [];
       for (const name of Object.keys(components) as SourceName[]) {
         const c = components[name];
         if (!c) continue;
         if (c.level === null && stored?.[name]?.level != null) components[name] = stored[name];
         else if (c !== stored?.[name] && c.level !== null) fetched.push(name);
+        const kept = components[name];
+        if (kept && kept === stored?.[name]) {
+          if (Date.now() - Date.parse(kept.fetchedAt) > MAX_KEPT_MS) {
+            delete components[name];
+          } else if (name === 'gdelt' && kept.meta?.resolution === undefined && kept.momentum !== null) {
+            // A GDELT reading from before the daily-bucketing fix (no
+            // `resolution` in its meta) compared one hour to the rest and
+            // read a collapse. Its level is fine; its momentum is not.
+            components.gdelt = { ...kept, momentum: null };
+          }
+        }
       }
 
       // Single common words score big on search and social by accident.
