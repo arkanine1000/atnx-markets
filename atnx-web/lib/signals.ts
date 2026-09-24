@@ -1,4 +1,4 @@
-// Composite VI dispatcher. Eight sources, each reporting an absolute level
+// Composite VI dispatcher. Nine sources, each reporting an absolute level
 // and a momentum ratio, combined by lib/vi/score.ts.
 //
 // Two refresh cadences share one stored breakdown per market
@@ -24,6 +24,7 @@ import { fetchYoutubeSignal } from './vi/youtube';
 import { fetchHnSignal } from './vi/hn';
 import { fetchDexSignal } from './vi/dex';
 import { fetchXSignal } from './vi/x';
+import { fetchTiktokSignal, prefetchTiktok } from './vi/tiktok';
 
 export interface ScoreRequest {
   term: string;
@@ -51,7 +52,11 @@ const APPLIES: Partial<Record<SourceName, (r: ScoreRequest) => boolean>> = {
   // A token, not a person or an event in the crypto world: DexScreener
   // has a joke token named after every public figure.
   dex: (r) => r.category === 'crypto' && r.entityType !== 'person' && r.entityType !== 'event',
+  // Where people post under a tag: not tech, crypto or politics, which
+  // are argued in text elsewhere.
+  tiktok: (r) => TIKTOK_CATEGORIES.has(r.category ?? ''),
 };
+const TIKTOK_CATEGORIES = new Set(['memes', 'people', 'music', 'film_tv', 'gaming', 'other']);
 function applies(name: SourceName, r: ScoreRequest): boolean {
   return APPLIES[name]?.(r) ?? true;
 }
@@ -93,6 +98,19 @@ function neverScored(r: ScoreRequest): boolean {
   return !r.stored || Object.keys(r.stored).length === 0;
 }
 
+// Sources that answer for many markets in one request are started here,
+// before the markets are scored; their adapters await the result. Only
+// the slow path calls this: a capture scores one market, and its TikTok
+// mapping can wait for the next hourly pass. Returns what was started.
+export function prefetchSlowSources(requests: ScoreRequest[]): { tiktokHashtags: number } {
+  const tiktokHashtags = prefetchTiktok(
+    requests
+      .filter((r) => applies('tiktok', r))
+      .map((r) => ({ term: r.term, aliases: (r.aliases ?? []), marketId: r.marketId, stored: r.stored?.tiktok ?? null }))
+  );
+  return { tiktokHashtags };
+}
+
 // Scores many terms at once so Trends can batch them.
 export async function scoreTerms(
   requests: ScoreRequest[],
@@ -117,7 +135,7 @@ export async function scoreTerms(
       const corporate = req.entityType === 'brand';
 
       const request = { term, stored, ...req };
-      const [bluesky, gdelt, wikipedia, youtube, hn, dex, x] = await Promise.all([
+      const [bluesky, gdelt, wikipedia, youtube, hn, dex, x, tiktok] = await Promise.all([
         want.has('bluesky') ? fetchBlueskySignal(term, aliases).catch(() => null) : null,
         want.has('gdelt') && gdeltDeadline !== 0
           ? fetchGdeltSignal(term, aliases, { deadline: gdeltDeadline }).catch(() => null)
@@ -129,6 +147,9 @@ export async function scoreTerms(
         want.has('hn') && applies('hn', request) ? fetchHnSignal(term).catch(() => null) : null,
         want.has('dex') && applies('dex', request) ? fetchDexSignal(term, req.aliases ?? []).catch(() => null) : null,
         want.has('x') ? fetchXSignal({ term, aliases, marketId: req.marketId }).catch(() => null) : null,
+        want.has('tiktok') && applies('tiktok', request)
+          ? fetchTiktokSignal({ term, aliases: req.aliases ?? [], marketId: req.marketId, stored: stored?.tiktok ?? null }).catch(() => null)
+          : null,
       ]);
       if (bluesky) components.bluesky = bluesky;
       if (gdelt) components.gdelt = gdelt;
@@ -137,9 +158,10 @@ export async function scoreTerms(
       if (hn) components.hn = hn;
       if (dex) components.dex = dex;
       if (x) components.x = x;
+      if (tiktok) components.tiktok = tiktok;
       // A category-bound source keeps nothing once the market leaves its
       // category.
-      for (const name of ['hn', 'dex'] as const) {
+      for (const name of ['hn', 'dex', 'tiktok'] as const) {
         if (components[name] && !applies(name, request)) delete components[name];
       }
 
