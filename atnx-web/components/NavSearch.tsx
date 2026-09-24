@@ -151,7 +151,10 @@ export function NavSearch({
         }
         go(term, onMarkets ? "replace" : "push");
       }}
-      className={`inline-flex items-center h-8 rounded-full overflow-hidden transition-[width,background-color] duration-200 ${
+      // The motion lives in globals.css (.nav-search and friends): the
+      // pill widens while the field's contents fade in a beat later.
+      data-open={expanded ? "" : undefined}
+      className={`nav-search inline-flex items-center h-8 rounded-full overflow-hidden ${
         expanded ? `${expandedWidth} bg-elevated` : `w-9 ${restClassName}`
       } ${className}`}
     >
@@ -161,8 +164,8 @@ export function NavSearch({
         aria-expanded={expanded}
         title="Search markets"
         onClick={() => {
-          if (expanded) inputRef.current?.focus();
-          else setOpen(true);
+          if (!expanded) setOpen(true);
+          inputRef.current?.focus();
         }}
         className={`h-8 w-9 shrink-0 inline-flex items-center justify-center rounded-full transition-colors cursor-pointer ${
           expanded ? "text-primary" : "text-secondary hover:text-primary"
@@ -170,53 +173,59 @@ export function NavSearch({
       >
         <SearchIcon />
       </button>
-      {expanded && (
-        <>
-          <input
-            ref={inputRef}
-            autoFocus
-            type="text"
-            inputMode="search"
-            enterKeyHint="search"
-            autoComplete="off"
-            spellCheck={false}
-            maxLength={MAX_SEARCH_LENGTH}
-            aria-label="Search markets"
-            placeholder="Search markets"
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            onFocus={() => setFocused(true)}
-            onBlur={() => {
-              setFocused(false);
-              // Nothing typed and nothing searched: fold back to the icon.
-              if (!normalizeSearch(value) && !activeQ) setOpen(false);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Escape") {
-                e.preventDefault();
-                close();
-              }
-            }}
-            className="flex-1 min-w-0 h-full bg-transparent outline-none text-sm font-medium text-primary placeholder:text-tertiary placeholder:font-normal"
-          />
-          {value && (
-            <button
-              type="button"
-              aria-label="Clear search"
-              title="Clear"
-              // Keep the field focused so the box stays open.
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => {
-                clear();
-                inputRef.current?.focus();
-              }}
-              className="h-6 w-6 mr-1 shrink-0 rounded-full inline-flex items-center justify-center text-tertiary hover:text-primary hover:bg-surface transition-colors cursor-pointer text-xs"
-            >
-              {"✕"}
-            </button>
-          )}
-        </>
-      )}
+      {/* Always mounted so it can animate; inert while folded away. */}
+      <input
+        ref={inputRef}
+        type="text"
+        inputMode="search"
+        enterKeyHint="search"
+        autoComplete="off"
+        spellCheck={false}
+        maxLength={MAX_SEARCH_LENGTH}
+        aria-label="Search markets"
+        aria-hidden={!expanded}
+        tabIndex={expanded ? 0 : -1}
+        placeholder="Search markets"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onFocus={() => setFocused(true)}
+        onBlur={() => {
+          setFocused(false);
+          // Nothing typed and nothing searched: fold back to the icon.
+          if (!normalizeSearch(value) && !activeQ) setOpen(false);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") {
+            e.preventDefault();
+            close();
+          }
+        }}
+        className={`nav-search-field flex-1 min-w-0 h-full bg-transparent outline-none text-sm font-medium text-primary placeholder:text-tertiary placeholder:font-normal motion-reduce:transform-none ${
+          expanded
+            ? "opacity-100 translate-x-0"
+            : "opacity-0 -translate-x-2 pointer-events-none"
+        }`}
+      />
+      <button
+        type="button"
+        aria-label="Clear search"
+        title="Clear"
+        aria-hidden={!(expanded && value)}
+        tabIndex={expanded && value ? 0 : -1}
+        // Keep the field focused so the box stays open.
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => {
+          clear();
+          inputRef.current?.focus();
+        }}
+        className={`nav-search-clear h-6 shrink-0 overflow-hidden rounded-full inline-flex items-center justify-center text-tertiary hover:text-primary hover:bg-surface cursor-pointer text-xs ${
+          expanded && value
+            ? "w-6 mr-1 opacity-100"
+            : "w-0 mr-0 opacity-0 pointer-events-none"
+        }`}
+      >
+        {"✕"}
+      </button>
     </form>
   );
 }
