@@ -26,6 +26,10 @@ const API = `https://api.apify.com/v2/acts/${ACTOR}/run-sync-get-dataset-items`;
 const RUN_TIMEOUT_S = 240;
 export const MAX_ROWS_PER_RUN = 50;
 export const INTERVAL_MS = 3 * 3600 * 1000;
+// A reading is written minutes into the run (:07 start, :10 write), so
+// three hours later it is still a few minutes short of the interval and
+// the read slipped to four hours. The slack lets that run take it.
+const INTERVAL_SLACK_MS = 15 * 60 * 1000;
 const DISCOVERY_TTL_MS = 7 * 24 * 3600 * 1000;
 const MAX_CANDIDATES = 4;
 // A hashtag with fewer videos than this is not where the market lives.
@@ -83,21 +87,25 @@ export function hashtagCandidates(term: string, aliases: string[] = []): string[
   return out.slice(0, MAX_CANDIDATES);
 }
 
-// A name's own tag with this many videos is the market's, however much
-// bigger a broader alias tag is ("elon" over "elonmusk").
+// A name's own tag with this many videos is the market's over a bigger
+// but broader alias tag ("elonmusk" over "elon")...
 const OWN_TAG_MIN_VIDEOS = 10 * MIN_VIDEOS;
+// ...unless an alias tag is this many times bigger: then the alias is
+// what people actually post under ("gta6" at millions against
+// "grandtheftautovi" at 17k).
+const ALIAS_OVER_OWN = 20;
 
 // The hashtag the market lives under, from a batch of counts: the name's
-// own tag when it is established, otherwise the candidate with the most
-// videos, if it has enough. Pure.
+// own tag when it is established and no alias tag dwarfs it, otherwise
+// the candidate with the most videos, if it has enough. Pure.
 export function pickHashtag(candidates: string[], counts: Map<string, HashtagStats>): HashtagStats | null {
   const own = candidates[0] ? counts.get(candidates[0].toLowerCase()) : undefined;
-  if (own && own.video_count >= OWN_TAG_MIN_VIDEOS) return own;
   let best: HashtagStats | null = null;
   for (const c of candidates) {
     const s = counts.get(c.toLowerCase());
     if (s && s.video_count >= MIN_VIDEOS && (!best || s.video_count > best.video_count)) best = s;
   }
+  if (own && own.video_count >= OWN_TAG_MIN_VIDEOS && (!best || best.video_count < ALIAS_OVER_OWN * own.video_count)) return own;
   return best;
 }
 
@@ -140,7 +148,7 @@ export interface TiktokRequest {
 export function hashtagsWanted({ term, aliases = [], stored }: TiktokRequest, now = Date.now()): string[] {
   const fetchedAt = stored?.fetchedAt ? Date.parse(stored.fetchedAt) : 0;
   const hasMapping = typeof stored?.meta?.hashtag === 'string' && stored.meta.hashtag.length > 0;
-  if (stored && now - fetchedAt < INTERVAL_MS && (hasMapping || stored.meta?.hashtag === null)) return [];
+  if (stored && now - fetchedAt < INTERVAL_MS - INTERVAL_SLACK_MS && (hasMapping || stored.meta?.hashtag === null)) return [];
   const discoveredAt = typeof stored?.meta?.discovered_at === 'string' ? Date.parse(stored.meta.discovered_at) : 0;
   if (hasMapping && now - discoveredAt < DISCOVERY_TTL_MS) return [stored!.meta!.hashtag as string];
   return hashtagCandidates(term, aliases);
