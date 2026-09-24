@@ -10,7 +10,7 @@
 // the level by momentum (0.65x at a collapse, 1x steady, 1.35x at a 10x
 // spike), then by how many independent sources see the term at all.
 
-export type SourceName = 'trends' | 'bluesky' | 'gdelt' | 'wikipedia' | 'youtube' | 'hn' | 'dex';
+export type SourceName = 'trends' | 'bluesky' | 'gdelt' | 'wikipedia' | 'youtube' | 'hn' | 'dex' | 'x';
 
 export interface SourceComponent {
   source: SourceName;
@@ -30,12 +30,15 @@ export type Components = Partial<Record<SourceName, SourceComponent>>;
 // broadest views of attention; social, news and the encyclopedia each
 // see a narrower world. HN and DexScreener only answer for the
 // categories they cover (tech, crypto) and count as unknown elsewhere.
+// GDELT is down-weighted for reliability, not relevance: its API is
+// throttled by design and answers some hours and not others.
 export const WEIGHTS: Record<SourceName, number> = {
   trends: 0.3,
+  x: 0.25,
   youtube: 0.2,
   bluesky: 0.2,
-  gdelt: 0.15,
   wikipedia: 0.15,
+  gdelt: 0.1,
   hn: 0.1,
   dex: 0.2,
 };
@@ -44,7 +47,7 @@ export const WEIGHTS: Record<SourceName, number> = {
 // Free, unlimited and quick to answer goes fast; quota-bound, rate-limited
 // or daily-resolution goes slow.
 export const FAST_SOURCES: SourceName[] = ['trends', 'bluesky', 'dex'];
-export const SLOW_SOURCES: SourceName[] = ['gdelt', 'wikipedia', 'youtube', 'hn'];
+export const SLOW_SOURCES: SourceName[] = ['gdelt', 'wikipedia', 'youtube', 'hn', 'x'];
 
 const LEVEL_SHARE = 0.65;
 const MOMENTUM_SHARE = 0.35;
