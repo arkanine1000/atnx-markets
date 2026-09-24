@@ -115,14 +115,10 @@ export function LeaderboardView({ rows }: { rows: LeaderboardRow[] }) {
         Leaderboard
       </h2>
 
-      {/* Phones show two tiles: the field and where you stand. */}
+      {/* Phones show two tiles: the volume and where you stand. */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4 mb-6">
-        <StatTile label="Traders" value={rows.length} />
-        <StatTile
-          label="Volume"
-          value={compactUsd(totalVolume)}
-          className="hidden md:block"
-        />
+        <StatTile label="Traders" value={rows.length} className="hidden md:block" />
+        <StatTile label="Volume" value={compactUsd(totalVolume)} />
         <StatTile
           label="Your rank"
           value={
