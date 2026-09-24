@@ -663,21 +663,21 @@ function BrowserMock() {
   );
 }
 
-// "Captured" badge, 92x22 centred on the origin; pops in after the flash.
+// "Captured" badge, 104x22 centred on the origin; pops in after the flash.
 function CapturedBadge() {
   return (
     <g className="hiw-badge">
       <rect
-        x="-46"
+        x="-52"
         y="-11"
-        width="92"
+        width="104"
         height="22"
         rx="11"
         fill="#0b2a31"
         stroke="#00D4FF"
       />
       <path
-        d="M-32 0 l4 4 l8 -8"
+        d="M-40 0 l4 4 l8 -8"
         fill="none"
         stroke="#00D4FF"
         strokeWidth="2"
@@ -685,9 +685,9 @@ function CapturedBadge() {
         strokeLinejoin="round"
       />
       <text
-        x="6"
+        x="-22"
         y="3.5"
-        textAnchor="middle"
+        textAnchor="start"
         fontSize="10"
         fontWeight="700"
         fill="#00D4FF"
