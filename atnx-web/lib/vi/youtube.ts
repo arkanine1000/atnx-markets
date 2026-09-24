@@ -32,10 +32,13 @@ export function youtubeConfigured(): boolean {
 }
 
 // Week's views over the top videos to level, log scale:
-//   100 -> 250, 1k -> 375, 100k -> 625, 10M -> 875, 100M+ -> 1000
+//   1k -> 200, 100k -> 400, 1M -> 500, 10M -> 600, 100M -> 700, 1B -> 800
+// Gentler than the other sources' scales because search always finds
+// something: a phrase nobody films still returns a page of videos that
+// mention it, and a celebrity's week is tens of millions of views.
 export function youtubeLevel(views7d: number): number {
   if (views7d <= 0) return 0;
-  return clamp(Math.round(125 * Math.log10(views7d)));
+  return clamp(Math.round(100 * Math.log10(views7d) - 100));
 }
 
 export interface YoutubeSample {
@@ -75,10 +78,15 @@ async function api<T>(path: string, params: Record<string, string>): Promise<{ o
   return { ok: true, body: (await res.json()) as T };
 }
 
-// The most-viewed videos of the last week for the name and its aliases
-// (`|` is OR in a search query). Null when the search failed.
+// The most-viewed videos of the last week for the name and its aliases:
+// each quoted so it must appear as a phrase, `|` for OR between them.
+// Null when the search failed.
 async function discover(term: string, aliases: string[]): Promise<string[] | null> {
-  const q = [term, ...aliases.slice(0, 3)].map((s) => s.trim()).filter(Boolean).join('|');
+  const q = [term, ...aliases.slice(0, 3)]
+    .map((s) => s.trim().replace(/"/g, ''))
+    .filter(Boolean)
+    .map((s) => `"${s}"`)
+    .join('|');
   const publishedAfter = new Date(Date.now() - WINDOW_DAYS * 24 * 3600 * 1000).toISOString();
   const res = await api<{ items?: { id?: { videoId?: string } }[] }>('search', {
     part: 'id',
