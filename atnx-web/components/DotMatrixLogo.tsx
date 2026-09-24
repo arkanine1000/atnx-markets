@@ -321,7 +321,10 @@ export function DotMatrixLogo() {
     let eyeTargets: Target[] = [];
     let gapPx = 4;
 
-    const ctx = el.getContext("2d", { alpha: true, desynchronized: true })!;
+    // No desynchronized hint: Chrome on Android composites such a canvas
+    // as its own opaque surface, so the transparent ground came out as a
+    // black box behind the dots.
+    const ctx = el.getContext("2d", { alpha: true })!;
 
     function render(now: number) {
       ctx.clearRect(0, 0, w, h);
