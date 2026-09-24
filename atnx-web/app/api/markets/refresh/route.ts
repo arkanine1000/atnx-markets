@@ -142,19 +142,22 @@ export async function refreshScores(cadence: 'fast' | 'slow', { dryRun = false, 
     }
     const chunk = markets.slice(i, i + chunkSize);
     const results = await scoreTerms(chunk.map(toRequest), cadence, { gdeltDeadline });
-    await Promise.all(chunk.map((market, k) => settle(market, results[k], cadence, dryRun, summary)));
+    await Promise.all(chunk.map((market, k) => settle(market, results[k], cadence, dryRun, summary, t0)));
   }
 
   summary.elapsedMs = Date.now() - t0;
   return summary;
 }
 
-async function settle(market: MarketRow, result: SignalResult, cadence: 'fast' | 'slow', dryRun: boolean, summary: RefreshSummary) {
+async function settle(market: MarketRow, result: SignalResult, cadence: 'fast' | 'slow', dryRun: boolean, summary: RefreshSummary, startedAt: number) {
   if (summary.gdelt) {
     if (result.fetched.includes('gdelt')) summary.gdelt.fresh++;
     else if (result.components.gdelt?.level != null) summary.gdelt.kept++;
   }
-  if (summary.tiktok && result.fetched.includes('tiktok')) summary.tiktok.markets++;
+  // A TikTok market counts when its row was read this run, even on the
+  // first sample, which has a mapping but no level yet.
+  const tiktokAt = result.components.tiktok?.fetchedAt ? Date.parse(result.components.tiktok.fetchedAt) : 0;
+  if (summary.tiktok && tiktokAt >= startedAt) summary.tiktok.markets++;
   if (summary.x && result.fetched.includes('x')) {
     const meta = result.components.x?.meta ?? {};
     const reading = { tweets: Number(meta.tweets ?? 0), requests: Number(meta.requests ?? 0) };
