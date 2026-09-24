@@ -24,6 +24,11 @@ import { dailyLedger, pruneSamples, readSamples, writeSample, type Sample } from
 const ACTOR = 'funny_ground~tiktok-hashtag-stats';
 const API = `https://api.apify.com/v2/acts/${ACTOR}/run-sync-get-dataset-items`;
 const RUN_TIMEOUT_S = 240;
+// The actor now and then leaves a hashtag out of its results: a tag we
+// know has 10k videos comes back as no row at all. Those are asked once
+// more in a short second run. A tag that does not exist (or is banned)
+// is missing again and costs nothing.
+const RETRY_TIMEOUT_S = 90;
 export const MAX_ROWS_PER_RUN = 50;
 export const INTERVAL_MS = 3 * 3600 * 1000;
 // A reading is written minutes into the run (:07 start, :10 write), so
@@ -186,28 +191,48 @@ async function runActor(hashtags: string[]): Promise<Map<string, HashtagStats>> 
       console.error(`[tiktok] daily hashtag budget reached (${spent}/${budget}); skipping run`);
       return out;
     }
-    const res = await fetch(`${API}?token=${encodeURIComponent(process.env.APIFY_TOKEN ?? '')}&timeout=${RUN_TIMEOUT_S}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ hashtags, maxConcurrency: 4 }),
-      cache: 'no-store',
-      signal: AbortSignal.timeout((RUN_TIMEOUT_S + 30) * 1000),
-    });
-    if (!res.ok) {
-      console.error(`[tiktok] actor ${res.status}: ${(await res.text()).slice(0, 160)}`);
-      pausedUntil = Date.now() + PAUSE_MS;
-      return out;
-    }
-    const items = (await res.json()) as { hashtag?: string; video_count?: number; view_count?: number; error?: unknown }[];
-    for (const it of items) {
-      if (!it.hashtag || it.error || typeof it.video_count !== 'number') continue;
-      out.set(it.hashtag.toLowerCase(), { hashtag: it.hashtag.toLowerCase(), video_count: it.video_count, view_count: typeof it.view_count === 'number' ? it.view_count : null });
+    if (!(await callActor(hashtags, RUN_TIMEOUT_S, out))) return out;
+    const missing = hashtags.filter((t) => !out.has(t.toLowerCase()));
+    if (missing.length > 0 && budget - spent - out.size >= missing.length) {
+      await callActor(missing, RETRY_TIMEOUT_S, out);
     }
   } catch (err) {
     console.error(`[tiktok] actor run failed: ${(err as Error).message}`);
     pausedUntil = Date.now() + PAUSE_MS;
   }
   return out;
+}
+
+// One actor run; its rows are added to `out`. False when the vendor
+// refused, which also pauses the source.
+async function callActor(hashtags: string[], timeoutS: number, out: Map<string, HashtagStats>): Promise<boolean> {
+  const res = await fetch(`${API}?token=${encodeURIComponent(process.env.APIFY_TOKEN ?? '')}&timeout=${timeoutS}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ hashtags, maxConcurrency: 4 }),
+    cache: 'no-store',
+    signal: AbortSignal.timeout((timeoutS + 30) * 1000),
+  });
+  if (!res.ok) {
+    console.error(`[tiktok] actor ${res.status}: ${(await res.text()).slice(0, 160)}`);
+    pausedUntil = Date.now() + PAUSE_MS;
+    return false;
+  }
+  const items = (await res.json()) as { hashtag?: string; video_count?: number; view_count?: number; error?: unknown }[];
+  for (const it of items) {
+    if (!it.hashtag || it.error || typeof it.video_count !== 'number') continue;
+    out.set(it.hashtag.toLowerCase(), { hashtag: it.hashtag.toLowerCase(), video_count: it.video_count, view_count: typeof it.view_count === 'number' ? it.view_count : null });
+  }
+  return true;
+}
+
+// On a re-discovery, a market whose current hashtag got no row this pass
+// keeps it rather than being re-mapped on partial counts; it asks again
+// next pass. Pure.
+export function holdMapping(wanted: string[], stored: SourceComponent | null | undefined, counts: Map<string, HashtagStats>): boolean {
+  const mapped = typeof stored?.meta?.hashtag === 'string' ? stored.meta.hashtag.toLowerCase() : null;
+  if (!mapped || wanted.length <= 1) return false;
+  return wanted.some((t) => t.toLowerCase() === mapped) && !counts.has(mapped);
 }
 
 export async function fetchTiktokSignal(req: TiktokRequest): Promise<SourceComponent> {
@@ -221,6 +246,7 @@ export async function fetchTiktokSignal(req: TiktokRequest): Promise<SourceCompo
   if (!batch || now - batchStarted > 20 * 60 * 1000) return stored ?? empty; // not in this pass's run
 
   const counts = await batch;
+  if (holdMapping(wanted, stored, counts)) return stored ?? empty;
   const stats = pickHashtag(wanted, counts);
   const discovering = wanted.length > 1 || wanted[0] !== stored?.meta?.hashtag;
   const queried = wanted.filter((t) => counts.has(t.toLowerCase())).length;
