@@ -284,7 +284,9 @@ a .recharts-wrapper {
 }
 
 /* Bottom sheet (the phone trade dock's ticket): in from the bottom edge
-   on an ease-out curve, out faster. The scrim fades with it. */
+   on an ease-out curve, out faster. The scrim fades with it. Plays under
+   reduced motion too, like the tutorial modal: Android's "remove
+   animations" reports as reduced motion and would turn it into a pop. */
 @keyframes sheet-up {
   from { transform: translateY(100%); }
   to { transform: translateY(0); }
@@ -305,9 +307,6 @@ a .recharts-wrapper {
 .animate-sheet-down { animation: sheet-down 0.2s ease-in both; }
 .animate-fade-in { animation: fade-in 0.25s ease-out both; }
 .animate-fade-out { animation: fade-out 0.2s ease-in both; }
-@media (prefers-reduced-motion: reduce) {
-  .animate-sheet-up, .animate-sheet-down, .animate-fade-in, .animate-fade-out { animation-duration: 0.01s; }
-}
 
 /* Live pulse */
 @keyframes live-pulse {
