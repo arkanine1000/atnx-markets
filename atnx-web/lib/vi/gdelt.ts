@@ -20,17 +20,28 @@ const BACKOFF_MS = 8_000;
 const CACHE_TTL = 50 * 60 * 1000;
 const USER_AGENT = 'ATNX/1.0 (attention-exchange; contact@atnx.app)';
 const TIMESPAN = '14d';
-// After this many 429s in a row the per-IP limit is being spent by someone
-// else behind the same egress; stop asking for a while rather than burn
-// the run's budget on back-offs. Time-based, since warm instances share
-// module state across runs.
+// After this many failures in a row (429s, or the connection not opening
+// at all, which is how GDELT looks when it is overloaded) stop asking for
+// a while rather than burn the run's budget on back-offs and timeouts.
+// Time-based, since warm instances share module state across runs. The
+// pause is short enough for the same hourly run to try again: a run
+// pauses at most a few times inside its GDELT budget.
 const BREAKER_TRIP = 4;
-const BREAKER_PAUSE_MS = 10 * 60 * 1000;
+const BREAKER_PAUSE_MS = 3 * 60 * 1000;
+// A connection that has not opened by then will not.
+const CONNECT_TIMEOUT_MS = 8_000;
 
 const cache = new Map<string, { data: SourceComponent; expiry: number }>();
 
-let consecutive429 = 0;
+let consecutiveFailures = 0;
 let pausedUntil = 0;
+function failed(term: string, what: string): void {
+  consecutiveFailures++;
+  if (consecutiveFailures >= BREAKER_TRIP) {
+    pausedUntil = Date.now() + BREAKER_PAUSE_MS;
+    console.error(`[gdelt] ${consecutiveFailures} consecutive failures (${what} for "${term}"); pausing ${BREAKER_PAUSE_MS / 60000} min`);
+  }
+}
 export function gdeltPaused(now = Date.now()): boolean {
   return now < pausedUntil;
 }
@@ -180,21 +191,22 @@ export async function fetchGdeltSignal(term: string, aliases: string[] = [], { d
       if (attempt > 0) await new Promise((r) => setTimeout(r, BACKOFF_MS));
       if (gdeltPaused()) return empty;
       res = await scheduled(
-        () => fetch(`${API}?${params}`, { headers: { 'User-Agent': USER_AGENT }, cache: 'no-store' }),
+        () =>
+          fetch(`${API}?${params}`, {
+            headers: { 'User-Agent': USER_AGENT },
+            cache: 'no-store',
+            signal: AbortSignal.timeout(CONNECT_TIMEOUT_MS),
+          }),
         deadline,
         () => null
       );
       if (res === null) return empty; // deadline passed while queued
       if (res.status === 429) {
-        consecutive429++;
-        if (consecutive429 >= BREAKER_TRIP) {
-          pausedUntil = Date.now() + BREAKER_PAUSE_MS;
-          console.error(`[gdelt] ${consecutive429} consecutive 429s; pausing ${BREAKER_PAUSE_MS / 60000} min`);
-          return empty;
-        }
+        failed(term, '429');
+        if (gdeltPaused()) return empty;
         continue;
       }
-      consecutive429 = 0;
+      consecutiveFailures = 0;
       break;
     }
     if (!res || !res.ok) {
@@ -243,7 +255,9 @@ export async function fetchGdeltSignal(term: string, aliases: string[] = [], { d
     cache.set(key, { data: result, expiry: Date.now() + CACHE_TTL });
     return result;
   } catch (err) {
-    console.error(`[gdelt] query failed for "${term}":`, err);
+    // A connection that never opened, or timed out: GDELT is overloaded.
+    failed(term, (err as Error).name === 'TimeoutError' ? 'timeout' : 'connect');
+    console.error(`[gdelt] query failed for "${term}": ${(err as Error).message}`);
     return empty;
   }
 }
