@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { scoreTerms, type ScoreRequest, type SignalResult } from '@/lib/signals';
+import { prefetchSlowSources, scoreTerms, type ScoreRequest, type SignalResult } from '@/lib/signals';
 import { recordVi } from '@/lib/store';
 import { gdeltPaused } from '@/lib/vi/gdelt';
 import { xSpendUsd } from '@/lib/vi/x';
+import { USD_PER_HASHTAG } from '@/lib/vi/tiktok';
 import type { Components } from '@/lib/vi/score';
 import { normalizeSearchTerm } from '@/lib/vi/trends';
 
@@ -70,6 +71,8 @@ export interface RefreshSummary {
   gdelt?: { fresh: number; kept: number; paused: boolean };
   // Slow path: what the paid X source fetched and roughly cost this run.
   x?: { markets: number; tweets: number; requests: number; estUsd: number };
+  // Slow path: hashtags sent to the TikTok actor this run, markets read.
+  tiktok?: { hashtags: number; markets: number; estUsd: number };
   dryRun?: { name: string; oldVi: number | null; raw: number | null; fetched: string[]; components: Components }[];
 }
 
@@ -118,8 +121,15 @@ export async function refreshScores(cadence: 'fast' | 'slow', { dryRun = false, 
   if (cadence === 'slow') {
     summary.gdelt = { fresh: 0, kept: 0, paused: gdeltPaused() };
     summary.x = { markets: 0, tweets: 0, requests: 0, estUsd: 0 };
+    summary.tiktok = { hashtags: 0, markets: 0, estUsd: 0 };
   }
   if (markets.length === 0) return summary;
+
+  if (cadence === 'slow' && summary.tiktok) {
+    const started = prefetchSlowSources(markets.map(toRequest));
+    summary.tiktok.hashtags = started.tiktokHashtags;
+    summary.tiktok.estUsd = Number((started.tiktokHashtags * USD_PER_HASHTAG).toFixed(4));
+  }
 
   const chunkSize = cadence === 'fast' ? CONCURRENCY : SLOW_CHUNK;
   const gdeltDeadline = cadence === 'slow' ? t0 + SLOW_GDELT_BUDGET_MS : undefined;
@@ -144,6 +154,7 @@ async function settle(market: MarketRow, result: SignalResult, cadence: 'fast' |
     if (result.fetched.includes('gdelt')) summary.gdelt.fresh++;
     else if (result.components.gdelt?.level != null) summary.gdelt.kept++;
   }
+  if (summary.tiktok && result.fetched.includes('tiktok')) summary.tiktok.markets++;
   if (summary.x && result.fetched.includes('x')) {
     const meta = result.components.x?.meta ?? {};
     const reading = { tweets: Number(meta.tweets ?? 0), requests: Number(meta.requests ?? 0) };

@@ -10,7 +10,7 @@
 // the level by momentum (0.65x at a collapse, 1x steady, 1.35x at a 10x
 // spike), then by how many independent sources see the term at all.
 
-export type SourceName = 'trends' | 'bluesky' | 'gdelt' | 'wikipedia' | 'youtube' | 'hn' | 'dex' | 'x';
+export type SourceName = 'trends' | 'bluesky' | 'gdelt' | 'wikipedia' | 'youtube' | 'hn' | 'dex' | 'x' | 'tiktok';
 
 export interface SourceComponent {
   source: SourceName;
@@ -36,6 +36,7 @@ export const WEIGHTS: Record<SourceName, number> = {
   trends: 0.3,
   x: 0.25,
   youtube: 0.2,
+  tiktok: 0.2,
   bluesky: 0.2,
   wikipedia: 0.15,
   gdelt: 0.1,
@@ -47,7 +48,7 @@ export const WEIGHTS: Record<SourceName, number> = {
 // Free, unlimited and quick to answer goes fast; quota-bound, rate-limited
 // or daily-resolution goes slow.
 export const FAST_SOURCES: SourceName[] = ['trends', 'bluesky', 'dex'];
-export const SLOW_SOURCES: SourceName[] = ['gdelt', 'wikipedia', 'youtube', 'hn', 'x'];
+export const SLOW_SOURCES: SourceName[] = ['gdelt', 'wikipedia', 'youtube', 'hn', 'x', 'tiktok'];
 
 const LEVEL_SHARE = 0.65;
 const MOMENTUM_SHARE = 0.35;
