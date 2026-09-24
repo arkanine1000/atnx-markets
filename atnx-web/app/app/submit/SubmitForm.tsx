@@ -363,14 +363,8 @@ export function SubmitForm({
             <div className="text-sm font-bold text-atnx-magenta">
               That image could not be read
             </div>
-            <div className="text-xs text-secondary mt-1 break-words">
-              Your phone offered it ({unreadable}) but would not let the
-              browser open it. This is a Chrome for Android bug with photos
-              from the picker or a cloud gallery.
-            </div>
-            <div className="text-xs text-tertiary mt-2">
-              Tap to pick it again. If it fails twice, take a fresh
-              screenshot of it or save it to the phone first.
+            <div className="text-xs text-secondary mt-1">
+              Tap to pick it again, or take a fresh screenshot.
             </div>
           </div>
         ) : (
