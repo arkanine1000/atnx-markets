@@ -1,4 +1,4 @@
-// Composite VI dispatcher. Four sources, each reporting an absolute level
+// Composite VI dispatcher. Seven sources, each reporting an absolute level
 // and a momentum ratio, combined by lib/vi/score.ts.
 //
 // Two refresh cadences share one stored breakdown per market
@@ -20,6 +20,9 @@ import { fetchTrendsSignals, type TrendsSignal } from './vi/trends';
 import { fetchBlueskySignal } from './vi/bluesky';
 import { fetchGdeltSignal } from './vi/gdelt';
 import { fetchWikipediaSignal } from './vi/wikipedia';
+import { fetchYoutubeSignal } from './vi/youtube';
+import { fetchHnSignal } from './vi/hn';
+import { fetchDexSignal } from './vi/dex';
 
 export interface ScoreRequest {
   term: string;
@@ -32,6 +35,24 @@ export interface ScoreRequest {
   // markets.entity_type. Brands may resolve to a company-suffixed
   // Wikipedia article ("Meta Platforms").
   entityType?: string | null;
+  // markets.category. Some sources only see part of the world and are
+  // asked about the categories they cover (see APPLIES).
+  category?: string | null;
+  // markets.id, for sources that keep their own sample series.
+  marketId?: string | null;
+}
+
+// Sources that only cover some categories. Elsewhere they are not asked
+// and count as unknown; a known zero would pull the level down for a
+// world the source cannot see.
+const APPLIES: Partial<Record<SourceName, (r: ScoreRequest) => boolean>> = {
+  hn: (r) => r.category === 'tech' || r.category === 'crypto',
+  // A token, not a person or an event in the crypto world: DexScreener
+  // has a joke token named after every public figure.
+  dex: (r) => r.category === 'crypto' && r.entityType !== 'person' && r.entityType !== 'event',
+};
+function applies(name: SourceName, r: ScoreRequest): boolean {
+  return APPLIES[name]?.(r) ?? true;
 }
 
 export interface ScoreOptions {
@@ -91,16 +112,30 @@ export async function scoreTerms(
       if (trends) components.trends = trends;
       const corporate = req.entityType === 'brand';
 
-      const [bluesky, gdelt, wikipedia] = await Promise.all([
+      const request = { term, stored, ...req };
+      const [bluesky, gdelt, wikipedia, youtube, hn, dex] = await Promise.all([
         want.has('bluesky') ? fetchBlueskySignal(term, aliases).catch(() => null) : null,
         want.has('gdelt') && gdeltDeadline !== 0
           ? fetchGdeltSignal(term, aliases, { deadline: gdeltDeadline }).catch(() => null)
           : null,
         want.has('wikipedia') ? fetchWikipediaSignal(term, aliases, { corporate }).catch(() => null) : null,
+        want.has('youtube')
+          ? fetchYoutubeSignal({ term, aliases, marketId: req.marketId, stored: stored?.youtube ?? null }).catch(() => null)
+          : null,
+        want.has('hn') && applies('hn', request) ? fetchHnSignal(term).catch(() => null) : null,
+        want.has('dex') && applies('dex', request) ? fetchDexSignal(term, req.aliases ?? []).catch(() => null) : null,
       ]);
       if (bluesky) components.bluesky = bluesky;
       if (gdelt) components.gdelt = gdelt;
       if (wikipedia) components.wikipedia = wikipedia;
+      if (youtube) components.youtube = youtube;
+      if (hn) components.hn = hn;
+      if (dex) components.dex = dex;
+      // A category-bound source keeps nothing once the market leaves its
+      // category.
+      for (const name of ['hn', 'dex'] as const) {
+        if (components[name] && !applies(name, request)) delete components[name];
+      }
 
       // A source that answered "unknown" this pass must not erase a real
       // earlier reading; keep the stored one.

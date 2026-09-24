@@ -10,7 +10,7 @@
 // the level by momentum (0.65x at a collapse, 1x steady, 1.35x at a 10x
 // spike), then by how many independent sources see the term at all.
 
-export type SourceName = 'trends' | 'bluesky' | 'gdelt' | 'wikipedia';
+export type SourceName = 'trends' | 'bluesky' | 'gdelt' | 'wikipedia' | 'youtube' | 'hn' | 'dex';
 
 export interface SourceComponent {
   source: SourceName;
@@ -25,24 +25,39 @@ export interface SourceComponent {
 
 export type Components = Partial<Record<SourceName, SourceComponent>>;
 
+// Relative weights; the composite renormalises over the sources that
+// answered, so only the ratios matter. Search and video reach are the
+// broadest views of attention; social, news and the encyclopedia each
+// see a narrower world. HN and DexScreener only answer for the
+// categories they cover (tech, crypto) and count as unknown elsewhere.
 export const WEIGHTS: Record<SourceName, number> = {
-  trends: 0.35,
-  bluesky: 0.25,
-  gdelt: 0.2,
-  wikipedia: 0.2,
+  trends: 0.3,
+  youtube: 0.2,
+  bluesky: 0.2,
+  gdelt: 0.15,
+  wikipedia: 0.15,
+  hn: 0.1,
+  dex: 0.2,
 };
 
 // Which sources the fast (5 min) and slow (hourly) refresh paths own.
-export const FAST_SOURCES: SourceName[] = ['trends', 'bluesky'];
-export const SLOW_SOURCES: SourceName[] = ['gdelt', 'wikipedia'];
+// Free, unlimited and quick to answer goes fast; quota-bound, rate-limited
+// or daily-resolution goes slow.
+export const FAST_SOURCES: SourceName[] = ['trends', 'bluesky', 'dex'];
+export const SLOW_SOURCES: SourceName[] = ['gdelt', 'wikipedia', 'youtube', 'hn'];
 
 const LEVEL_SHARE = 0.65;
 const MOMENTUM_SHARE = 0.35;
 export const MOMENTUM_CAP = 10;
 
 // Presence multiplier: the doc's cross-platform confirmation. One source
-// seeing a term is weak evidence; all four is strong.
+// seeing a term is weak evidence; four or more independent ones is strong.
+// Capped there so adding sources widens what the index can see without
+// inflating every score.
 const PRESENCE: Record<number, number> = { 0: 0, 1: 0.8, 2: 0.95, 3: 1.05, 4: 1.2 };
+export function presence(seeing: number): number {
+  return PRESENCE[Math.min(4, seeing)];
+}
 
 export const clamp = (x: number, lo = 0, hi = 1000) => Math.max(lo, Math.min(hi, x));
 
@@ -96,7 +111,7 @@ export function combine(components: Components): Composite | null {
   // the level alone, 10x lifts it by a third, 0.1x cuts it by a third. An
   // additive term gave every market seen by one source a floor of ~140
   // (0.35 x 500 x 0.8) whatever its size.
-  const multiplier = PRESENCE[Math.min(4, seeing.length)];
+  const multiplier = presence(seeing.length);
   const momentumFactor = LEVEL_SHARE + MOMENTUM_SHARE * (momentum / 500);
   const score = clamp(Math.round(level * momentumFactor * multiplier));
 

@@ -206,6 +206,41 @@ export type Database = {
           },
         ];
       };
+      vi_samples: {
+        Row: {
+          id: number;
+          market_id: string;
+          source: string;
+          sampled_at: string;
+          value: number;
+          meta: Json | null;
+        };
+        Insert: {
+          id?: number;
+          market_id: string;
+          source: string;
+          sampled_at?: string;
+          value: number;
+          meta?: Json | null;
+        };
+        Update: {
+          id?: number;
+          market_id?: string;
+          source?: string;
+          sampled_at?: string;
+          value?: number;
+          meta?: Json | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'vi_samples_market_id_fkey';
+            columns: ['market_id'];
+            isOneToOne: false;
+            referencedRelation: 'markets';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       user_profiles: {
         Row: {
           id: string;
