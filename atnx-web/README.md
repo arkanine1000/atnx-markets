@@ -138,4 +138,6 @@ ignores for Gemini 3.x (measured: 18 s and truncated JSON versus 2.6 s).
   landing page's signups.
 - `components/` shared UI. `supabase/` schema. `scripts/` eval and seeding.
 - `../atnx-extension/` is the Chrome extension that posts to `/api/captures/propose`
-  and commits from its side panel.
+  and commits from its side panel, and trades from it through
+  `/api/positions` (open) and `/api/positions/[id]/close`, which share
+  `lib/trading.ts` with the site's own server actions.
