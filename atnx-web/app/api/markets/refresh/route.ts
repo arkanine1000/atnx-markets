@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { scoreTerms, type ScoreRequest, type SignalResult } from '@/lib/signals';
 import { recordVi } from '@/lib/store';
 import { gdeltPaused } from '@/lib/vi/gdelt';
+import { xSpendUsd } from '@/lib/vi/x';
 import type { Components } from '@/lib/vi/score';
 import { normalizeSearchTerm } from '@/lib/vi/trends';
 
@@ -67,6 +68,8 @@ export interface RefreshSummary {
   // Slow path: markets whose GDELT reading was fetched this run, kept
   // from an earlier one, or not attempted because the source is paused.
   gdelt?: { fresh: number; kept: number; paused: boolean };
+  // Slow path: what the paid X source fetched and roughly cost this run.
+  x?: { markets: number; tweets: number; requests: number; estUsd: number };
   dryRun?: { name: string; oldVi: number | null; raw: number | null; fetched: string[]; components: Components }[];
 }
 
@@ -112,7 +115,10 @@ export async function refreshScores(cadence: 'fast' | 'slow', { dryRun = false, 
 
   const summary: RefreshSummary = { cadence, refreshed: 0, skipped: 0, total: markets.length, elapsedMs: 0 };
   if (dryRun) summary.dryRun = [];
-  if (cadence === 'slow') summary.gdelt = { fresh: 0, kept: 0, paused: gdeltPaused() };
+  if (cadence === 'slow') {
+    summary.gdelt = { fresh: 0, kept: 0, paused: gdeltPaused() };
+    summary.x = { markets: 0, tweets: 0, requests: 0, estUsd: 0 };
+  }
   if (markets.length === 0) return summary;
 
   const chunkSize = cadence === 'fast' ? CONCURRENCY : SLOW_CHUNK;
@@ -137,6 +143,14 @@ async function settle(market: MarketRow, result: SignalResult, cadence: 'fast' |
   if (summary.gdelt) {
     if (result.fetched.includes('gdelt')) summary.gdelt.fresh++;
     else if (result.components.gdelt?.level != null) summary.gdelt.kept++;
+  }
+  if (summary.x && result.fetched.includes('x')) {
+    const meta = result.components.x?.meta ?? {};
+    const reading = { tweets: Number(meta.tweets ?? 0), requests: Number(meta.requests ?? 0) };
+    summary.x.markets++;
+    summary.x.tweets += reading.tweets;
+    summary.x.requests += reading.requests;
+    summary.x.estUsd = Number((summary.x.estUsd + xSpendUsd([reading])).toFixed(4));
   }
   if (dryRun) {
     summary.dryRun!.push({ name: market.entity_name, oldVi: market.current_vi, raw: result.score, fetched: result.fetched, components: result.components });

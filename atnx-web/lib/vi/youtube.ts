@@ -9,8 +9,8 @@
 // daily change of set cannot read as a spike or a collapse.
 //
 // The slow path owns it. Without a key the source is unknown.
-import { createAdminClient } from '../supabase/admin';
 import { clamp, ratioToBaseline, type SourceComponent } from './score';
+import { pruneSamples, readSamples, writeSample } from './samples';
 
 const API = 'https://www.googleapis.com/youtube/v3';
 const CACHE_TTL = 50 * 60 * 1000;
@@ -44,7 +44,7 @@ export function youtubeLevel(views7d: number): number {
 export interface YoutubeSample {
   sampled_at: string;
   value: number;
-  meta: { set?: string } | null;
+  meta: { set?: string | number | boolean | null } | null;
 }
 
 // Hourly view growth now against the growth in the hours before, over
@@ -161,26 +161,9 @@ export async function fetchYoutubeSignal({ term, aliases = [], marketId, stored 
     let momentum: number | null = null;
     let views1h: number | null = null;
     if (marketId) {
-      const supabase = createAdminClient();
-      const sampledAt = new Date().toISOString();
-      const { error: insertErr } = await supabase
-        .from('vi_samples')
-        .insert({ market_id: marketId, source: 'youtube', sampled_at: sampledAt, value: views7d, meta: { set } });
-      if (insertErr) console.error(`[youtube] sample write failed for "${term}": ${insertErr.message}`);
-      const { data } = await supabase
-        .from('vi_samples')
-        .select('sampled_at, value, meta')
-        .eq('market_id', marketId)
-        .eq('source', 'youtube')
-        .order('sampled_at', { ascending: false })
-        .limit(MAX_SAMPLES);
-      ({ momentum, views1h } = youtubeMomentum(((data ?? []) as unknown as YoutubeSample[]).map((s) => ({ ...s, value: Number(s.value) }))));
-      await supabase
-        .from('vi_samples')
-        .delete()
-        .eq('market_id', marketId)
-        .eq('source', 'youtube')
-        .lt('sampled_at', new Date(Date.now() - SAMPLE_KEEP_MS).toISOString());
+      await writeSample(marketId, 'youtube', views7d, { set });
+      ({ momentum, views1h } = youtubeMomentum(await readSamples(marketId, 'youtube', MAX_SAMPLES)));
+      await pruneSamples(marketId, 'youtube', SAMPLE_KEEP_MS);
     }
 
     const result: SourceComponent = {

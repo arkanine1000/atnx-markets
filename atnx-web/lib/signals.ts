@@ -1,4 +1,4 @@
-// Composite VI dispatcher. Seven sources, each reporting an absolute level
+// Composite VI dispatcher. Eight sources, each reporting an absolute level
 // and a momentum ratio, combined by lib/vi/score.ts.
 //
 // Two refresh cadences share one stored breakdown per market
@@ -23,6 +23,7 @@ import { fetchWikipediaSignal } from './vi/wikipedia';
 import { fetchYoutubeSignal } from './vi/youtube';
 import { fetchHnSignal } from './vi/hn';
 import { fetchDexSignal } from './vi/dex';
+import { fetchXSignal } from './vi/x';
 
 export interface ScoreRequest {
   term: string;
@@ -116,7 +117,7 @@ export async function scoreTerms(
       const corporate = req.entityType === 'brand';
 
       const request = { term, stored, ...req };
-      const [bluesky, gdelt, wikipedia, youtube, hn, dex] = await Promise.all([
+      const [bluesky, gdelt, wikipedia, youtube, hn, dex, x] = await Promise.all([
         want.has('bluesky') ? fetchBlueskySignal(term, aliases).catch(() => null) : null,
         want.has('gdelt') && gdeltDeadline !== 0
           ? fetchGdeltSignal(term, aliases, { deadline: gdeltDeadline }).catch(() => null)
@@ -127,6 +128,7 @@ export async function scoreTerms(
           : null,
         want.has('hn') && applies('hn', request) ? fetchHnSignal(term).catch(() => null) : null,
         want.has('dex') && applies('dex', request) ? fetchDexSignal(term, req.aliases ?? []).catch(() => null) : null,
+        want.has('x') ? fetchXSignal({ term, aliases, marketId: req.marketId }).catch(() => null) : null,
       ]);
       if (bluesky) components.bluesky = bluesky;
       if (gdelt) components.gdelt = gdelt;
@@ -134,6 +136,7 @@ export async function scoreTerms(
       if (youtube) components.youtube = youtube;
       if (hn) components.hn = hn;
       if (dex) components.dex = dex;
+      if (x) components.x = x;
       // A category-bound source keeps nothing once the market leaves its
       // category.
       for (const name of ['hn', 'dex'] as const) {
