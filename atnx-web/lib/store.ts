@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createAdminClient } from './supabase/admin';
 import { forget, forgetPrefix, memo } from './memo';
-import { PAGE_SIZE, type SortMode } from './markets-query';
+import { PAGE_SIZE, type MarketsQuery, type SortMode } from './markets-query';
 import type { TrendsResult } from './trends';
 import type { Database, Json } from './supabase/database';
 import { smooth, type Components } from './vi/score';
@@ -587,7 +587,13 @@ type MarketPageRow = MarketRow & {
   captures: Omit<CaptureRowWithMarket, 'market'>[];
 };
 
-function marketsQuery(sort: SortMode) {
+// Escapes the LIKE wildcards in a search term so "100%" matches the
+// characters typed rather than everything.
+function likePattern(term: string): string {
+  return `%${term.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+}
+
+function marketsQuery(sort: SortMode, search = '') {
   let q = createAdminClient()
     .from('markets')
     .select(
@@ -598,6 +604,7 @@ function marketsQuery(sort: SortMode) {
     .is('captures.deleted_at', null)
     .order('created_at', { referencedTable: 'captures', ascending: false })
     .limit(1, { referencedTable: 'captures' });
+  if (search) q = q.ilike('entity_name', likePattern(search));
   switch (sort) {
     case 'virality':
       q = q.order('current_vi', { ascending: false }).order('created_at', { ascending: false });
@@ -617,15 +624,16 @@ function marketsQuery(sort: SortMode) {
 async function loadMarketRows(
   sort: SortMode,
   from: number,
-  to: number
+  to: number,
+  search = ''
 ): Promise<{ items: Capture[]; total: number }> {
-  const { data, error, count } = await marketsQuery(sort)
+  const { data, error, count } = await marketsQuery(sort, search)
     .range(from, to)
     .returns<MarketPageRow[]>();
   // A page past the end is an empty page, not an error; PostgREST answers
   // such a range with 416. The count is then re-read on its own.
   if (error?.code === 'PGRST103') {
-    const { count: total } = await marketsQuery(sort).limit(0);
+    const { count: total } = await marketsQuery(sort, search).limit(0);
     return { items: [], total: total ?? 0 };
   }
   if (error) throw error;
@@ -646,11 +654,13 @@ async function loadMarketRows(
   return { items, total: count ?? items.length };
 }
 
-export function getMarketsPage({ page, sort }: { page: number; sort: SortMode }): Promise<MarketsPage> {
-  return memo(`${MARKETS_PREFIX}${sort}:${page}`, FEED_TTL_MS, async () => {
+// A search narrows the listing to markets whose name contains the term
+// (case-insensitive); the hero's featured set is unaffected.
+export function getMarketsPage({ page, sort, q }: MarketsQuery): Promise<MarketsPage> {
+  return memo(`${MARKETS_PREFIX}${sort}:${page}:${q}`, FEED_TTL_MS, async () => {
     const from = (page - 1) * PAGE_SIZE;
     const [listing, featured] = await Promise.all([
-      loadMarketRows(sort, from, from + PAGE_SIZE - 1),
+      loadMarketRows(sort, from, from + PAGE_SIZE - 1, q),
       getFeaturedMarkets(),
     ]);
     return { items: listing.items, featured, total: listing.total, page, pageSize: PAGE_SIZE };

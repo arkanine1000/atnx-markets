@@ -58,7 +58,7 @@ How a submission is decided, stage by stage, is in [`atnx-web/README.md`](atnx-w
 | Path | Guest? | What it does |
 | --- | --- | --- |
 | `/` | ✅ | Landing splash with "Launch App" |
-| `/app` | ✅ | Dashboard — every market as a card, sorted by VI / newest / category, refreshes every 30s |
+| `/app` | ✅ | Dashboard — every market as a card, sorted by VI / newest / category, 24 a page, refreshes every 30s. `?q=` narrows the listing to markets whose name contains the term (the nav's search box) |
 | `/app/markets/[id]` | ✅ | Market detail — hero card, 7-day VI sparkline, evidence strip of all captures, Trade button |
 | `/app/submit` | ❌ | Web entry: drop or paste a screenshot, or give a link or a line of text. Proposes, then hands over to the review page |
 | `/app/submit/review/[draftId]` | ❌ | The review step: the image with a crop tool (two re-crops per draft), what the model found, the existing markets it could belong to (a strong match, the *subject* it is about, or a few close ones), and the create form with the proposed name and up to two alternates, type and category from the enums, and aliases that can only be dropped. Drafts expire after fifteen minutes |
@@ -77,6 +77,7 @@ How a submission is decided, stage by stage, is in [`atnx-web/README.md`](atnx-w
 | `POST /api/captures/commit` | Second half. JSON `{ draftId, choice }`, the choice validated against what the draft offered: attach to an offered market, create with a proposed name, or create the subject's market. Persists the capture and any market, writes the audit row, schedules the VI scoring. Creating is capped per account per day; admins and listed accounts are exempt |
 | `POST /api/captures/recrop` | JSON `{ draftId, crop }` in original pixels. The server crops its own copy, runs the model once more and rewrites the draft |
 | `POST /api/captures` | The one-shot path: propose and commit the default choice in one call. Kept for the eval script and older clients |
+| `GET /api/markets` | One page of the dashboard's listing plus the hero's featured set; takes the page's own `sort`, `page` and `q` parameters |
 | `GET /api/captures` | Dashboard feed (grouped by market, latest first); also feeds the extension side panel's top markets |
 | `GET /api/portfolio` | Extension side panel: handle, sim balance, realized/unrealized PnL, total value, open positions (with latest capture thumbnail), and a 7-day portfolio-value series rebuilt from each open position's `vi_history` (401 when signed out) |
 | `GET /api/markets/refresh` | Cron-only, every 5 min; re-reads the fast VI sources (Google Trends, Bluesky) for every live market, combines them with the stored slow readings, appends an EMA-smoothed point to `vi_history` |
@@ -104,7 +105,7 @@ How a submission is decided, stage by stage, is in [`atnx-web/README.md`](atnx-w
 - **`AuthContext`** — `user`, `loading`, `openLoginModal`, `signInWithGoogle`. Subscribes to `onAuthStateChange` and auto-closes the modal when a session appears.
 - **`DemoContext`** — `positions`, `balance`, `openPosition`, `closePosition`. Refreshes when auth state flips.
 - **`LoginModal`** — Google-only right now. Backdrop-blurred. Escape-to-close.
-- **`Nav`** — Logo + ATNX wordmark, UserMenu, theme toggle on the far right. From `sm` up Markets, Portfolio and Leaderboard sit in a pill in the header and Create is a pill beside the avatar with a magenta + and the word; on phones the tabs become a fixed bottom bar (Markets, the +, Portfolio) and Leaderboard moves into the UserMenu.
+- **`Nav`** — Logo + ATNX wordmark, UserMenu, theme toggle on the far right. From `sm` up Markets, Portfolio and Leaderboard sit in a pill in the header, followed by the market search (`NavSearch`: a magnifying glass that opens into a field; on the markets page the listing follows the text, elsewhere Enter goes there), and Create is a pill beside the avatar with a magenta + and the word; on phones the tabs become a fixed bottom bar (Markets, the +, Portfolio), the search sits beside the account and Leaderboard moves into the UserMenu.
 - **`PortfolioMobile`**, **`charts/PortfolioSparkline`** — The phone portfolio: value tile, range tabs, positions card, fed by `/api/portfolio`.
 - **`Identicon`** — Generated avatar seeded by the account id: the ATNX eye, with an iris made of one ink under blocks of the other two in multiply blend, so overlaps print the secondaries; the gaze varies per account. Stands in for the handle in the header, on the leaderboard and on the settings page.
 - **`ShareButton`** — Native share sheet on phones (`navigator.share`), clipboard elsewhere; on every market page.

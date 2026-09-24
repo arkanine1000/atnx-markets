@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTheme } from "next-themes";
-import { useSyncExternalStore } from "react";
+import { Suspense, useSyncExternalStore } from "react";
 import { UserMenu } from "@/components/UserMenu";
+import { NavSearch, NavSearchFallback } from "@/components/NavSearch";
 
 // false during SSR / hydration, true once on the client. Avoids the
 // set-state-in-effect pattern for the mount guard.
@@ -185,9 +186,21 @@ export function Nav() {
                 </Link>
               );
             })}
+            {/* Market search, after the last link: an icon until pressed. */}
+            <Suspense fallback={<NavSearchFallback className="ml-0.5" />}>
+              <NavSearch className="ml-0.5" />
+            </Suspense>
           </nav>
 
           <div className="flex items-center gap-2 shrink-0">
+            {/* Phones have no pill, so the search sits beside the account. */}
+            <Suspense fallback={<NavSearchFallback className="sm:hidden" />}>
+              <NavSearch
+                className="sm:hidden border border-surface"
+                restClassName="bg-surface"
+                expandedWidth="w-40 xs:w-48"
+              />
+            </Suspense>
             {/* Create: a YouTube-style pill beside the account, the + in
                 magenta on the dark surface and the word next to it. */}
             <Link
