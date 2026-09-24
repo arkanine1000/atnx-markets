@@ -2,8 +2,7 @@ import { createAdminClient } from './supabase/admin';
 
 // The simulated treasury: half of every trading fee (all of it on a market
 // with no known creator). One row, kept by open_position() in
-// supabase/009. Public on the leaderboard so the flow of fees is visible
-// while everything is still simulated USDC.
+// supabase/009. Shown on the admin dashboard's Trading tab.
 export interface Treasury {
   balanceUsd: number;
   feeCount: number;

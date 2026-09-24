@@ -104,7 +104,6 @@ export function LeaderboardView({ rows }: { rows: LeaderboardRow[] }) {
   const mine = user ? rows.find((r) => r.userId === user.id) ?? null : null;
   const pinned = mine && mine.rank > SHOW ? mine : null;
   const totalVolume = rows.reduce((sum, r) => sum + r.volumeUsd, 0);
-  const totalTrades = rows.reduce((sum, r) => sum + r.totalTrades, 0);
 
   return (
     <div>
@@ -114,11 +113,10 @@ export function LeaderboardView({ rows }: { rows: LeaderboardRow[] }) {
 
       {/* Phones show two tiles: the field and where you stand. */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4 mb-6">
-        <StatTile label="Traders" value={rows.length} sub="with at least one trade" />
+        <StatTile label="Traders" value={rows.length} />
         <StatTile
           label="Volume"
           value={compactUsd(totalVolume)}
-          sub={`${totalTrades} ${totalTrades === 1 ? "trade" : "trades"} · simulated USDC`}
           className="hidden md:block"
         />
         <StatTile

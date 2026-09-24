@@ -3,6 +3,9 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import type { LeaderboardRow } from "@/lib/leaderboard";
+import { STARTING_BALANCE } from "@/lib/leaderboard";
+import type { Treasury } from "@/lib/treasury";
 import {
   softDeleteMarket,
   restoreMarket,
@@ -57,7 +60,16 @@ interface WaitlistRow {
   created_at: string;
 }
 
-type Tab = "markets" | "captures" | "log" | "waitlist";
+type Tab = "markets" | "captures" | "log" | "waitlist" | "trading";
+
+const usd = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  maximumFractionDigits: 2,
+});
+function signedUsd(n: number): string {
+  return `${n >= 0 ? "+" : "-"}${usd.format(Math.abs(n))}`;
+}
 
 function formatDate(ts: string): string {
   return new Date(ts).toLocaleString();
@@ -74,11 +86,15 @@ export function AdminDashboard({
   reviewCaptures,
   log,
   waitlist,
+  traders,
+  treasury,
 }: {
   markets: MarketRow[];
   reviewCaptures: ReviewCaptureRow[];
   log: ModerationLogRow[];
   waitlist: WaitlistRow[];
+  traders: LeaderboardRow[];
+  treasury: Treasury;
 }) {
   const [tab, setTab] = useState<Tab>("markets");
 
@@ -102,7 +118,7 @@ export function AdminDashboard({
       </header>
 
       <div className="flex gap-1 text-xs mb-4 border-b border-surface">
-        {(["markets", "captures", "log", "waitlist"] as Tab[]).map((t) => (
+        {(["markets", "captures", "log", "waitlist", "trading"] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -118,7 +134,9 @@ export function AdminDashboard({
                 ? `Review queue (${reviewCaptures.length})`
                 : t === "log"
                   ? `Moderation log (${log.length})`
-                  : `Waitlist (${waitlist.length})`}
+                  : t === "waitlist"
+                    ? `Waitlist (${waitlist.length})`
+                    : `Trading (${traders.length})`}
           </button>
         ))}
       </div>
@@ -129,6 +147,7 @@ export function AdminDashboard({
       )}
       {tab === "log" && <LogTab log={log} />}
       {tab === "waitlist" && <WaitlistTab rows={waitlist} />}
+      {tab === "trading" && <TradingTab rows={traders} treasury={treasury} />}
     </div>
   );
 }
@@ -573,6 +592,123 @@ function WaitlistTab({ rows }: { rows: WaitlistRow[] }) {
               <tr>
                 <td colSpan={3} className="py-8 text-center text-tertiary">
                   Nobody has joined the waitlist yet.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// The whole simulated book: the treasury and what it has taken in, who
+// leads, and every trader's equity, realized and unrealized result, fees
+// earned, trade counts and volume. The public board shows only rank,
+// fees and PnL; this is where the rest went.
+function TradingTab({ rows, treasury }: { rows: LeaderboardRow[]; treasury: Treasury }) {
+  const leader = rows[0];
+  const totalVolume = rows.reduce((sum, r) => sum + r.volumeUsd, 0);
+  const totalTrades = rows.reduce((sum, r) => sum + r.totalTrades, 0);
+  const openPositions = rows.reduce((sum, r) => sum + r.openPositions, 0);
+  const creatorFees = rows.reduce((sum, r) => sum + r.feesEarnedUsd, 0);
+  const tone = (n: number) =>
+    n > 0 ? "text-atnx-cyan" : n < 0 ? "text-atnx-magenta" : "text-tertiary";
+  const tiles: { label: string; value: string; sub: string }[] = [
+    {
+      label: "Treasury",
+      value: usd.format(treasury.balanceUsd),
+      sub: `${treasury.feeCount} ${treasury.feeCount === 1 ? "fee" : "fees"} taken`,
+    },
+    {
+      label: "Paid to creators",
+      value: usd.format(creatorFees),
+      sub: "half of every open's 1% fee",
+    },
+    {
+      label: "Leader",
+      value: leader ? `@${leader.handle}` : "\u2014",
+      sub: leader ? `${leader.returnPct >= 0 ? "+" : ""}${leader.returnPct.toFixed(1)}% on ${usd.format(STARTING_BALANCE)}` : "no trades yet",
+    },
+    {
+      label: "Traders",
+      value: String(rows.length),
+      sub: "with at least one trade",
+    },
+    {
+      label: "Volume",
+      value: usd.format(totalVolume),
+      sub: `${totalTrades} ${totalTrades === 1 ? "trade" : "trades"} \u00b7 ${openPositions} open`,
+    },
+  ];
+  return (
+    <div>
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+        {tiles.map((t) => (
+          <div key={t.label} className="rounded-lg border border-surface bg-surface p-3 min-w-0">
+            <div className="text-[10px] font-mono uppercase tracking-wider text-tertiary mb-1">
+              {t.label}
+            </div>
+            <div className="font-display font-bold tabular-nums text-primary text-lg truncate">
+              {t.value}
+            </div>
+            <div className="text-[11px] text-tertiary mt-0.5 truncate">{t.sub}</div>
+          </div>
+        ))}
+      </div>
+      <p className="text-xs text-secondary mb-3">
+        Simulated USDC. Ranked by equity: cash plus open positions marked to
+        the live VI, creator fees included. Everyone starts with{" "}
+        {usd.format(STARTING_BALANCE)}.
+      </p>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-tertiary font-mono uppercase tracking-wider">
+              <th className="text-right py-2 px-2">#</th>
+              <th className="text-left py-2 px-2">Trader</th>
+              <th className="text-right py-2 px-2">Trades</th>
+              <th className="text-right py-2 px-2">Open</th>
+              <th className="text-right py-2 px-2">Volume</th>
+              <th className="text-right py-2 px-2">Realized</th>
+              <th className="text-right py-2 px-2">Unrealized</th>
+              <th className="text-right py-2 px-2">Fees earned</th>
+              <th className="text-right py-2 px-2">Equity</th>
+              <th className="text-right py-2 px-2">Return</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.userId} className="border-t border-surface font-mono tabular-nums">
+                <td className="py-2 px-2 text-right text-tertiary">{row.rank}</td>
+                <td className="py-2 px-2 text-left text-primary font-sans font-bold">
+                  @{row.handle}
+                </td>
+                <td className="py-2 px-2 text-right text-secondary">{row.totalTrades}</td>
+                <td className="py-2 px-2 text-right text-secondary">{row.openPositions}</td>
+                <td className="py-2 px-2 text-right text-secondary">{usd.format(row.volumeUsd)}</td>
+                <td className={`py-2 px-2 text-right ${tone(row.realizedPnl)}`}>
+                  {signedUsd(row.realizedPnl)}
+                </td>
+                <td className={`py-2 px-2 text-right ${tone(row.unrealizedPnl)}`}>
+                  {signedUsd(row.unrealizedPnl)}
+                </td>
+                <td className={`py-2 px-2 text-right ${tone(row.feesEarnedUsd)}`}>
+                  {row.feesEarnedUsd > 0 ? signedUsd(row.feesEarnedUsd) : "\u2014"}
+                </td>
+                <td className="py-2 px-2 text-right text-primary font-bold">
+                  {usd.format(row.equity)}
+                </td>
+                <td className={`py-2 px-2 text-right ${tone(row.returnPct)}`}>
+                  {row.returnPct >= 0 ? "+" : ""}
+                  {row.returnPct.toFixed(1)}%
+                </td>
+              </tr>
+            ))}
+            {rows.length === 0 && (
+              <tr>
+                <td colSpan={10} className="py-8 text-center text-tertiary">
+                  Nobody has traded yet.
                 </td>
               </tr>
             )}

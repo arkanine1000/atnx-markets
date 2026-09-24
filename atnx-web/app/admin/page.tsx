@@ -1,5 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getLeaderboard } from "@/lib/leaderboard";
+import { getTreasury } from "@/lib/treasury";
 import { AdminDashboard } from "./dashboard-client";
 
 export const dynamic = "force-dynamic";
@@ -70,6 +72,8 @@ export default async function AdminPage() {
     { data: reviewCaptures },
     { data: log },
     { data: waitlist },
+    traders,
+    treasury,
   ] = await Promise.all([
       supabase
         .from("markets")
@@ -105,6 +109,11 @@ export default async function AdminPage() {
         .order("created_at", { ascending: false })
         .limit(1000)
         .returns<WaitlistRow[]>(),
+      // The full board, with the figures the public page keeps to itself
+      // (equity, realized and unrealized, trade counts, volume), and the
+      // treasury the fees flow into.
+      getLeaderboard(),
+      getTreasury(),
     ]);
 
   return (
@@ -113,6 +122,8 @@ export default async function AdminPage() {
       reviewCaptures={reviewCaptures ?? []}
       log={log ?? []}
       waitlist={waitlist ?? []}
+      traders={traders}
+      treasury={treasury}
     />
   );
 }
