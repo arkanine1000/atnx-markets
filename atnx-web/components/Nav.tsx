@@ -6,6 +6,7 @@ import { useTheme } from "next-themes";
 import { Suspense, useSyncExternalStore } from "react";
 import { UserMenu } from "@/components/UserMenu";
 import { NavSearch, NavSearchFallback } from "@/components/NavSearch";
+import { LiveLogo } from "@/components/LiveLogo";
 
 // false during SSR / hydration, true once on the client. Avoids the
 // set-state-in-effect pattern for the mount guard.
@@ -140,11 +141,8 @@ export function Nav() {
   const { theme, resolvedTheme, setTheme } = useTheme();
   const mounted = useMounted();
 
-  // Logo variant matches the theme so it reads well on both backgrounds.
-  // Default to the dark-mode asset during SSR; swap after hydrate.
+  // Default to dark during SSR; swap after hydrate.
   const activeTheme = mounted ? (resolvedTheme ?? theme) : "dark";
-  const logoSrc =
-    activeTheme === "light" ? "/logo_light.png" : "/logo_dark.png";
 
   return (
     <>
@@ -152,14 +150,9 @@ export function Nav() {
         <div className="h-14 sm:h-16 flex items-center justify-between gap-3">
           {/* The mark goes to Markets, the app's home, not the landing page. */}
           <Link href="/app" className="group shrink-0 flex items-center gap-2.5">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={logoSrc}
-              alt="ATNX logo"
-              width={32}
-              height={32}
-              className="w-8 h-8 rounded-md shrink-0 object-contain"
-            />
+            {/* The mark drawn live: the pupil follows the pointer and the
+                eye blinks. The flat PNGs stay in public/ for a revert. */}
+            <LiveLogo size={32} className="w-8 h-8" label="ATNX logo" />
             <div className="wordmark text-lg text-primary tracking-[0.1em] leading-none group-hover:text-atnx-cyan transition-colors">
               ATNX
             </div>
