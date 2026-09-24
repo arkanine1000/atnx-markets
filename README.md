@@ -57,7 +57,7 @@ How a submission is decided, stage by stage, is in [`atnx-web/README.md`](atnx-w
 
 | Path | Guest? | What it does |
 | --- | --- | --- |
-| `/` | ✅ | Landing splash with "Launch App" |
+| `/` | ✅ | Landing splash: "Join Waitlist" (an email, stored in `waitlist`), "Launch Beta" and the docs link |
 | `/app` | ✅ | Dashboard — every market as a card, sorted by VI / newest / category, 24 a page, refreshes every 30s. `?q=` narrows the listing to markets whose name contains the term (the nav's search box) |
 | `/app/markets/[id]` | ✅ | Market detail — hero card, 7-day VI sparkline, evidence strip of all captures, Trade button |
 | `/app/submit` | ❌ | Web entry: drop or paste a screenshot, or give a link or a line of text. Proposes, then hands over to the review page |
@@ -65,7 +65,7 @@ How a submission is decided, stage by stage, is in [`atnx-web/README.md`](atnx-w
 | `/app/portfolio` | ❌ | Open + closed positions, realized PnL, sim balance. On phones it is laid out like the extension's side panel: a value tile with a range sparkline from `/api/portfolio`, then a collapsible Balance / Unrealized / Open card whose rows expand to close a position |
 | `/app/share/resume` | ❌ | Second half of a share that arrived signed out: the service worker parks the capture in the Cache API and sends the window here; after sign-in the page replays it through `/share` |
 | `/app/settings` | ❌ | The account's email and handle, read-only. Handles are fixed: the leaderboard and the trade log know you by them |
-| `/admin` | admins only | Moderation: markets (rename, soft-delete, restore, purge a soft-deleted one for good, set what a market is about), captures in review (low-confidence creates and overrides), audit log |
+| `/admin` | admins only | Moderation: markets (rename, soft-delete, restore, purge a soft-deleted one for good, set what a market is about), captures in review (low-confidence creates and overrides), audit log, waitlist signups (with a copy-all for invites) |
 | `/share` | ❌ | Android share-target POST (image, link, or text) → propose → redirect to the review page, or straight to the market with `?shared=<outcome>` for a repeat, which the market page turns into a toast. The service worker (`public/sw.js`) takes the POST over: it answers at once with a "Capturing…" page, shrinks a screenshot to a 1080 px JPEG (raw phone screenshots exceed Vercel's 4.5 MB body limit), uploads with `Accept: application/json` to get the target path back, and moves the window there. A link whose site blocks previews (Facebook, Instagram, TikTok) is tried from its caption, and failing that lands on `/app/submit` prefilled so one screenshot finishes it |
 | `/auth/callback` | — | OAuth return path; exchanges code → session, ensures `user_profiles` / `sim_balances` rows |
 
@@ -79,6 +79,7 @@ How a submission is decided, stage by stage, is in [`atnx-web/README.md`](atnx-w
 | `POST /api/captures` | The one-shot path: propose and commit the default choice in one call. Kept for the eval script and older clients |
 | `GET /api/markets` | One page of the dashboard's listing plus the hero's featured set; takes the page's own `sort`, `page` and `q` parameters |
 | `GET /api/captures` | Dashboard feed (grouped by market, latest first); also feeds the extension side panel's top markets |
+| `POST /api/waitlist` | Landing-page signup. JSON `{ email }`; the address is checked for shape, lowercased and stored once (a repeat answers `already`). Five per IP per ten minutes; a filled honeypot field is answered as a success and dropped |
 | `GET /api/portfolio` | Extension side panel: handle, sim balance, realized/unrealized PnL, total value, open positions (with latest capture thumbnail), and a 7-day portfolio-value series rebuilt from each open position's `vi_history` (401 when signed out) |
 | `GET /api/markets/refresh` | Cron-only, every 5 min; re-reads the fast VI sources (Google Trends, Bluesky) for every live market, combines them with the stored slow readings, appends an EMA-smoothed point to `vi_history` |
 | `GET /api/markets/refresh-slow` | Cron-only, hourly; same for the slow sources (GDELT, Wikipedia). Then expires review drafts nobody committed, and curates images and descriptions for up to a dozen highlighted markets (see `thumbnails.ts`) |
@@ -116,7 +117,7 @@ How a submission is decided, stage by stage, is in [`atnx-web/README.md`](atnx-w
 
 ## Auth flow
 
-1. Anyone hits `/` → lands on splash → clicks **Launch App** → `/app`.
+1. Anyone hits `/` → lands on splash → clicks **Launch Beta** → `/app`.
 2. Guests can browse the dashboard and market detail pages. Trade buttons turn into **Login** buttons; `/app/portfolio` shows a login panel.
 3. Clicking any Login opens the blurred modal → Google OAuth via `supabase.auth.signInWithOAuth`.
 4. `/auth/callback` exchanges the code for a session, sets the auth cookie with `SameSite=None; Secure` (via `proxy.ts`), redirects back.
@@ -154,6 +155,7 @@ A market whose sources all answer "unknown" keeps its last value. A brand-new ma
 | `positions` | Open + closed trades: `direction`, `size_usd`, `leverage`, `entry_vi`, `exit_vi`, `realized_pnl`, `fee_usd`, `liquidated`, `status`. |
 | `fee_events`, `sim_treasury` | The fee ledger (1% of every open, half to the market's creator, half to the treasury) and the treasury's one row. |
 | `moderation_log` | Admin audit trail. |
+| `waitlist` | Landing-page signups: `email` (unique, case-insensitive), `source`, `created_at`. Written by the server, admin-readable. |
 
 ### RPCs (used via `supabase.rpc(...)`)
 

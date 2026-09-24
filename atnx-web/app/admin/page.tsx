@@ -40,6 +40,13 @@ interface ModerationLogRow {
   admin: { handle: string } | null;
 }
 
+interface WaitlistRow {
+  id: string;
+  email: string;
+  source: string;
+  created_at: string;
+}
+
 export default async function AdminPage() {
   const supabase = await createClient();
   const {
@@ -58,8 +65,12 @@ export default async function AdminPage() {
     redirect("/app");
   }
 
-  const [{ data: markets }, { data: reviewCaptures }, { data: log }] =
-    await Promise.all([
+  const [
+    { data: markets },
+    { data: reviewCaptures },
+    { data: log },
+    { data: waitlist },
+  ] = await Promise.all([
       supabase
         .from("markets")
         .select(
@@ -86,6 +97,14 @@ export default async function AdminPage() {
         .order("created_at", { ascending: false })
         .limit(100)
         .returns<ModerationLogRow[]>(),
+      // Admin-readable under RLS (supabase/015). Before that file is
+      // applied the query errors and the tab shows an empty list.
+      supabase
+        .from("waitlist")
+        .select("id, email, source, created_at")
+        .order("created_at", { ascending: false })
+        .limit(1000)
+        .returns<WaitlistRow[]>(),
     ]);
 
   return (
@@ -93,6 +112,7 @@ export default async function AdminPage() {
       markets={markets ?? []}
       reviewCaptures={reviewCaptures ?? []}
       log={log ?? []}
+      waitlist={waitlist ?? []}
     />
   );
 }

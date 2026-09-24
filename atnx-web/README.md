@@ -134,7 +134,8 @@ ignores for Gemini 3.x (measured: 18 s and truncated JSON versus 2.6 s).
 - `lib/` server code. `capture.ts`, `capture-request.ts`, `vlm.ts`,
   `embed.ts`, `retrieve.ts`, `route.ts`, `review.ts`, `store.ts` are the
   submission path; `signals.ts` and `vi/` compute the virality index;
-  `thumbnails.ts` curates images and descriptions.
+  `thumbnails.ts` curates images and descriptions; `waitlist.ts` takes the
+  landing page's signups.
 - `components/` shared UI. `supabase/` schema. `scripts/` eval and seeding.
 - `../atnx-extension/` is the Chrome extension that posts to `/api/captures/propose`
   and commits from its side panel.

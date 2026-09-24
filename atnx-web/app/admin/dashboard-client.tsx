@@ -50,7 +50,14 @@ interface ModerationLogRow {
   admin: { handle: string } | null;
 }
 
-type Tab = "markets" | "captures" | "log";
+interface WaitlistRow {
+  id: string;
+  email: string;
+  source: string;
+  created_at: string;
+}
+
+type Tab = "markets" | "captures" | "log" | "waitlist";
 
 function formatDate(ts: string): string {
   return new Date(ts).toLocaleString();
@@ -66,10 +73,12 @@ export function AdminDashboard({
   markets,
   reviewCaptures,
   log,
+  waitlist,
 }: {
   markets: MarketRow[];
   reviewCaptures: ReviewCaptureRow[];
   log: ModerationLogRow[];
+  waitlist: WaitlistRow[];
 }) {
   const [tab, setTab] = useState<Tab>("markets");
 
@@ -93,7 +102,7 @@ export function AdminDashboard({
       </header>
 
       <div className="flex gap-1 text-xs mb-4 border-b border-surface">
-        {(["markets", "captures", "log"] as Tab[]).map((t) => (
+        {(["markets", "captures", "log", "waitlist"] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -107,7 +116,9 @@ export function AdminDashboard({
               ? `Markets (${markets.length})`
               : t === "captures"
                 ? `Review queue (${reviewCaptures.length})`
-                : `Moderation log (${log.length})`}
+                : t === "log"
+                  ? `Moderation log (${log.length})`
+                  : `Waitlist (${waitlist.length})`}
           </button>
         ))}
       </div>
@@ -117,6 +128,7 @@ export function AdminDashboard({
         <CapturesTab captures={reviewCaptures} markets={markets} />
       )}
       {tab === "log" && <LogTab log={log} />}
+      {tab === "waitlist" && <WaitlistTab rows={waitlist} />}
     </div>
   );
 }
@@ -501,6 +513,72 @@ function LogTab({ log }: { log: ModerationLogRow[] }) {
           )}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+// Landing-page signups, newest first, with the addresses one click from
+// the clipboard so a batch of invites can go out from any mail client.
+function WaitlistTab({ rows }: { rows: WaitlistRow[] }) {
+  const [copied, setCopied] = useState(false);
+  async function copyAll() {
+    try {
+      await navigator.clipboard.writeText(rows.map((r) => r.email).join("\n"));
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      window.prompt("Copy the addresses:", rows.map((r) => r.email).join(", "));
+    }
+  }
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <p className="text-xs text-secondary">
+          {rows.length} {rows.length === 1 ? "address" : "addresses"} from
+          the landing page, newest first.
+        </p>
+        <button
+          type="button"
+          onClick={copyAll}
+          disabled={rows.length === 0}
+          className="text-xs px-3 py-1.5 rounded border border-surface text-secondary hover:border-atnx-cyan/50 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          {copied ? "Copied" : "Copy all emails"}
+        </button>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-tertiary font-mono uppercase tracking-wider">
+              <th className="text-left py-2 px-2">When</th>
+              <th className="text-left py-2 px-2">Email</th>
+              <th className="text-left py-2 px-2">Source</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.id} className="border-t border-surface">
+                <td className="py-2 px-2 text-tertiary whitespace-nowrap">
+                  {formatDate(row.created_at)}
+                </td>
+                <td className="py-2 px-2 text-primary font-mono break-all">
+                  {row.email}
+                </td>
+                <td className="py-2 px-2 text-secondary font-mono">
+                  {row.source}
+                </td>
+              </tr>
+            ))}
+            {rows.length === 0 && (
+              <tr>
+                <td colSpan={3} className="py-8 text-center text-tertiary">
+                  Nobody has joined the waitlist yet.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

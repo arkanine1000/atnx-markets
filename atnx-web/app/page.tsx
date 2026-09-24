@@ -1,6 +1,7 @@
 import { DotMatrixLogo } from "@/components/DotMatrixLogo";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { LaunchAppButton } from "@/components/LaunchAppButton";
+import { WaitlistButton } from "@/components/WaitlistButton";
 
 // In-house testing target for the docs site; swap for the public docs URL
 // once it's deployed.
@@ -23,12 +24,7 @@ export default function LandingPage() {
       </p>
 
       <div className="mt-10 flex flex-col sm:flex-row gap-4">
-        <button
-          type="button"
-          className="px-8 py-3 rounded-lg border border-atnx-cyan text-atnx-cyan font-semibold cursor-pointer transition-colors hover:bg-atnx-cyan hover:text-black light:border-atnx-cyan-light light:bg-atnx-cyan/15 light:text-black light:hover:bg-atnx-cyan"
-        >
-          Join Waitlist
-        </button>
+        <WaitlistButton />
         <LaunchAppButton />
         <a
           href={DOCS_URL}
