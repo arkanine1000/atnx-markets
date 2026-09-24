@@ -947,7 +947,7 @@ async function scoreMarketLater(ctx: ScoringContext): Promise<void> {
   try {
     const { data: market } = await createAdminClient()
       .from('markets')
-      .select('entity_name, entity_type, aliases, vi_components')
+      .select('entity_name, entity_type, category, aliases, vi_components')
       .eq('id', ctx.marketId)
       .maybeSingle();
     const term = market?.entity_name ? normalizeSearchTerm({ name: market.entity_name }) : ctx.term;
@@ -957,6 +957,8 @@ async function scoreMarketLater(ctx: ScoringContext): Promise<void> {
         term,
         aliases,
         entityType: (market?.entity_type as string | null) ?? null,
+        category: (market?.category as string | null) ?? null,
+        marketId: ctx.marketId,
         stored: (market?.vi_components as Components | null) ?? null,
       },
       { gdeltDeadline: Date.now() + CAPTURE_GDELT_BUDGET_MS }

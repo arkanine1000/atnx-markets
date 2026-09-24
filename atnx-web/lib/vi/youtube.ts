@@ -1,0 +1,199 @@
+// YouTube Data API v3 as a VI source. Free, but search.list has its own
+// bucket of 100 calls a day (since 2026-06), so discovery is daily: one
+// search per market finds the most-viewed videos of the last week for
+// the name, and the hourly pass re-reads their view counts with
+// videos.list (1 unit each, 10k a day). The level is the week's views
+// across that set; the momentum is the last hour's view growth against
+// the mean hourly growth over the samples before it, from vi_samples.
+// Growth is only compared between samples of the same video set, so the
+// daily change of set cannot read as a spike or a collapse.
+//
+// The slow path owns it. Without a key the source is unknown.
+import { createAdminClient } from '../supabase/admin';
+import { clamp, ratioToBaseline, type SourceComponent } from './score';
+
+const API = 'https://www.googleapis.com/youtube/v3';
+const CACHE_TTL = 50 * 60 * 1000;
+const DISCOVERY_TTL = 24 * 3600 * 1000;
+const WINDOW_DAYS = 7;
+const MAX_VIDEOS = 25;
+// Samples kept per market; three days at the hourly cadence.
+const SAMPLE_KEEP_MS = 3 * 24 * 3600 * 1000;
+const MAX_SAMPLES = 80;
+const MIN_PRIOR_DELTAS = 3;
+// A gap between samples outside this range is not an hour's growth.
+const MIN_GAP_H = 0.5;
+const MAX_GAP_H = 3;
+
+const cache = new Map<string, { data: SourceComponent; expiry: number }>();
+
+export function youtubeConfigured(): boolean {
+  return !!process.env.YOUTUBE_API_KEY;
+}
+
+// Week's views over the top videos to level, log scale:
+//   100 -> 250, 1k -> 375, 100k -> 625, 10M -> 875, 100M+ -> 1000
+export function youtubeLevel(views7d: number): number {
+  if (views7d <= 0) return 0;
+  return clamp(Math.round(125 * Math.log10(views7d)));
+}
+
+export interface YoutubeSample {
+  sampled_at: string;
+  value: number;
+  meta: { set?: string } | null;
+}
+
+// Hourly view growth now against the growth in the hours before, over
+// samples of the same video set, newest first. Pure.
+export function youtubeMomentum(samples: YoutubeSample[], now = Date.now()): { momentum: number | null; views1h: number | null } {
+  if (samples.length < 2) return { momentum: null, views1h: null };
+  const deltas: number[] = [];
+  for (let i = 0; i + 1 < samples.length; i++) {
+    const a = samples[i];
+    const b = samples[i + 1];
+    if (!a.meta?.set || a.meta.set !== b.meta?.set) continue;
+    const hours = (Date.parse(a.sampled_at) - Date.parse(b.sampled_at)) / 3600_000;
+    if (hours < MIN_GAP_H || hours > MAX_GAP_H) continue;
+    deltas.push(Math.max(0, a.value - b.value) / hours);
+  }
+  if (deltas.length === 0) return { momentum: null, views1h: null };
+  const latestIsCurrent = now - Date.parse(samples[0].sampled_at) < MAX_GAP_H * 3600_000;
+  const current = deltas[0];
+  const prior = deltas.slice(1);
+  const momentum = latestIsCurrent && prior.length >= MIN_PRIOR_DELTAS ? ratioToBaseline(current, prior) : null;
+  return { momentum, views1h: Math.round(current) };
+}
+
+async function api<T>(path: string, params: Record<string, string>): Promise<{ ok: true; body: T } | { ok: false; status: number }> {
+  const search = new URLSearchParams({ ...params, key: process.env.YOUTUBE_API_KEY ?? '' });
+  const res = await fetch(`${API}/${path}?${search}`, { headers: { Accept: 'application/json' }, cache: 'no-store' });
+  if (!res.ok) {
+    console.error(`[youtube] ${path} ${res.status}: ${(await res.text()).slice(0, 160)}`);
+    return { ok: false, status: res.status };
+  }
+  return { ok: true, body: (await res.json()) as T };
+}
+
+// The most-viewed videos of the last week for the name and its aliases
+// (`|` is OR in a search query). Null when the search failed.
+async function discover(term: string, aliases: string[]): Promise<string[] | null> {
+  const q = [term, ...aliases.slice(0, 3)].map((s) => s.trim()).filter(Boolean).join('|');
+  const publishedAfter = new Date(Date.now() - WINDOW_DAYS * 24 * 3600 * 1000).toISOString();
+  const res = await api<{ items?: { id?: { videoId?: string } }[] }>('search', {
+    part: 'id',
+    type: 'video',
+    q,
+    order: 'viewCount',
+    publishedAfter,
+    maxResults: String(MAX_VIDEOS),
+    safeSearch: 'none',
+  });
+  if (!res.ok) return null;
+  return (res.body.items ?? []).map((i) => i.id?.videoId).filter((id): id is string => !!id);
+}
+
+async function viewCounts(ids: string[]): Promise<{ id: string; views: number; publishedAt: string }[] | null> {
+  if (ids.length === 0) return [];
+  const res = await api<{ items?: { id: string; statistics?: { viewCount?: string }; snippet?: { publishedAt?: string } }[] }>('videos', {
+    part: 'statistics,snippet',
+    id: ids.slice(0, 50).join(','),
+  });
+  if (!res.ok) return null;
+  return (res.body.items ?? []).map((v) => ({
+    id: v.id,
+    views: Number(v.statistics?.viewCount ?? 0),
+    publishedAt: v.snippet?.publishedAt ?? '',
+  }));
+}
+
+export interface YoutubeRequest {
+  term: string;
+  aliases?: string[];
+  // The market, for the sample series. Without it the reading has a
+  // level but never a momentum.
+  marketId?: string | null;
+  // The stored reading, whose meta carries yesterday's video set.
+  stored?: SourceComponent | null;
+}
+
+export async function fetchYoutubeSignal({ term, aliases = [], marketId, stored }: YoutubeRequest): Promise<SourceComponent> {
+  const key = `${marketId ?? ''}|${term.toLowerCase()}`;
+  const hit = cache.get(key);
+  if (hit && Date.now() < hit.expiry) return hit.data;
+
+  const empty: SourceComponent = { source: 'youtube', level: null, momentum: null, fetchedAt: new Date().toISOString() };
+  if (!youtubeConfigured() || term.trim().length < 2) return empty;
+
+  try {
+    // Yesterday's set until it is a day old; a failed search (quota
+    // spent) keeps using it rather than reporting unknown.
+    const storedIds = typeof stored?.meta?.videos === 'string' && stored.meta.videos ? stored.meta.videos.split(',') : [];
+    const discoveredAt = typeof stored?.meta?.discovered_at === 'string' ? Date.parse(stored.meta.discovered_at) : 0;
+    let ids = storedIds;
+    let discovered = discoveredAt ? new Date(discoveredAt).toISOString() : null;
+    if (Date.now() - discoveredAt > DISCOVERY_TTL || ids.length === 0) {
+      const found = await discover(term, aliases);
+      if (found) {
+        ids = found;
+        discovered = new Date().toISOString();
+      } else if (ids.length === 0) {
+        return empty;
+      }
+    }
+
+    const videos = await viewCounts(ids);
+    if (!videos) return empty;
+    const cutoff = Date.now() - WINDOW_DAYS * 24 * 3600 * 1000;
+    const recent = videos.filter((v) => !v.publishedAt || Date.parse(v.publishedAt) >= cutoff);
+    const views7d = recent.reduce((s, v) => s + v.views, 0);
+    const top = [...recent].sort((a, b) => b.views - a.views)[0];
+    const set = [...ids].sort().join(',').slice(0, 64);
+
+    let momentum: number | null = null;
+    let views1h: number | null = null;
+    if (marketId) {
+      const supabase = createAdminClient();
+      const sampledAt = new Date().toISOString();
+      const { error: insertErr } = await supabase
+        .from('vi_samples')
+        .insert({ market_id: marketId, source: 'youtube', sampled_at: sampledAt, value: views7d, meta: { set } });
+      if (insertErr) console.error(`[youtube] sample write failed for "${term}": ${insertErr.message}`);
+      const { data } = await supabase
+        .from('vi_samples')
+        .select('sampled_at, value, meta')
+        .eq('market_id', marketId)
+        .eq('source', 'youtube')
+        .order('sampled_at', { ascending: false })
+        .limit(MAX_SAMPLES);
+      ({ momentum, views1h } = youtubeMomentum(((data ?? []) as unknown as YoutubeSample[]).map((s) => ({ ...s, value: Number(s.value) }))));
+      await supabase
+        .from('vi_samples')
+        .delete()
+        .eq('market_id', marketId)
+        .eq('source', 'youtube')
+        .lt('sampled_at', new Date(Date.now() - SAMPLE_KEEP_MS).toISOString());
+    }
+
+    const result: SourceComponent = {
+      source: 'youtube',
+      level: youtubeLevel(views7d),
+      momentum,
+      fetchedAt: new Date().toISOString(),
+      meta: {
+        views_7d: views7d,
+        views_1h: views1h,
+        videos: ids.join(','),
+        video_count: recent.length,
+        top_video: top?.id ?? null,
+        top_views: top?.views ?? null,
+        discovered_at: discovered,
+      },
+    };
+    cache.set(key, { data: result, expiry: Date.now() + CACHE_TTL });
+    return result;
+  } catch (err) {
+    console.error(`[youtube] query failed for "${term}":`, err);
+    return empty;
+  }
+}
