@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
-import { DemoToast, getTrendIndicator } from "@/components/Trading";
+import { DemoToast } from "@/components/Trading";
 import { ShareButton } from "@/components/ShareButton";
 import {
   ViChart,
@@ -142,7 +142,6 @@ export function MarketDetailClient({
   // under, which for older ones can differ from the market they sit on.
   const name = market.entity_name || latest.analysis.name || "Untitled";
   const points = useMemo(() => trends?.dataPoints ?? [], [trends]);
-  const trendInfo = getTrendIndicator(trends?.trend);
   const change24h = useMemo(
     () => viChange24h(points, viralityScore),
     [points, viralityScore],
@@ -250,13 +249,8 @@ export function MarketDetailClient({
                     {viTier(viralityScore).label}
                   </span>
                 </div>
-                <div className="flex sm:justify-end items-center gap-2 mt-2">
+                <div className="flex sm:justify-end items-center mt-2">
                   <DeltaChip value={change24h} size="md" />
-                  <span
-                    className={`text-[11px] font-bold ${trendInfo.className}`}
-                  >
-                    {trendInfo.icon} {trendInfo.label}
-                  </span>
                 </div>
               </div>
             </div>

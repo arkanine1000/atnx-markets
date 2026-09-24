@@ -3,51 +3,6 @@
 import { useEffect } from "react";
 import { positionPnl } from "@/lib/pnl";
 
-// Trend indicator: yellow for rising, secondary for stable, magenta for falling.
-// `className` is the theme-aware text colour; `color` is the raw dark-mode hex
-// for places that need an inline style.
-const YELLOW = "text-atnx-yellow light:text-atnx-yellow-light";
-const MAGENTA = "text-atnx-magenta light:text-atnx-magenta-light";
-export function getTrendIndicator(trend?: string): {
-  icon: string;
-  label: string;
-  color: string;
-  className: string;
-} {
-  switch (trend) {
-    case "spiking":
-      return {
-        icon: "▲",
-        label: "SPIKING",
-        color: "#FFE500",
-        className: YELLOW,
-      };
-    case "rising":
-      return {
-        icon: "↗",
-        label: "RISING",
-        color: "#FFE500",
-        className: YELLOW,
-      };
-    case "stable":
-      return {
-        icon: "→",
-        label: "STABLE",
-        color: "#999999",
-        className: "text-secondary",
-      };
-    case "falling":
-      return {
-        icon: "↘",
-        label: "FALLING",
-        color: "#FF00E5",
-        className: MAGENTA,
-      };
-    default:
-      return { icon: "★", label: "NEW", color: "#FFE500", className: YELLOW };
-  }
-}
-
 // Toast notification
 interface ToastProps {
   message: string;
