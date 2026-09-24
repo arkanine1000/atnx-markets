@@ -6,7 +6,10 @@
 // hours before it, from vi_samples. Views and likes are recorded but
 // not scored: an hour-old tweet has barely been seen yet.
 //
-// The slow path owns it (hourly). Spend is bounded three ways: the page
+// The slow path owns it (hourly), but each market is read only once its
+// stored reading is about three hours old: eight reads a day fit the
+// daily budget, where hourly reads spent it by mid-morning UTC and left
+// X dark for the rest of the day. Spend is bounded three ways: the page
 // cap per market, a daily tweet budget read from the samples ledger, and
 // a pause after the vendor refuses (quota, auth, rate limit). Without a
 // key the source is unknown.
@@ -16,10 +19,14 @@ import { dailyLedger, pruneSamples, readSamples, writeSample } from './samples';
 const API = 'https://api.twitterapi.io/twitter/tweet/advanced_search';
 const WINDOW_S = 3600;
 const PAGE_SIZE = 20;
-const MAX_PAGES = 5;
+const MAX_PAGES = 3;
 export const TWEET_CAP = MAX_PAGES * PAGE_SIZE;
 const MAX_PHRASES = 4;
 const CACHE_TTL = 50 * 60 * 1000;
+// Read a market again once its reading is this old. The slack lets the
+// hourly run that falls three hours later qualify despite run jitter.
+export const INTERVAL_MS = 3 * 3600 * 1000;
+const INTERVAL_SLACK_MS = 15 * 60 * 1000;
 export const USD_PER_TWEET = 0.00015;
 export const USD_PER_REQUEST_MIN = 0.00015;
 // Tweets a day across all markets before the source stops for the day.
@@ -29,7 +36,8 @@ const LEDGER_TTL = 5 * 60 * 1000;
 const PAUSE_MS = 10 * 60 * 1000;
 const SAMPLE_KEEP_MS = 3 * 24 * 3600 * 1000;
 const MAX_SAMPLES = 40;
-const MIN_PRIOR_SAMPLES = 6;
+// Four prior reads at the three-hour interval: twelve hours of baseline.
+const MIN_PRIOR_SAMPLES = 4;
 const BASELINE_MS = 24 * 3600 * 1000;
 
 const cache = new Map<string, { data: SourceComponent; expiry: number }>();
@@ -66,16 +74,17 @@ interface Tweet {
   retweeted_tweet?: unknown;
 }
 
-// A hundred tweets inside this span is as fast as the estimate goes:
-// 3,000 posts an hour, level ~870. Shorter spans are timestamp noise.
-const MIN_SPAN_H = 2 / 60;
+// A full cap (60 tweets) inside this span is as fast as the estimate
+// goes: 3,000 posts an hour, level ~870, the same ceiling as when the cap
+// was 100 tweets over two minutes. Shorter spans are timestamp noise.
+const MIN_SPAN_H = 1.2 / 60;
 
 // Posts per hour from the fetched tweets. Under the cap the window is
 // the hour and the count is the rate; at the cap the true count is
 // higher, and the rate is read off the span the fetched tweets cover
 // (they arrive newest first, so the oldest bounds it). The span floor
 // was a quarter hour at first, which read every busy market as exactly
-// 400 an hour: Google, Bitcoin, Trump and Musk all fill five pages in
+// 400 an hour: Google, Bitcoin, Trump and Musk all filled five pages in
 // well under fifteen minutes.
 export function xRate(tweets: { createdAt: string }[], capped: boolean, now = Date.now()): number {
   if (!capped) return tweets.length;
@@ -93,7 +102,7 @@ export interface XSample {
   value: number;
 }
 
-// This hour's rate against the mean of the prior samples in the last
+// This read's rate against the mean of the prior samples in the last
 // day; null until enough of them exist. Samples newest first, the
 // current one included.
 export function xMomentum(samples: XSample[], current: number, now = Date.now()): number | null {
@@ -132,12 +141,23 @@ export interface XRequest {
   term: string;
   aliases?: string[];
   marketId?: string | null;
+  // The market's stored X reading. While it is younger than the interval
+  // the source is not asked, and the caller keeps the stored reading.
+  stored?: SourceComponent | null;
 }
 
-export async function fetchXSignal({ term, aliases = [], marketId }: XRequest): Promise<SourceComponent> {
+// Whether a stored reading is still current at the three-hour interval.
+export function xReadingCurrent(stored: SourceComponent | null | undefined, now = Date.now()): boolean {
+  if (!stored || stored.level === null) return false;
+  const at = Date.parse(stored.fetchedAt);
+  return Number.isFinite(at) && now - at < INTERVAL_MS - INTERVAL_SLACK_MS;
+}
+
+export async function fetchXSignal({ term, aliases = [], marketId, stored }: XRequest): Promise<SourceComponent | null> {
   const key = `${marketId ?? ''}|${term.toLowerCase()}`;
   const hit = cache.get(key);
   if (hit && Date.now() < hit.expiry) return hit.data;
+  if (xReadingCurrent(stored)) return null;
 
   const empty: SourceComponent = { source: 'x', level: null, momentum: null, fetchedAt: new Date().toISOString() };
   if (!xConfigured() || term.trim().length < 2) return empty;
