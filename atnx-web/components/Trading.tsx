@@ -6,7 +6,7 @@ import { positionPnl } from "@/lib/pnl";
 // Toast notification
 interface ToastProps {
   message: string;
-  detail: string;
+  detail?: string;
   type: "long" | "short" | "close-profit" | "close-loss";
   onDismiss: () => void;
 }
@@ -35,8 +35,10 @@ export function DemoToast({ message, detail, type, onDismiss }: ToastProps) {
           {type === "close-loss" ? "↓" : "✓"}
         </span>
         <div>
-          <div className="text-sm font-bold text-primary">{message}</div>
-          <div className="text-xs text-secondary">{detail}</div>
+          <div className="text-sm font-bold text-primary whitespace-nowrap">
+            {message}
+          </div>
+          {detail && <div className="text-xs text-secondary">{detail}</div>}
         </div>
       </div>
     </div>
