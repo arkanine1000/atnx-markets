@@ -119,11 +119,37 @@ export const EMA_HALF_LIFE_MS = 2 * 60 * 60 * 1000;
 // five-minute cadence alpha is about 0.03, so an integer round returned
 // `prev` unchanged for any move under ~17 points and the stored score
 // could never converge. Display rounding happens where it is displayed.
+//
+// Within SNAP of the target the score becomes the target. Without this the
+// two-decimal rounding leaves a gap of 0.005/alpha that never closes: a
+// dead market sat at 0.17 forever at the five-minute cadence, and the gap
+// grows when writes land seconds apart. Half a point is invisible once
+// the display rounds.
+export const SNAP = 0.5;
 export function smooth(prev: number | null, prevAt: string | null, raw: number, now = Date.now()): number {
   if (prev === null || prevAt === null) return raw;
   const dt = Math.max(0, now - new Date(prevAt).getTime());
   const alpha = 1 - Math.pow(2, -dt / EMA_HALF_LIFE_MS);
-  return Math.round((prev + (raw - prev) * alpha) * 100) / 100;
+  const next = prev + (raw - prev) * alpha;
+  if (Math.abs(next - raw) < SNAP) return raw;
+  return Math.round(next * 100) / 100;
+}
+
+// Merges the breakdown a pass is about to write with the one on the row.
+// The fast and slow passes read a market minutes before they write it, so
+// each would overwrite the other's fresher reading. Per source, the newer
+// fetchedAt wins; a source the pass left out stays out (the generic-term
+// guard drops sources on purpose).
+export function mergeComponents(current: Components | null | undefined, ours: Components): Components {
+  const merged: Components = {};
+  for (const name of Object.keys(ours) as SourceName[]) {
+    const mine = ours[name];
+    if (!mine) continue;
+    const theirs = current?.[name];
+    merged[name] =
+      theirs && Date.parse(theirs.fetchedAt) > Date.parse(mine.fetchedAt) ? theirs : mine;
+  }
+  return merged;
 }
 
 // The six tiers from the design doc.
@@ -163,14 +189,26 @@ export function median(xs: number[]): number {
 // Terms that are one common word ("The", "Cat") score huge on search and
 // social by accident. A single token only counts on those sources when an
 // encyclopedic source resolved it to an article of the same name.
-export function isGenericTerm(term: string, wikipediaTitle: string | null): boolean {
+//
+// `wiki` is the Wikipedia component's meta. Readings written since the
+// resolver learned about redirects and disambiguation pages carry `own`:
+// 1 when the article is the term's own subject ("Clavicular (influencer)",
+// "Meta Platforms" for a brand, or a coined name that redirects into a
+// broader article), 0 when it is not (a disambiguation page, a common
+// word's article). Older readings only have the title, compared by name.
+export function isGenericTerm(
+  term: string,
+  wiki: { title?: string | number | null; own?: string | number | null } | null | undefined
+): boolean {
   const tokens = term.trim().split(/\s+/).filter(Boolean);
   if (tokens.length >= 2) return false;
   // Function words have Wikipedia articles too ("The"), so an article match
   // is not enough on its own.
   if (tokens.length === 0 || FUNCTION_WORDS.has(tokens[0].toLowerCase())) return true;
-  if (!wikipediaTitle) return true;
-  return wikipediaTitle.trim().toLowerCase() !== term.trim().toLowerCase();
+  if (wiki?.own !== undefined && wiki.own !== null) return Number(wiki.own) !== 1;
+  const title = typeof wiki?.title === 'string' ? wiki.title : null;
+  if (!title) return true;
+  return title.trim().toLowerCase() !== term.trim().toLowerCase();
 }
 
 // An alias is used as a search phrase. A single word matches far more

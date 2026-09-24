@@ -48,6 +48,7 @@ import {
 } from './review';
 import { normalizeSearchTerm } from './trends';
 import { composeVi } from './signals';
+import type { Components } from './vi/score';
 import { addCapture, createMarket, DuplicateCaptureError, recordVi, type Capture } from './store';
 import { createAdminClient } from './supabase/admin';
 
@@ -934,20 +935,37 @@ interface ScoringContext {
 // series on a market's first reading). Runs after the response. A failure
 // here costs nothing visible: the five-minute refresh scores every live
 // market, so the value lands on the next pass instead.
+//
+// The market row supplies the term, aliases, type and the breakdown from
+// earlier passes, so the capture scores the same string the refresh does
+// and a source that fails here keeps its stored reading instead of
+// thinning the breakdown to whatever answered. GDELT gets a short
+// deadline: the capture routes have a 60 s budget and GDELT's queue and
+// back-offs could outlast it.
+const CAPTURE_GDELT_BUDGET_MS = 25_000;
 async function scoreMarketLater(ctx: ScoringContext): Promise<void> {
   try {
-    const aliases = ctx.aliases ?? (await marketAliases(ctx.marketId));
-    const signal = await composeVi({ term: ctx.term, aliases });
+    const { data: market } = await createAdminClient()
+      .from('markets')
+      .select('entity_name, entity_type, aliases, vi_components')
+      .eq('id', ctx.marketId)
+      .maybeSingle();
+    const term = market?.entity_name ? normalizeSearchTerm({ name: market.entity_name }) : ctx.term;
+    const aliases = ctx.aliases ?? ((market?.aliases as string[] | null) ?? []);
+    const signal = await composeVi(
+      {
+        term,
+        aliases,
+        entityType: (market?.entity_type as string | null) ?? null,
+        stored: (market?.vi_components as Components | null) ?? null,
+      },
+      { gdeltDeadline: Date.now() + CAPTURE_GDELT_BUDGET_MS }
+    );
     if (signal.score === null) return;
     await recordVi(ctx.marketId, signal.score, signal.components, signal.seedSeries);
   } catch (err) {
     console.error('[capture] deferred VI scoring failed', (err as Error).message);
   }
-}
-
-async function marketAliases(marketId: string): Promise<string[]> {
-  const { data } = await createAdminClient().from('markets').select('aliases').eq('id', marketId).maybeSingle();
-  return (data?.aliases as string[] | null) ?? [];
 }
 
 interface RetryContext {

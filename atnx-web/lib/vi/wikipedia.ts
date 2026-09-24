@@ -26,8 +26,19 @@ export function wikipediaLevel(dailyViews: number): number {
   return clamp(Math.round(Math.log10(dailyViews + 10) * 200 - 200));
 }
 
-export async function fetchWikipediaSignal(term: string, aliases: string[] = []): Promise<WikipediaSignal> {
-  const key = [term, ...aliases].join('|').toLowerCase().trim();
+export interface WikipediaOptions {
+  // Accept a company-suffixed article ("Meta Platforms" for "Meta"). On
+  // for brand markets only: for anything else the plain name is the
+  // subject or nothing is.
+  corporate?: boolean;
+}
+
+export async function fetchWikipediaSignal(
+  term: string,
+  aliases: string[] = [],
+  { corporate = false }: WikipediaOptions = {}
+): Promise<WikipediaSignal> {
+  const key = [corporate ? 'c' : 'p', term, ...aliases].join('|').toLowerCase().trim();
   const hit = cache.get(key);
   if (hit && Date.now() < hit.expiry) return hit.data;
 
@@ -42,21 +53,43 @@ export async function fetchWikipediaSignal(term: string, aliases: string[] = [])
 
   try {
     // The name first; an alias only when the name resolves to nothing.
-    let title = await resolveArticleTitle(term);
+    let from: 'term' | 'alias' = 'term';
+    let resolved = await resolvePageviewArticle(term, { corporate });
     for (const alias of aliases) {
-      if (title || alias.trim().length < 2) break;
-      title = await resolveArticleTitle(alias);
+      if (resolved.title || alias.trim().length < 2) break;
+      const viaAlias = await resolvePageviewArticle(alias, { corporate });
+      if (viaAlias.title) {
+        from = 'alias';
+        resolved = { ...viaAlias, ambiguous: resolved.ambiguous, namedRedirect: resolved.namedRedirect };
+      }
     }
+    // Whether the article (or the absence of one) is the term's own
+    // subject, for the generic-term guard: a proper noun that Wikipedia
+    // knows by that name, even as a redirect into a broader article, is
+    // not a common word; a disambiguation page or an alias's article says
+    // nothing about the name itself.
+    const own =
+      from === 'term' &&
+      (resolved.match === 'exact' ||
+        resolved.match === 'corporate' ||
+        resolved.match === 'redirect' ||
+        (resolved.match === 'qualified' && !resolved.ambiguous) ||
+        resolved.namedRedirect)
+        ? 1
+        : 0;
+    const base = { match: resolved.match, from, own };
+
+    const title = resolved.title;
     if (!title) {
       // No article is a real observation: Wikipedia has nothing on it.
-      const none: WikipediaSignal = { ...empty, level: 0 };
+      const none: WikipediaSignal = { ...empty, level: 0, meta: { title: null, ...base } };
       cache.set(key, { data: none, expiry: Date.now() + CACHE_TTL });
       return none;
     }
 
     const daily = await fetchDailyPageviews(title);
     if (daily.length === 0) {
-      const none: WikipediaSignal = { ...empty, title, level: 0 };
+      const none: WikipediaSignal = { ...empty, title, level: 0, meta: { title, ...base } };
       cache.set(key, { data: none, expiry: Date.now() + CACHE_TTL });
       return none;
     }
@@ -65,8 +98,8 @@ export async function fetchWikipediaSignal(term: string, aliases: string[] = [])
     const latest = views[views.length - 1];
     const prior = views.slice(0, -1).slice(-14);
     // Median baseline so one earlier spike does not hide a new one.
-    const base = median(prior);
-    const momentum = prior.length === 0 ? null : base > 0 ? latest / base : ratioToBaseline(latest, prior);
+    const median14 = median(prior);
+    const momentum = prior.length === 0 ? null : median14 > 0 ? latest / median14 : ratioToBaseline(latest, prior);
 
     const result: WikipediaSignal = {
       source: 'wikipedia',
@@ -77,8 +110,9 @@ export async function fetchWikipediaSignal(term: string, aliases: string[] = [])
       meta: {
         title,
         views_latest: latest,
-        views_median_14d: base,
+        views_median_14d: median14,
         latest_date: daily[daily.length - 1].date,
+        ...base,
       },
     };
     cache.set(key, { data: result, expiry: Date.now() + CACHE_TTL });
@@ -87,6 +121,148 @@ export async function fetchWikipediaSignal(term: string, aliases: string[] = [])
     console.error(`[wikipedia] query failed for "${term}":`, err);
     return empty;
   }
+}
+
+// What a requested title turns out to be once MediaWiki has normalised it
+// and followed any redirect.
+export interface PageInfo {
+  requested: string;
+  // The article actually reached (the redirect target when redirected).
+  title: string;
+  // Set when the redirect points into a section: the term is a part of
+  // a broader subject, not an article of its own.
+  fragment: string | null;
+  redirected: boolean;
+  missing: boolean;
+  disambiguation: boolean;
+}
+
+// One query for many titles: normalisation, redirects and whether each
+// page is a disambiguation page. Keyed by the requested title.
+export async function lookupPages(titles: string[]): Promise<Map<string, PageInfo>> {
+  const out = new Map<string, PageInfo>();
+  const wanted = [...new Set(titles.filter((t) => t.trim()))].slice(0, 50);
+  if (wanted.length === 0) return out;
+  const params = new URLSearchParams({
+    action: 'query',
+    titles: wanted.join('|'),
+    redirects: '1',
+    prop: 'pageprops',
+    ppprop: 'disambiguation',
+    format: 'json',
+    formatversion: '2',
+  });
+  const res = await fetch(`${OPENSEARCH_URL}?${params}`, {
+    headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
+  });
+  if (!res.ok) throw new Error(`query ${res.status}`);
+  const body = (await res.json()) as {
+    query?: {
+      normalized?: { from: string; to: string }[];
+      redirects?: { from: string; to: string; tofragment?: string }[];
+      pages?: { title: string; missing?: boolean; pageprops?: { disambiguation?: string } }[];
+    };
+  };
+  const normalized = new Map((body.query?.normalized ?? []).map((n) => [n.from, n.to]));
+  const redirects = new Map((body.query?.redirects ?? []).map((r) => [r.from, r]));
+  const pages = new Map((body.query?.pages ?? []).map((p) => [p.title, p]));
+  for (const requested of wanted) {
+    let title = normalized.get(requested) ?? requested;
+    let redirected = false;
+    let fragment: string | null = null;
+    // Redirect chains are rare but MediaWiki reports each hop.
+    for (let hop = 0; hop < 3; hop++) {
+      const r = redirects.get(title);
+      if (!r) break;
+      redirected = true;
+      title = r.to;
+      fragment = r.tofragment ?? fragment;
+    }
+    const page = pages.get(title);
+    out.set(requested, {
+      requested,
+      title,
+      fragment,
+      redirected,
+      missing: !page || !!page.missing,
+      disambiguation: page?.pageprops?.disambiguation !== undefined,
+    });
+  }
+  return out;
+}
+
+export type ArticleMatch = 'exact' | 'qualified' | 'corporate' | 'redirect';
+
+export interface CandidateVerdict {
+  // The article whose pageviews stand for the term, or null.
+  title: string | null;
+  match: ArticleMatch | null;
+  // The term's own title is a disambiguation page: the name means
+  // several things, and search and social counts of it are not ours.
+  ambiguous: boolean;
+  // The term's own title redirects into a section of a broader article:
+  // no pageviews of its own, but a name Wikipedia knows.
+  namedRedirect: boolean;
+}
+
+const none = (): CandidateVerdict => ({ title: null, match: null, ambiguous: false, namedRedirect: false });
+
+// Whether a looked-up candidate is the term's article. Pure.
+export function judgeCandidate(term: string, info: PageInfo, { corporate = false } = {}): CandidateVerdict {
+  const bare = normalizeTitle(info.requested) === normalizeTitle(term);
+  if (info.missing) return none();
+  if (info.disambiguation) return { ...none(), ambiguous: bare };
+  if (!info.redirected) {
+    const match: ArticleMatch | null = bare
+      ? 'exact'
+      : titleMatchesTerm(term, info.title)
+        ? 'qualified'
+        : corporate && titleMatchesTerm(term, info.title, { corporate: true })
+          ? 'corporate'
+          : null;
+    return match ? { ...none(), title: info.title, match } : none();
+  }
+  if (info.fragment) return { ...none(), namedRedirect: bare };
+  if (titleMatchesTerm(term, info.title, { corporate })) return { ...none(), title: info.title, match: 'redirect' };
+  // "Donald Trump mugshot" -> "Mug shot of Donald Trump": the target is
+  // the same subject under another title when every word of the term is
+  // in it. Never for a single word: "Clavicular" -> "Clavicle" is the
+  // bone, and single words are where the generic-term guard matters.
+  const tokens = normalizeTitle(term).split(' ').filter(Boolean);
+  if (tokens.length >= 2) {
+    const target = normalizeTitle(info.title);
+    const letters = target.replace(/ /g, '');
+    const words = new Set(target.split(' '));
+    const all = tokens.every((t) => (t.length < 3 ? words.has(t) : letters.includes(t)));
+    if (all) return { ...none(), title: info.title, match: 'redirect' };
+  }
+  return none();
+}
+
+// The article whose pageviews stand for a term: OpenSearch candidates
+// that are the term itself (plain first, then company-suffixed when
+// `corporate`), each checked for redirects and disambiguation. The first
+// that survives wins.
+export async function resolvePageviewArticle(term: string, { corporate = false } = {}): Promise<CandidateVerdict> {
+  const candidates = await resolveArticleTitles(term, { corporate: true });
+  const plain = candidates.filter((t) => titleMatchesTerm(term, t));
+  const suffixed = corporate ? candidates.filter((t) => !plain.includes(t)) : [];
+  // The bare term itself is judged first even when OpenSearch ranks a
+  // qualified title above it, so that a disambiguation page or a section
+  // redirect under the term's own name is seen.
+  const ordered = [term, ...plain, ...suffixed].filter((t, i, all) => all.indexOf(t) === i);
+  if (ordered.length === 0) return none();
+  const pages = await lookupPages(ordered);
+  const verdict = none();
+  for (const requested of ordered) {
+    const info = pages.get(requested);
+    if (!info) continue;
+    const v = judgeCandidate(term, info, { corporate });
+    verdict.ambiguous ||= v.ambiguous;
+    verdict.namedRedirect ||= v.namedRedirect;
+    if (v.title) return { ...v, ambiguous: verdict.ambiguous, namedRedirect: verdict.namedRedirect };
+  }
+  return verdict;
 }
 
 // OpenSearch is a prefix/fuzzy search: "ATNX" returns "ATX", "Goonmobile"
