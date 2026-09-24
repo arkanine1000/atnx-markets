@@ -61,9 +61,9 @@ export interface Face {
 }
 
 // Pupil radius and the glint's offset and radius, in the 100-unit frame.
-const PUPIL_R = 21;
-const GLINT_OFF = 7.5;
-const GLINT_R = 4;
+const PUPIL_R = 27;
+const GLINT_OFF = 9.5;
+const GLINT_R = 5;
 
 export function faceFor(seed: string): Face {
   const next = rng(hash(seed || "atnx"));

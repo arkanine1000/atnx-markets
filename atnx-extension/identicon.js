@@ -8,9 +8,9 @@
 const IDENTICON_INKS = ['#00D4FF', '#FF00E5', '#FFE500'];
 const IDENTICON_PUPIL = '#0A0A0A';
 const IDENTICON_GLINT = '#D6D6D6';
-const IDENTICON_PUPIL_R = 21;
-const IDENTICON_GLINT_OFF = 7.5;
-const IDENTICON_GLINT_R = 4;
+const IDENTICON_PUPIL_R = 27;
+const IDENTICON_GLINT_OFF = 9.5;
+const IDENTICON_GLINT_R = 5;
 
 // FNV-1a: a small, well-spread 32-bit hash for a string.
 function identiconHash(s) {
