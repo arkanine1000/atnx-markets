@@ -2,23 +2,22 @@
 
 import { useId, useMemo } from "react";
 
-// A generated avatar: the ATNX eye from the logo, minus the light cone. The
-// same lens (two circular arcs meeting at the corners) split down the middle
-// into two flat inks with a black pupil, the way MetaMask's jazzicon gives
-// every account a face. Deterministic from a seed (the user id, so a handle
-// change keeps the face): the seed picks which two of the three inks make
-// the halves and which way the eye looks, and the split follows the pupil.
+// A generated avatar: the ATNX iris, the way MetaMask's jazzicon gives
+// every account a face. Deterministic from a seed (the user id, so a
+// handle change keeps the face): one ink fills the disc and two or three
+// rotated blocks in the other inks lie over it in multiply blend, so the
+// overlaps print the secondaries (cyan over magenta is blue, cyan over
+// yellow green, magenta over yellow red) and a triple overlap goes black.
+// A black pupil with a small glint sits a little off centre, per seed, so
+// the eye looks somewhere. No lids or line work: the disc is the iris.
 // Pure SVG, no image request, same picture on server and client.
+//
+// The extension draws the same face from the same seed in
+// atnx-extension/identicon.js; keep the two in step.
 
 const INKS = ["#00D4FF", "#FF00E5", "#FFE500"] as const;
-const DISC = "#0A0A0A";
-
-// Lens geometry in the 100-unit frame, at the logo's proportions: 88 wide,
-// 44 tall, arcs of radius 55 whose centres sit 33 off the midline.
-const HW = 44;
-const HH = 22;
-const R = (HW * HW + HH * HH) / (2 * HH);
-const LENS = `M${50 - HW} 50 A${R} ${R} 0 0 1 ${50 + HW} 50 A${R} ${R} 0 0 1 ${50 - HW} 50 Z`;
+const PUPIL = "#0A0A0A";
+const GLINT = "#D6D6D6";
 
 // FNV-1a: a small, well-spread 32-bit hash for a string.
 function hash(s: string): number {
@@ -42,26 +41,63 @@ function rng(seed: number) {
   };
 }
 
+interface Block {
+  fill: string;
+  w: number;
+  h: number;
+  x: number;
+  y: number;
+  rotate: number;
+  radius: number;
+  circle: boolean;
+}
+
 export interface Face {
-  left: string;
-  right: string;
-  // Pupil radius and where it looks, in the 100-unit frame.
-  pupilR: number;
+  base: string;
+  blocks: Block[];
+  // Where the pupil sits, in the 100-unit frame.
   gazeX: number;
   gazeY: number;
 }
 
+// Pupil radius and the glint's offset and radius, in the 100-unit frame.
+const PUPIL_R = 27;
+const GLINT_OFF = 9.5;
+const GLINT_R = 5;
+
 export function faceFor(seed: string): Face {
   const next = rng(hash(seed || "atnx"));
-  // An ordered pair of distinct inks: six faces by colour alone.
-  const leftIdx = Math.floor(next() * 3);
-  const rightIdx = (leftIdx + 1 + Math.floor(next() * 2)) % 3;
+  const baseIdx = Math.floor(next() * 3);
+  const others = INKS.filter((_, i) => i !== baseIdx);
+  const count = 2 + (next() < 0.5 ? 1 : 0);
+  const blocks: Block[] = [];
+  for (let i = 0; i < count; i++) {
+    // The first two blocks take the two other inks; a third, smaller one
+    // repeats one of them. Sizes and offsets are kept modest so the two
+    // inks overlap in a sliver (the black where all three meet stays an
+    // accent) and the base ink keeps most of the disc.
+    const fill = i < 2 ? others[i] : others[Math.floor(next() * 2)];
+    const scale = i === 2 ? 0.55 : 1;
+    const w = (34 + next() * 40) * scale;
+    const h = (26 + next() * 34) * scale;
+    // Blocks are pushed to opposite sides so they meet only at an edge.
+    const side = i === 0 ? -1 : i === 1 ? 1 : next() < 0.5 ? -1 : 1;
+    blocks.push({
+      fill,
+      w,
+      h,
+      x: 50 - w / 2 + side * (12 + next() * 22),
+      y: 50 - h / 2 + (next() - 0.5) * 64,
+      rotate: next() * 360,
+      radius: 4 + next() * 14,
+      circle: next() < 0.3,
+    });
+  }
   return {
-    left: INKS[leftIdx],
-    right: INKS[rightIdx],
-    pupilR: HH * (0.56 + next() * 0.1),
-    gazeX: (next() - 0.5) * 18,
-    gazeY: (next() - 0.5) * 6,
+    base: INKS[baseIdx],
+    blocks,
+    gazeX: (next() - 0.5) * 16,
+    gazeY: (next() - 0.5) * 8,
   };
 }
 
@@ -78,7 +114,7 @@ export function Identicon({
   className?: string;
 }) {
   const face = useMemo(() => faceFor(seed), [seed]);
-  const rightClip = `${useId()}-right`;
+  const discClip = `${useId()}-disc`;
   const cx = 50 + face.gazeX;
   const cy = 50 + face.gazeY;
   return (
@@ -92,16 +128,45 @@ export function Identicon({
       aria-hidden={label ? undefined : true}
     >
       <defs>
-        <clipPath id={rightClip}>
-          <rect x={cx} y="0" width={100 - cx} height="100" />
+        <clipPath id={discClip}>
+          <circle cx="50" cy="50" r="50" />
         </clipPath>
       </defs>
-      <circle cx="50" cy="50" r="50" fill={DISC} />
-      {/* Left ink fills the whole lens; the right ink covers it from the
-          pupil's meridian over, so the split moves with the gaze. */}
-      <path d={LENS} fill={face.left} />
-      <path d={LENS} fill={face.right} clipPath={`url(#${rightClip})`} />
-      <circle cx={cx} cy={cy} r={face.pupilR} fill={DISC} />
+      <g clipPath={`url(#${discClip})`}>
+        <rect width="100" height="100" fill={face.base} />
+        {face.blocks.map((b, i) =>
+          b.circle ? (
+            <circle
+              key={i}
+              cx={b.x + b.w / 2}
+              cy={b.y + b.h / 2}
+              r={Math.min(b.w, b.h) / 2}
+              fill={b.fill}
+              style={{ mixBlendMode: "multiply" }}
+            />
+          ) : (
+            <rect
+              key={i}
+              x={b.x}
+              y={b.y}
+              width={b.w}
+              height={b.h}
+              rx={b.radius}
+              fill={b.fill}
+              transform={`rotate(${b.rotate.toFixed(1)} ${(b.x + b.w / 2).toFixed(1)} ${(b.y + b.h / 2).toFixed(1)})`}
+              style={{ mixBlendMode: "multiply" }}
+            />
+          ),
+        )}
+      </g>
+      <circle cx={cx} cy={cy} r={PUPIL_R} fill={PUPIL} />
+      <circle
+        cx={cx - GLINT_OFF}
+        cy={cy - GLINT_OFF}
+        r={GLINT_R}
+        fill={GLINT}
+        opacity={0.9}
+      />
     </svg>
   );
 }

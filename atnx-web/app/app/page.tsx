@@ -30,10 +30,11 @@ export default async function MarketsPage({
   // Keyed on the query so a navigation starts the client state afresh.
   return (
     <MarketsView
-      key={`${query.sort}:${query.page}`}
+      key={`${query.sort}:${query.page}:${query.q}`}
       initial={data}
       sort={query.sort}
       page={query.page}
+      q={query.q}
     />
   );
 }

@@ -711,6 +711,10 @@ const portfolioEl = $('portfolio');
 const marketsEl = $('markets');
 const marketsMeta = $('marketsMeta');
 const handleChip = $('handleChip');
+const avatarEl = $('avatar');
+// The seed of the avatar drawn now, so a poll with the same account does
+// not redraw it every 30 s.
+let avatarSeed = null;
 const refreshBtn = $('refreshBtn');
 
 // Last good payload per range, so switching tabs is instant and a failed
@@ -718,9 +722,27 @@ const refreshBtn = $('refreshBtn');
 const portfolioCache = new Map();
 let signedIn = false;
 
-function setHandle(handle) {
+function setHandle(handle, userId) {
   handleChip.textContent = handle ? `@${handle}` : 'Not signed in';
   handleChip.className = handle ? 'handle' : 'handle muted';
+  setAvatar(userId || null);
+}
+
+// The account's face beside the handle, the same one the site draws from
+// the same id (identicon.js); the ATNX mark while nobody is signed in.
+function setAvatar(userId) {
+  if (userId === avatarSeed) return;
+  avatarSeed = userId;
+  if (userId && typeof identiconSvg === 'function') {
+    avatarEl.replaceChildren(identiconSvg(userId, 28));
+  } else {
+    const img = document.createElement('img');
+    img.src = 'icons/icon48.png';
+    img.width = 28;
+    img.height = 28;
+    img.alt = '';
+    avatarEl.replaceChildren(img);
+  }
 }
 
 let portfolioOpen = false;
@@ -864,7 +886,7 @@ async function loadPortfolio() {
 
   signedIn = true;
   authNote.hidden = true;
-  setHandle(data.handle);
+  setHandle(data.handle, data.userId);
   portfolioCache.set(range, data);
   // The user switched range while this request was in flight; the newer
   // request will draw the tile.

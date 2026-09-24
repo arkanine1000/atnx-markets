@@ -105,10 +105,13 @@ export function MarketsView({
   initial,
   sort,
   page,
+  q,
 }: {
   initial: MarketsPage;
   sort: SortMode;
   page: number;
+  // The search term from the nav's search box; empty lists everything.
+  q: string;
 }) {
   const router = useRouter();
   const [data, setData] = useState<MarketsPage>(initial);
@@ -123,7 +126,7 @@ export function MarketsView({
   // with its data, unless the server render failed, in which case fetch now.
   useEffect(() => {
     async function fetchPage() {
-      const res = await fetch(`/api/markets${marketsHref({ page, sort }, "")}`);
+      const res = await fetch(`/api/markets${marketsHref({ page, sort, q }, "")}`);
       if (!res.ok) throw new Error(`markets ${res.status}`);
       const body = await res.text();
       if (body === lastBody.current) return;
@@ -139,7 +142,7 @@ export function MarketsView({
     });
     // initial is the server render; it does not change for this key.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, sort]);
+  }, [page, sort, q]);
 
   // A page turn keeps the scroll (the links pass scroll={false}) and lands
   // on the listing rather than re-showing the hero.
@@ -153,7 +156,7 @@ export function MarketsView({
   }, [page, sort]);
 
   const setSort = (next: SortMode) =>
-    router.replace(marketsHref({ sort: next, page: 1 }), { scroll: false });
+    router.replace(marketsHref({ sort: next, page: 1, q }), { scroll: false });
 
   const { items, featured, total, pageSize } = data;
   const pages = Math.max(1, Math.ceil(total / pageSize));
@@ -166,7 +169,9 @@ export function MarketsView({
         <ShareErrorBanner />
       </Suspense>
 
-      <FeaturedHero captures={featured} />
+      {/* A search is about the listing; the hero would push it below the
+          fold and repeat markets that may not match. */}
+      {!q && <FeaturedHero captures={featured} />}
 
       <div
         id="all-markets"
@@ -174,15 +179,38 @@ export function MarketsView({
       >
         <div>
           <h2 className="font-display text-lg sm:text-xl font-bold text-primary tracking-tight">
-            All markets
+            {q ? (
+              <>
+                Results for{" "}
+                <span className="text-atnx-cyan light:text-atnx-cyan-light">
+                  &ldquo;{q}&rdquo;
+                </span>
+              </>
+            ) : (
+              "All markets"
+            )}
           </h2>
           <p className="text-xs text-tertiary mt-1 flex items-center gap-2">
-            <span className="relative inline-flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full rounded-full bg-atnx-cyan opacity-60 animate-live-pulse" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-atnx-cyan" />
-            </span>
-            {total} live {total === 1 ? "market" : "markets"}, refreshed
-            every 30s
+            {q ? (
+              <>
+                {total} {total === 1 ? "market" : "markets"} match
+                <Link
+                  href={marketsHref({ sort, page: 1, q: "" })}
+                  className="text-secondary hover:text-primary underline underline-offset-2"
+                >
+                  Clear search
+                </Link>
+              </>
+            ) : (
+              <>
+                <span className="relative inline-flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full rounded-full bg-atnx-cyan opacity-60 animate-live-pulse" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-atnx-cyan" />
+                </span>
+                {total} live {total === 1 ? "market" : "markets"}, refreshed
+                every 30s
+              </>
+            )}
           </p>
         </div>
 
@@ -217,11 +245,32 @@ export function MarketsView({
           body={`There are ${pages} ${pages === 1 ? "page" : "pages"} of markets.`}
           action={
             <Link
-              href={marketsHref({ sort, page: 1 })}
+              href={marketsHref({ sort, page: 1, q })}
               className="btn-magenta inline-flex items-center rounded-full px-4 py-2 text-xs font-bold"
             >
               Back to the first page
             </Link>
+          }
+        />
+      ) : items.length === 0 && q ? (
+        <EmptyState
+          title="No markets match"
+          body={`Nothing is named like “${q}”. Try a shorter term, or create the market.`}
+          action={
+            <div className="flex items-center gap-2">
+              <Link
+                href={marketsHref({ sort, page: 1, q: "" })}
+                className="inline-flex items-center rounded-full border border-surface bg-surface hover-lift px-4 py-2 text-xs font-bold text-primary"
+              >
+                Clear search
+              </Link>
+              <Link
+                href="/app/submit"
+                className="btn-magenta inline-flex items-center rounded-full px-4 py-2 text-xs font-bold"
+              >
+                Create a market
+              </Link>
+            </div>
           }
         />
       ) : items.length === 0 ? (
@@ -282,7 +331,7 @@ export function MarketsView({
           <Pager
             page={page}
             pages={pages}
-            href={(p) => marketsHref({ sort, page: p })}
+            href={(p) => marketsHref({ sort, page: p, q })}
           />
         </div>
       )}

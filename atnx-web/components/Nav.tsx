@@ -3,8 +3,10 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTheme } from "next-themes";
-import { useSyncExternalStore } from "react";
+import { Suspense, useSyncExternalStore } from "react";
 import { UserMenu } from "@/components/UserMenu";
+import { NavSearch, NavSearchFallback } from "@/components/NavSearch";
+import { LiveLogo } from "@/components/LiveLogo";
 
 // false during SSR / hydration, true once on the client. Avoids the
 // set-state-in-effect pattern for the mount guard.
@@ -56,7 +58,8 @@ const LINKS: NavLink[] = [
 
 // Phones get a bottom bar with the three actions a thumb reaches for:
 // Markets, Create (a plain + like YouTube's), Portfolio. Leaderboard lives
-// under the account menu there. The desktop pill keeps all four.
+// under the account menu there. The desktop pill keeps all four. A market
+// page stacks its Long / Short dock (TradeDock) on top of the bar.
 const BOTTOM_BAR = ["/app", "/app/submit", "/app/portfolio"];
 
 function PlusIcon({ size = 12 }: { size?: number }) {
@@ -119,9 +122,10 @@ function PortfolioIcon() {
   );
 }
 
-function TrophyIcon() {
+// Also the leaderboard page's title icon.
+export function TrophyIcon({ size = 22 }: { size?: number }) {
   return (
-    <svg viewBox="0 0 24 24" width={22} height={22} aria-hidden="true">
+    <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true">
       <path
         d="M7 4h10v4a5 5 0 0 1-10 0V4zM7 6H4v1.5A3.5 3.5 0 0 0 7.5 11M17 6h3v1.5a3.5 3.5 0 0 1-3.5 5M12 13v4M8.5 20h7M12 17c-1.5 0-3 1-3 3h6c0-2-1.5-3-3-3z"
         fill="none"
@@ -139,26 +143,21 @@ export function Nav() {
   const { theme, resolvedTheme, setTheme } = useTheme();
   const mounted = useMounted();
 
-  // Logo variant matches the theme so it reads well on both backgrounds.
-  // Default to the dark-mode asset during SSR; swap after hydrate.
+  // Default to dark during SSR; swap after hydrate.
   const activeTheme = mounted ? (resolvedTheme ?? theme) : "dark";
-  const logoSrc =
-    activeTheme === "light" ? "/logo_light.png" : "/logo_dark.png";
 
   return (
     <>
       <header className="sticky top-0 z-40 -mx-4 px-4 mb-6 sm:mb-8 nav-blur border-b border-surface">
         <div className="h-14 sm:h-16 flex items-center justify-between gap-3">
           {/* The mark goes to Markets, the app's home, not the landing page. */}
-          <Link href="/app" className="group shrink-0 flex items-center gap-2.5">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={logoSrc}
-              alt="ATNX logo"
-              width={32}
-              height={32}
-              className="w-8 h-8 rounded-md shrink-0 object-contain"
-            />
+          <Link
+            href="/app"
+            className="group shrink-0 flex items-center gap-2.5"
+          >
+            {/* The mark drawn live: the pupil follows the pointer and the
+                eye blinks. The flat PNGs stay in public/ for a revert. */}
+            <LiveLogo size={32} className="w-8 h-8" label="ATNX logo" />
             <div className="wordmark text-lg text-primary tracking-[0.1em] leading-none group-hover:text-atnx-cyan transition-colors">
               ATNX
             </div>
@@ -185,9 +184,21 @@ export function Nav() {
                 </Link>
               );
             })}
+            {/* Market search, after the last link: an icon until pressed. */}
+            <Suspense fallback={<NavSearchFallback className="ml-0.5" />}>
+              <NavSearch className="ml-0.5" />
+            </Suspense>
           </nav>
 
           <div className="flex items-center gap-2 shrink-0">
+            {/* Phones have no pill, so the search sits beside the account. */}
+            <Suspense fallback={<NavSearchFallback className="sm:hidden" />}>
+              <NavSearch
+                className="sm:hidden border border-surface"
+                restClassName="bg-surface"
+                expandedWidth="w-40 xs:w-48"
+              />
+            </Suspense>
             {/* Create: a YouTube-style pill beside the account, the + in
                 magenta on the dark surface and the word next to it. */}
             <Link

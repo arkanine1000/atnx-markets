@@ -11,10 +11,10 @@ const STEPS = [
   {
     n: 1,
     title: "Capture anything",
-    body: "Scrolling and something's blowing up? Hit Ctrl+Shift+X, drag a box around it, and it's captured. Claude works out what it is and opens a market for it.",
+    body: "Scrolling and something's blowing up? Hit Ctrl+Shift+X, drag a box around it, and it's captured.",
     // Shown instead of `body` when the device toggle is on Mobile.
     bodyMobile:
-      "Scrolling and something's blowing up? Screenshot it, share it to ATNX, and it's captured. Claude works out what it is and opens a market for it.",
+      "Scrolling and something's blowing up? Screenshot it, share it to ATNX, and it's captured.",
     tone: "cyan" as const,
   },
   {

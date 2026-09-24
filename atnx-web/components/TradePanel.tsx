@@ -24,6 +24,9 @@ interface Props {
   score: number;
   openPosition?: Position;
   onOpened: (side: "long" | "short", size: number) => void;
+  // Which side the ticket opens on; the phone dock opens it on the side
+  // that was tapped.
+  initialSide?: "long" | "short";
 }
 
 // The most you can put in when the fee comes out of the same balance,
@@ -42,10 +45,11 @@ export function TradePanel({
   score,
   openPosition: openPos,
   onOpened,
+  initialSide = "long",
 }: Props) {
   const { balance, openPosition } = useDemoContext();
   const { user, loading: authLoading, openLoginModal } = useAuth();
-  const [side, setSide] = useState<"long" | "short">("long");
+  const [side, setSide] = useState<"long" | "short">(initialSide);
   const [amount, setAmount] = useState("100");
   const [lev, setLev] = useState<Lev>("1");
   const [busy, setBusy] = useState(false);

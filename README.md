@@ -57,15 +57,15 @@ How a submission is decided, stage by stage, is in [`atnx-web/README.md`](atnx-w
 
 | Path | Guest? | What it does |
 | --- | --- | --- |
-| `/` | ✅ | Landing splash with "Launch App" |
-| `/app` | ✅ | Dashboard — every market as a card, sorted by VI / newest / category, refreshes every 30s |
-| `/app/markets/[id]` | ✅ | Market detail — hero card, 7-day VI sparkline, evidence strip of all captures, Trade button |
+| `/` | ✅ | Landing splash: "Join Waitlist" (an email, stored in `waitlist`), "Launch Beta" and the docs link |
+| `/app` | ✅ | Dashboard — the intro card (closable on phones, remembered), the featured showcase (swipeable on phones), then every market as a card, sorted by VI / newest / category, 24 a page, refreshes every 30s. `?q=` narrows the listing to markets whose name contains the term (the nav's search box) |
+| `/app/markets/[id]` | ✅ | Market detail — hero card, VI chart, pulse / activity / overview tabs, the order ticket in a side column. Share sits with the tabs and the markets before and after this one by virality head the page (no back link: Markets is in the nav). On phones the ticket sits behind Long / Short buttons anchored just above the tab bar (`TradeDock`; a sheet slides up from the bottom edge), and a sideways swipe moves to the neighbouring market |
 | `/app/submit` | ❌ | Web entry: drop or paste a screenshot, or give a link or a line of text. Proposes, then hands over to the review page |
 | `/app/submit/review/[draftId]` | ❌ | The review step: the image with a crop tool (two re-crops per draft), what the model found, the existing markets it could belong to (a strong match, the *subject* it is about, or a few close ones), and the create form with the proposed name and up to two alternates, type and category from the enums, and aliases that can only be dropped. Drafts expire after fifteen minutes |
 | `/app/portfolio` | ❌ | Open + closed positions, realized PnL, sim balance. On phones it is laid out like the extension's side panel: a value tile with a range sparkline from `/api/portfolio`, then a collapsible Balance / Unrealized / Open card whose rows expand to close a position |
 | `/app/share/resume` | ❌ | Second half of a share that arrived signed out: the service worker parks the capture in the Cache API and sends the window here; after sign-in the page replays it through `/share` |
 | `/app/settings` | ❌ | The account's email and handle, read-only. Handles are fixed: the leaderboard and the trade log know you by them |
-| `/admin` | admins only | Moderation: markets (rename, soft-delete, restore, purge a soft-deleted one for good, set what a market is about), captures in review (low-confidence creates and overrides), audit log |
+| `/admin` | admins only | Moderation: markets (rename, soft-delete, restore, purge a soft-deleted one for good, set what a market is about), captures in review (low-confidence creates and overrides), audit log, waitlist signups (with a copy-all for invites), and the trading book: treasury, fees paid to creators, and every trader's equity, realized and unrealized result, trade counts and volume (the public leaderboard shows only rank, fees and PnL) |
 | `/share` | ❌ | Android share-target POST (image, link, or text) → propose → redirect to the review page, or straight to the market with `?shared=<outcome>` for a repeat, which the market page turns into a toast. The service worker (`public/sw.js`) takes the POST over: it answers at once with a "Capturing…" page, shrinks a screenshot to a 1080 px JPEG (raw phone screenshots exceed Vercel's 4.5 MB body limit), uploads with `Accept: application/json` to get the target path back, and moves the window there. A link whose site blocks previews (Facebook, Instagram, TikTok) is tried from its caption, and failing that lands on `/app/submit` prefilled so one screenshot finishes it |
 | `/auth/callback` | — | OAuth return path; exchanges code → session, ensures `user_profiles` / `sim_balances` rows |
 
@@ -77,7 +77,9 @@ How a submission is decided, stage by stage, is in [`atnx-web/README.md`](atnx-w
 | `POST /api/captures/commit` | Second half. JSON `{ draftId, choice }`, the choice validated against what the draft offered: attach to an offered market, create with a proposed name, or create the subject's market. Persists the capture and any market, writes the audit row, schedules the VI scoring. Creating is capped per account per day; admins and listed accounts are exempt |
 | `POST /api/captures/recrop` | JSON `{ draftId, crop }` in original pixels. The server crops its own copy, runs the model once more and rewrites the draft |
 | `POST /api/captures` | The one-shot path: propose and commit the default choice in one call. Kept for the eval script and older clients |
+| `GET /api/markets` | One page of the dashboard's listing plus the hero's featured set; takes the page's own `sort`, `page` and `q` parameters |
 | `GET /api/captures` | Dashboard feed (grouped by market, latest first); also feeds the extension side panel's top markets |
+| `POST /api/waitlist` | Landing-page signup. JSON `{ email }`; the address is checked for shape, lowercased and stored once (a repeat answers `already`). Five per IP per ten minutes; a filled honeypot field is answered as a success and dropped |
 | `GET /api/portfolio` | Extension side panel: handle, sim balance, realized/unrealized PnL, total value, open positions (with latest capture thumbnail), and a 7-day portfolio-value series rebuilt from each open position's `vi_history` (401 when signed out) |
 | `GET /api/markets/refresh` | Cron-only, every 5 min; re-reads the fast VI sources (Google Trends, Bluesky) for every live market, combines them with the stored slow readings, appends an EMA-smoothed point to `vi_history` |
 | `GET /api/markets/refresh-slow` | Cron-only, hourly; same for the slow sources (GDELT, Wikipedia). Then expires review drafts nobody committed, and curates images and descriptions for up to a dozen highlighted markets (see `thumbnails.ts`) |
@@ -104,9 +106,10 @@ How a submission is decided, stage by stage, is in [`atnx-web/README.md`](atnx-w
 - **`AuthContext`** — `user`, `loading`, `openLoginModal`, `signInWithGoogle`. Subscribes to `onAuthStateChange` and auto-closes the modal when a session appears.
 - **`DemoContext`** — `positions`, `balance`, `openPosition`, `closePosition`. Refreshes when auth state flips.
 - **`LoginModal`** — Google-only right now. Backdrop-blurred. Escape-to-close.
-- **`Nav`** — Logo + ATNX wordmark, UserMenu, theme toggle on the far right. From `sm` up Markets, Portfolio and Leaderboard sit in a pill in the header and Create is a pill beside the avatar with a magenta + and the word; on phones the tabs become a fixed bottom bar (Markets, the +, Portfolio) and Leaderboard moves into the UserMenu.
+- **`LiveLogo`** — The brand mark drawn as SVG (the lens, cyan | magenta, black pupil; no light cone). The pupil eases toward the pointer, glances about on its own when nobody is pointing, and the lids blink every few seconds; still under reduced motion. The flat `public/logo_*.png` marks are kept for a revert.
+- **`Nav`** — LiveLogo + ATNX wordmark, UserMenu, theme toggle on the far right. From `sm` up Markets, Portfolio and Leaderboard sit in a pill in the header, followed by the market search (`NavSearch`: a magnifying glass that opens into a field; on the markets page the listing follows the text, elsewhere Enter goes there), and Create is a pill beside the avatar with a magenta + and the word; on phones the tabs become a fixed bottom bar (Markets, the +, Portfolio), the search sits beside the account and Leaderboard moves into the UserMenu; a market page stacks its trade dock on top of the bar.
 - **`PortfolioMobile`**, **`charts/PortfolioSparkline`** — The phone portfolio: value tile, range tabs, positions card, fed by `/api/portfolio`.
-- **`Identicon`** — Generated avatar seeded by the account id: the ATNX eye, with an iris made of one ink under blocks of the other two in multiply blend, so overlaps print the secondaries; the gaze varies per account. Stands in for the handle in the header, on the leaderboard and on the settings page.
+- **`Identicon`** — Generated avatar seeded by the account id: a disc of one ink under blocks of the other two in multiply blend, so overlaps print the secondaries, with a black pupil and a glint set a little off centre per account. Stands in for the handle in the header, on the leaderboard and on the settings page. The extension draws the same face from the same id (`atnx-extension/identicon.js`).
 - **`ShareButton`** — Native share sheet on phones (`navigator.share`), clipboard elsewhere; on every market page.
 - **`Trading/*`** — `TradeModal`, `ClosePositionModal`, `TrendSparkline` (entry marker), `DemoToast`, `getTrendIndicator`.
 - **`ThemeToggle`** — `next-themes`, class-based dark/light.
@@ -115,7 +118,7 @@ How a submission is decided, stage by stage, is in [`atnx-web/README.md`](atnx-w
 
 ## Auth flow
 
-1. Anyone hits `/` → lands on splash → clicks **Launch App** → `/app`.
+1. Anyone hits `/` → lands on splash → clicks **Launch Beta** → `/app`.
 2. Guests can browse the dashboard and market detail pages. Trade buttons turn into **Login** buttons; `/app/portfolio` shows a login panel.
 3. Clicking any Login opens the blurred modal → Google OAuth via `supabase.auth.signInWithOAuth`.
 4. `/auth/callback` exchanges the code for a session, sets the auth cookie with `SameSite=None; Secure` (via `proxy.ts`), redirects back.
@@ -153,6 +156,7 @@ A market whose sources all answer "unknown" keeps its last value. A brand-new ma
 | `positions` | Open + closed trades: `direction`, `size_usd`, `leverage`, `entry_vi`, `exit_vi`, `realized_pnl`, `fee_usd`, `liquidated`, `status`. |
 | `fee_events`, `sim_treasury` | The fee ledger (1% of every open, half to the market's creator, half to the treasury) and the treasury's one row. |
 | `moderation_log` | Admin audit trail. |
+| `waitlist` | Landing-page signups: `email` (unique, case-insensitive), `source`, `created_at`. Written by the server, admin-readable. |
 
 ### RPCs (used via `supabase.rpc(...)`)
 
@@ -166,11 +170,11 @@ Storage: the `captures` bucket (public) holds capture images under `{user_id}/`,
 
 ## Chrome extension (`atnx-extension/`)
 
-Manifest V3, vanilla JS, no build step. Three moving parts:
+Manifest V3, vanilla JS, no build step. Three moving parts (plus `identicon.js`, the avatar drawing shared in spirit with the web component):
 
 - **`background.js`** (service worker) — Owns the capture pipeline. On `Ctrl+Shift+X` or the side panel's Capture button it injects `content.js` on demand (`activeTab` + `scripting`), receives the selected rect, screenshots the tab, crops it in-worker with `createImageBitmap` + `OffscreenCanvas` (longest edge capped at 1080 px, JPEG at 0.85), then POSTs it as `multipart/form-data` to `${webAppUrl}/api/captures/propose` with `credentials: 'include'`. The draft that comes back is parked in storage for the side panel to review. Status is mirrored on the toolbar badge (`…` / `?` awaiting review / `✓` / `!`).
 - **`content.js`** — Drag-to-select overlay and toast notifications, rendered inside a closed Shadow DOM host that is promoted to the browser's top layer via the Popover API, so page CSS and z-index stacking can't interfere. Uses pointer events with pointer capture; Escape cancels. Only injected on pages the user captures.
-- **`sidepanel.html` + `sidepanel.js`** — Clicking the toolbar icon opens a Chrome side panel (wallet-style, no popup). Top to bottom: the signed-in handle; Capture button (which reads CAPTURING… / ANALYZING… while the pipeline runs) with the shortcut beneath; when a capture is waiting for review, a card with what was found and one button per option (add to the market it looks like or is about, create it, track its subject), a link to the full review page for cropping or editing, and Discard; a portfolio-value stat tile (hero number, 7-day delta, SVG sparkline with crosshair tooltip, keyboard-navigable) fed by `GET /api/portfolio`; a collapsible portfolio card (Balance / Unrealized / Open, expands to open positions as thumbnail · name · current value · PnL %, shorts marked with an `S` badge); and the top 5 markets by VI (`GET /api/captures`, grouped by market) as thumbnail · name · VI, the thumbnail being the market's curated image when it has one. Rows deep-link to `/app/markets/[id]`. Polls every 30 s while visible. The gear reveals settings: Web App URL (default `https://atnx.app`; override for local dev — saving a custom origin requests an optional host permission for it) and the current shortcut.
+- **`sidepanel.html` + `sidepanel.js`** — Clicking the toolbar icon opens a Chrome side panel (wallet-style, no popup). Top to bottom: the account's avatar (the same generated face as the site, from the `userId` in `GET /api/portfolio`) and handle; Capture button (which reads CAPTURING… / ANALYZING… while the pipeline runs) with the shortcut beneath; when a capture is waiting for review, a card with what was found and one button per option (add to the market it looks like or is about, create it, track its subject), a link to the full review page for cropping or editing, and Discard; a portfolio-value stat tile (hero number, 7-day delta, SVG sparkline with crosshair tooltip, keyboard-navigable) fed by `GET /api/portfolio`; a collapsible portfolio card (Balance / Unrealized / Open, expands to open positions as thumbnail · name · current value · PnL %, shorts marked with an `S` badge); and the top 5 markets by VI (`GET /api/captures`, grouped by market) as thumbnail · name · VI, the thumbnail being the market's curated image when it has one. Rows deep-link to `/app/markets/[id]`. Polls every 30 s while visible. The gear reveals settings: Web App URL (default `https://atnx.app`; override for local dev — saving a custom origin requests an optional host permission for it) and the current shortcut.
 
 Permissions: `activeTab`, `scripting`, `storage`, `sidePanel`, host access to `https://atnx.app/*` only. Other origins are `optional_host_permissions`, granted from the panel when you save a custom URL. Host access to the web app keeps the Supabase auth cookie flowing even when third-party cookies are blocked.
 

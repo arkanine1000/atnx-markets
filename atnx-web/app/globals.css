@@ -165,6 +165,31 @@ a .recharts-wrapper {
   transition: none !important;
 }
 
+/* Nav search: the pill widens on an ease-out curve while the field's
+   contents fade and slide in a beat later; closing runs the reverse,
+   faster and with no delay. The theme rule above sets a transition on
+   every element and, being unlayered, wins over Tailwind's transition
+   utilities, so these are spelled out here. */
+.nav-search {
+  transition: width 300ms cubic-bezier(0.22, 1, 0.36, 1),
+              background-color 200ms ease;
+}
+.nav-search-field {
+  transition: opacity 150ms ease-out, transform 150ms ease-out, color 200ms ease;
+}
+.nav-search[data-open] .nav-search-field {
+  transition: opacity 200ms ease-out 100ms, transform 200ms ease-out 100ms, color 200ms ease;
+}
+.nav-search-clear {
+  transition: opacity 150ms ease, width 150ms ease, margin 150ms ease,
+              background-color 200ms ease, color 200ms ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .nav-search, .nav-search-field, .nav-search-clear {
+    transition: background-color 200ms ease, color 200ms ease;
+  }
+}
+
 /* Text color helpers for dark/light */
 .text-primary {
   color: #F0F0F0;
@@ -257,6 +282,31 @@ a .recharts-wrapper {
 .animate-slide-up {
   animation: slide-up 0.25s ease-out;
 }
+
+/* Bottom sheet (the phone trade dock's ticket): in from the bottom edge
+   on an ease-out curve, out faster. The scrim fades with it. Plays under
+   reduced motion too, like the tutorial modal: Android's "remove
+   animations" reports as reduced motion and would turn it into a pop. */
+@keyframes sheet-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+@keyframes sheet-down {
+  from { transform: translateY(0); }
+  to { transform: translateY(100%); }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+.animate-sheet-up { animation: sheet-up 0.3s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.animate-sheet-down { animation: sheet-down 0.2s ease-in both; }
+.animate-fade-in { animation: fade-in 0.25s ease-out both; }
+.animate-fade-out { animation: fade-out 0.2s ease-in both; }
 
 /* Live pulse */
 @keyframes live-pulse {
