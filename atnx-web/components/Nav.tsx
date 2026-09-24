@@ -58,8 +58,11 @@ const LINKS: NavLink[] = [
 
 // Phones get a bottom bar with the three actions a thumb reaches for:
 // Markets, Create (a plain + like YouTube's), Portfolio. Leaderboard lives
-// under the account menu there. The desktop pill keeps all four.
+// under the account menu there. The desktop pill keeps all four. A market
+// page puts its Long / Short dock where the bar would be (TradeDock), so
+// the bar stands down there.
 const BOTTOM_BAR = ["/app", "/app/submit", "/app/portfolio"];
+const hasTradeDock = (p: string) => p.startsWith("/app/markets/");
 
 function PlusIcon({ size = 12 }: { size?: number }) {
   return (
@@ -150,7 +153,10 @@ export function Nav() {
       <header className="sticky top-0 z-40 -mx-4 px-4 mb-6 sm:mb-8 nav-blur border-b border-surface">
         <div className="h-14 sm:h-16 flex items-center justify-between gap-3">
           {/* The mark goes to Markets, the app's home, not the landing page. */}
-          <Link href="/app" className="group shrink-0 flex items-center gap-2.5">
+          <Link
+            href="/app"
+            className="group shrink-0 flex items-center gap-2.5"
+          >
             {/* The mark drawn live: the pupil follows the pointer and the
                 eye blinks. The flat PNGs stay in public/ for a revert. */}
             <LiveLogo size={32} className="w-8 h-8" label="ATNX logo" />
@@ -230,48 +236,50 @@ export function Nav() {
         </div>
       </header>
 
-      <nav
-        aria-label="App"
-        className="sm:hidden fixed inset-x-0 bottom-0 z-40 nav-blur border-t border-surface pb-[env(safe-area-inset-bottom)]"
-      >
-        <div className="h-16 grid grid-cols-3 items-center max-w-sm mx-auto px-6">
-          {LINKS.filter((l) => BOTTOM_BAR.includes(l.href)).map((l) => {
-            const active = l.match(pathname);
-            if (l.plus) {
+      {!hasTradeDock(pathname) && (
+        <nav
+          aria-label="App"
+          className="sm:hidden fixed inset-x-0 bottom-0 z-40 nav-blur border-t border-surface pb-[env(safe-area-inset-bottom)]"
+        >
+          <div className="h-16 grid grid-cols-3 items-center max-w-sm mx-auto px-6">
+            {LINKS.filter((l) => BOTTOM_BAR.includes(l.href)).map((l) => {
+              const active = l.match(pathname);
+              if (l.plus) {
+                return (
+                  <Link
+                    key={l.href}
+                    href={l.href}
+                    aria-label={l.label}
+                    aria-current={active ? "page" : undefined}
+                    className={`justify-self-center h-12 w-12 -mt-1 rounded-full inline-flex items-center justify-center text-white transition-all ${
+                      active
+                        ? "bg-atnx-magenta-dim ring-2 ring-atnx-cyan/60 shadow-[0_0_24px_rgba(0,212,255,0.3)]"
+                        : "bg-atnx-magenta shadow-[0_0_24px_rgba(255,0,229,0.35)] active:scale-95"
+                    }`}
+                  >
+                    {l.icon(active)}
+                  </Link>
+                );
+              }
               return (
                 <Link
                   key={l.href}
                   href={l.href}
-                  aria-label={l.label}
                   aria-current={active ? "page" : undefined}
-                  className={`justify-self-center h-12 w-12 -mt-1 rounded-full inline-flex items-center justify-center text-white transition-all ${
+                  className={`justify-self-center inline-flex flex-col items-center gap-0.5 px-3 py-1 text-[10px] font-bold font-mono uppercase tracking-[0.12em] transition-colors ${
                     active
-                      ? "bg-atnx-magenta-dim ring-2 ring-atnx-cyan/60 shadow-[0_0_24px_rgba(0,212,255,0.3)]"
-                      : "bg-atnx-magenta shadow-[0_0_24px_rgba(255,0,229,0.35)] active:scale-95"
+                      ? "text-atnx-cyan light:text-atnx-cyan-light"
+                      : "text-tertiary"
                   }`}
                 >
                   {l.icon(active)}
+                  {l.label}
                 </Link>
               );
-            }
-            return (
-              <Link
-                key={l.href}
-                href={l.href}
-                aria-current={active ? "page" : undefined}
-                className={`justify-self-center inline-flex flex-col items-center gap-0.5 px-3 py-1 text-[10px] font-bold font-mono uppercase tracking-[0.12em] transition-colors ${
-                  active
-                    ? "text-atnx-cyan light:text-atnx-cyan-light"
-                    : "text-tertiary"
-                }`}
-              >
-                {l.icon(active)}
-                {l.label}
-              </Link>
-            );
-          })}
-        </div>
-      </nav>
+            })}
+          </div>
+        </nav>
+      )}
     </>
   );
 }

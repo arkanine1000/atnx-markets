@@ -1,9 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { DemoToast } from "@/components/Trading";
+import { TradeDock } from "@/components/TradeDock";
 import { ShareButton } from "@/components/ShareButton";
 import {
   ViChart,
@@ -13,15 +21,30 @@ import {
 } from "@/components/charts/ViArea";
 import { TradePanel } from "@/components/TradePanel";
 import { TradeLog } from "@/components/TradeLog";
-import { Card, Chip, DeltaChip, Segmented, compactUsd, hostOf } from "@/components/ui";
+import {
+  Card,
+  Chip,
+  DeltaChip,
+  Segmented,
+  compactUsd,
+  hostOf,
+} from "@/components/ui";
 import { useDemoContext } from "@/context/DemoContext";
 import { sentimentColor, timeAgo, viChange24h } from "@/lib/capture-view";
-import type { Capture, MarketRow, TradeLogEvent } from "@/lib/store";
+import type {
+  Capture,
+  MarketNeighbor,
+  MarketRow,
+  TradeLogEvent,
+} from "@/lib/store";
 import type { TrendsResult } from "@/lib/trends";
 import { viTier } from "@/lib/vi/score";
 
 interface Props {
   market: MarketRow;
+  // The markets either side of this one in virality order: a swipe on a
+  // phone goes there (left for the next, right for the one before).
+  neighbors?: { prev: MarketNeighbor | null; next: MarketNeighbor | null };
   // The subject this market is about, and the markets that are about this
   // one (supabase/010). Display only; either may be empty.
   parent?: MarketRow | null;
@@ -35,6 +58,16 @@ interface Props {
 }
 
 type Tab = "pulse" | "activity" | "overview";
+
+// The swipe between markets. A touch has to move this far sideways, and
+// more sideways than up, before the page starts following the finger; on
+// release past SWIPE_GO_PX it flies off and the neighbour loads, short of
+// it the page springs back. Touches on the chart (which scrubs), inside
+// the trade dock and its sheet, and on form fields are left alone.
+const SWIPE_ARM_PX = 14;
+const SWIPE_GO_PX = 90;
+const SWIPE_IGNORE =
+  "[data-no-swipe], .recharts-wrapper, input, textarea, select";
 
 // After a share-sheet capture the route lands here with ?shared=<outcome>.
 // One toast says what happened, then the flag comes off the URL so a
@@ -122,7 +155,9 @@ export function MarketDetailClient({
   initialTradeLog,
   volumeUsd = 0,
   tradeCount = 0,
+  neighbors,
 }: Props) {
+  const router = useRouter();
   const { positions } = useDemoContext();
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [range, setRange] = useState<Range>("ALL");
@@ -170,157 +205,503 @@ export function MarketDetailClient({
     [name, viralityScore],
   );
 
+  // --- Swipe between markets. The page content follows the finger with
+  // a little tilt from the bottom, Tinder-style, and the styles are set
+  // straight on the element so a drag does not re-render the chart.
+  const prev = neighbors?.prev ?? null;
+  const next = neighbors?.next ?? null;
+  const swipeRef = useRef<HTMLDivElement>(null);
+  const gesture = useRef<{
+    x: number;
+    y: number;
+    mode: "undecided" | "h" | "v";
+  } | null>(null);
+  const leaving = useRef(false);
+
+  useEffect(() => {
+    if (prev) router.prefetch(`/app/markets/${prev.id}`);
+    if (next) router.prefetch(`/app/markets/${next.id}`);
+  }, [router, prev, next]);
+
+  const onTouchStart = (e: React.TouchEvent) => {
+    if (leaving.current || (!prev && !next)) return;
+    if ((e.target as Element).closest(SWIPE_IGNORE)) return;
+    const t = e.touches[0];
+    gesture.current = { x: t.clientX, y: t.clientY, mode: "undecided" };
+  };
+  const onTouchMove = (e: React.TouchEvent) => {
+    const g = gesture.current;
+    const el = swipeRef.current;
+    if (!g || !el) return;
+    const t = e.touches[0];
+    const dx = t.clientX - g.x;
+    const dy = t.clientY - g.y;
+    if (g.mode === "undecided") {
+      if (Math.abs(dy) > SWIPE_ARM_PX && Math.abs(dy) > Math.abs(dx)) {
+        g.mode = "v";
+      } else if (
+        Math.abs(dx) > SWIPE_ARM_PX &&
+        Math.abs(dx) > Math.abs(dy) * 1.5
+      ) {
+        g.mode = "h";
+        el.style.transition = "none";
+        el.style.transformOrigin = "50% 120%";
+      }
+    }
+    if (g.mode !== "h") return;
+    // Pulling toward a side with no neighbour gives way like a rubber band.
+    const room = dx < 0 ? !!next : !!prev;
+    const pull = room ? dx * 0.55 : dx * 0.15;
+    el.style.transform = `translateX(${pull.toFixed(1)}px) rotate(${(pull * 0.02).toFixed(2)}deg)`;
+  };
+  const onTouchEnd = (e: React.TouchEvent) => {
+    const g = gesture.current;
+    const el = swipeRef.current;
+    gesture.current = null;
+    if (!g || !el || g.mode !== "h") return;
+    const dx = e.changedTouches[0].clientX - g.x;
+    const target = dx < 0 ? next : prev;
+    if (Math.abs(dx) >= SWIPE_GO_PX && target) {
+      leaving.current = true;
+      const sign = dx < 0 ? -1 : 1;
+      el.style.transition = "transform 220ms ease-in, opacity 220ms ease-in";
+      el.style.transform = `translateX(${sign * 110}%) rotate(${sign * 6}deg)`;
+      el.style.opacity = "0.5";
+      window.setTimeout(() => router.push(`/app/markets/${target.id}`), 200);
+      return;
+    }
+    el.style.transition = "transform 220ms cubic-bezier(0.22, 1, 0.36, 1)";
+    el.style.transform = "";
+  };
+
   return (
     <div>
       <Suspense fallback={null}>
         <SharedNotice name={name} />
       </Suspense>
 
-      <div className="flex items-center justify-between gap-3 mb-4">
-        <Link
-          href="/app"
-          className="inline-flex items-center gap-1.5 text-xs text-secondary hover:text-atnx-cyan transition-colors"
-        >
-          <span aria-hidden="true">{"←"}</span> Markets
-        </Link>
-        <ShareButton
-          title={`${name} on ATNX`}
-          text={`${name} · Virality Index ${viralityScore}`}
-          path={`/app/markets/${market.id}`}
-        />
-      </div>
+      <div
+        ref={swipeRef}
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+        onTouchCancel={onTouchEnd}
+        className="[touch-action:pan-y]"
+      >
+        <div className="flex items-center justify-between gap-3 mb-4">
+          <Link
+            href="/app"
+            className="inline-flex items-center gap-1.5 text-xs text-secondary hover:text-atnx-cyan transition-colors"
+          >
+            <span aria-hidden="true">{"←"}</span> Markets
+          </Link>
+          <ShareButton
+            title={`${name} on ATNX`}
+            text={`${name} · Virality Index ${viralityScore}`}
+            path={`/app/markets/${market.id}`}
+          />
+        </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_340px] gap-4 lg:gap-6 items-start">
-        {/* ------------------------------------------------ main column */}
-        <div className="space-y-4 min-w-0">
-          <Card className="overflow-hidden">
-            {/* Header */}
-            <div className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-start gap-4">
-              <div className="flex items-start gap-3 min-w-0 flex-1">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={selected.screenshot}
-                  alt=""
-                  className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl object-cover border border-surface bg-black shrink-0"
-                />
-                <div className="min-w-0">
-                  <h1 className="font-display text-xl sm:text-2xl font-bold text-primary leading-tight break-words">
-                    {name}
-                  </h1>
-                  <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
-                    {analysis.type && <Chip tone="cyan">{analysis.type}</Chip>}
-                    {analysis.category && <Chip>{analysis.category}</Chip>}
-                    <span className="text-[11px] text-tertiary">
-                      {market.total_captures || captures.length} capture
-                      {(market.total_captures || captures.length) === 1
-                        ? ""
-                        : "s"}
-                    </span>
-                    {volumeUsd > 0 && (
-                      <span
-                        className="text-[11px] text-tertiary"
-                        title={`${tradeCount} trade ${tradeCount === 1 ? "leg" : "legs"}, simulated USDC`}
-                      >
-                        {"· "}
-                        <span className="text-secondary font-mono tabular-nums">
-                          {compactUsd(volumeUsd)}
-                        </span>{" "}
-                        vol
+        {/* Where a swipe leads, on phones: the market before and after this
+          one by virality. */}
+        {(prev || next) && (
+          <div className="lg:hidden flex items-center justify-between gap-4 mb-3 text-[11px] text-tertiary">
+            {prev ? (
+              <Link
+                href={`/app/markets/${prev.id}`}
+                className="min-w-0 inline-flex items-center gap-1 hover:text-primary transition-colors"
+              >
+                <span aria-hidden="true">{"‹"}</span>
+                <span className="truncate">{prev.name}</span>
+              </Link>
+            ) : (
+              <span />
+            )}
+            {next ? (
+              <Link
+                href={`/app/markets/${next.id}`}
+                className="min-w-0 inline-flex items-center gap-1 text-right hover:text-primary transition-colors"
+              >
+                <span className="truncate">{next.name}</span>
+                <span aria-hidden="true">{"›"}</span>
+              </Link>
+            ) : (
+              <span />
+            )}
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_340px] gap-4 lg:gap-6 items-start">
+          {/* ------------------------------------------------ main column */}
+          <div className="space-y-4 min-w-0">
+            <Card className="overflow-hidden">
+              {/* Header */}
+              <div className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-start gap-4">
+                <div className="flex items-start gap-3 min-w-0 flex-1">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={selected.screenshot}
+                    alt=""
+                    className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl object-cover border border-surface bg-black shrink-0"
+                  />
+                  <div className="min-w-0">
+                    <h1 className="font-display text-xl sm:text-2xl font-bold text-primary leading-tight break-words">
+                      {name}
+                    </h1>
+                    <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
+                      {analysis.type && (
+                        <Chip tone="cyan">{analysis.type}</Chip>
+                      )}
+                      {analysis.category && <Chip>{analysis.category}</Chip>}
+                      <span className="text-[11px] text-tertiary">
+                        {market.total_captures || captures.length} capture
+                        {(market.total_captures || captures.length) === 1
+                          ? ""
+                          : "s"}
                       </span>
+                      {volumeUsd > 0 && (
+                        <span
+                          className="text-[11px] text-tertiary"
+                          title={`${tradeCount} trade ${tradeCount === 1 ? "leg" : "legs"}, simulated USDC`}
+                        >
+                          {"· "}
+                          <span className="text-secondary font-mono tabular-nums">
+                            {compactUsd(volumeUsd)}
+                          </span>{" "}
+                          vol
+                        </span>
+                      )}
+                    </div>
+                    {market.description && (
+                      <p className="mt-2 text-xs sm:text-sm text-secondary leading-relaxed font-sans line-clamp-2">
+                        {market.description}
+                      </p>
                     )}
                   </div>
-                  {market.description && (
-                    <p className="mt-2 text-xs sm:text-sm text-secondary leading-relaxed font-sans line-clamp-2">
-                      {market.description}
-                    </p>
+                </div>
+
+                <div className="sm:text-right shrink-0">
+                  <div className="text-[10px] font-mono uppercase tracking-[0.15em] text-tertiary mb-1">
+                    Virality Index
+                  </div>
+                  <div className="flex sm:justify-end items-baseline gap-2">
+                    <span className="text-4xl font-bold text-atnx-yellow light:text-atnx-yellow-light leading-none">
+                      {viralityScore}
+                    </span>
+                    <span className="text-[11px] font-mono uppercase tracking-[0.12em] text-secondary">
+                      {viTier(viralityScore).label}
+                    </span>
+                  </div>
+                  <div className="flex sm:justify-end items-center mt-2">
+                    <DeltaChip value={change24h} size="md" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Chart */}
+              <div className="px-2 sm:px-3 pb-3">
+                <div className="flex items-center justify-between px-2 mb-1">
+                  <Segmented
+                    ariaLabel="Chart range"
+                    value={range}
+                    onChange={setRange}
+                    options={rangeOptions}
+                  />
+                  {trends && (
+                    <div className="hidden sm:flex items-center gap-3 text-[11px] text-tertiary font-mono">
+                      <span>
+                        peak{" "}
+                        <span className="text-primary">
+                          {Math.round(trends.peakValue)}
+                        </span>
+                      </span>
+                      <span>
+                        now{" "}
+                        <span className="text-primary">
+                          {Math.round(trends.currentValue)}
+                        </span>
+                      </span>
+                    </div>
                   )}
                 </div>
-              </div>
-
-              <div className="sm:text-right shrink-0">
-                <div className="text-[10px] font-mono uppercase tracking-[0.15em] text-tertiary mb-1">
-                  Virality Index
-                </div>
-                <div className="flex sm:justify-end items-baseline gap-2">
-                  <span className="text-4xl font-bold text-atnx-yellow light:text-atnx-yellow-light leading-none">
-                    {viralityScore}
-                  </span>
-                  <span className="text-[11px] font-mono uppercase tracking-[0.12em] text-secondary">
-                    {viTier(viralityScore).label}
-                  </span>
-                </div>
-                <div className="flex sm:justify-end items-center mt-2">
-                  <DeltaChip value={change24h} size="md" />
-                </div>
-              </div>
-            </div>
-
-            {/* Chart */}
-            <div className="px-2 sm:px-3 pb-3">
-              <div className="flex items-center justify-between px-2 mb-1">
-                <Segmented
-                  ariaLabel="Chart range"
-                  value={range}
-                  onChange={setRange}
-                  options={rangeOptions}
+                <ViChart
+                  dataPoints={points}
+                  range={range}
+                  height={280}
+                  entryVi={openPos?.entryIndex}
+                  entryType={openPos?.type}
                 />
-                {trends && (
-                  <div className="hidden sm:flex items-center gap-3 text-[11px] text-tertiary font-mono">
-                    <span>
-                      peak{" "}
-                      <span className="text-primary">
-                        {Math.round(trends.peakValue)}
-                      </span>
-                    </span>
-                    <span>
-                      now{" "}
-                      <span className="text-primary">
-                        {Math.round(trends.currentValue)}
-                      </span>
-                    </span>
+              </div>
+            </Card>
+
+            {/* What this market is about, and what is about it. Display only. */}
+            {(parent || childMarkets.length > 0) && (
+              <Card className="p-4 sm:p-5 space-y-3">
+                {parent && (
+                  <div>
+                    <div className="text-[10px] font-mono uppercase tracking-wider text-tertiary mb-1.5">
+                      About
+                    </div>
+                    <RelatedMarketLink market={parent} />
+                  </div>
+                )}
+                {childMarkets.length > 0 && (
+                  <div>
+                    <div className="text-[10px] font-mono uppercase tracking-wider text-tertiary mb-1.5">
+                      Tracked as
+                    </div>
+                    <ul className="space-y-2">
+                      {childMarkets.map((m) => (
+                        <li key={m.id}>
+                          <RelatedMarketLink market={m} />
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </Card>
+            )}
+
+            {/* Tabs */}
+            <Card>
+              <div role="tablist" className="flex border-b border-surface px-2">
+                {(
+                  [
+                    ["pulse", `Pulse (${captures.length})`],
+                    ["activity", "Activity"],
+                    ["overview", "Overview"],
+                  ] as [Tab, string][]
+                ).map(([id, label]) => {
+                  const active = tab === id;
+                  return (
+                    <button
+                      key={id}
+                      role="tab"
+                      type="button"
+                      aria-selected={active}
+                      onClick={() => setTab(id)}
+                      className={`px-4 py-3 text-xs font-bold -mb-px border-b-2 transition-colors cursor-pointer ${
+                        active
+                          ? "border-atnx-cyan text-primary"
+                          : "border-transparent text-secondary hover:text-primary"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="p-4 sm:p-5">
+                {tab === "pulse" && (
+                  <ul className="space-y-2">
+                    {captures.map((c, i) => {
+                      const active = i === selectedIdx;
+                      return (
+                        <li key={c.id}>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedIdx(i)}
+                            className={`w-full text-left flex gap-3 p-2.5 rounded-xl border transition-colors cursor-pointer ${
+                              active
+                                ? "border-atnx-cyan/40 bg-atnx-cyan/5"
+                                : "border-surface hover:border-atnx-cyan/30"
+                            }`}
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={c.screenshot}
+                              alt=""
+                              loading="lazy"
+                              className="w-24 h-16 rounded-lg object-cover border border-surface bg-black shrink-0"
+                            />
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-xs font-bold text-primary truncate">
+                                  {c.pageTitle ||
+                                    c.analysis.name ||
+                                    hostOf(c.pageUrl)}
+                                </span>
+                                <span className="text-[11px] text-tertiary shrink-0">
+                                  {timeAgo(c.timestamp)}
+                                </span>
+                              </div>
+                              <div className="text-[11px] text-tertiary truncate mt-0.5">
+                                {hostOf(c.pageUrl)}
+                                {c.analysis.sentiment && (
+                                  <>
+                                    {" · "}
+                                    <span
+                                      className={sentimentColor(
+                                        c.analysis.sentiment,
+                                      )}
+                                    >
+                                      {c.analysis.sentiment}
+                                    </span>
+                                  </>
+                                )}
+                              </div>
+                              {c.analysis.description && (
+                                <p className="text-xs text-secondary mt-1 line-clamp-2 font-sans">
+                                  {c.analysis.description}
+                                </p>
+                              )}
+                            </div>
+                          </button>
+                          {active && c.pageUrl && (
+                            <a
+                              href={c.pageUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 mt-1 ml-1 text-[11px] text-secondary hover:text-atnx-cyan"
+                            >
+                              Open source {"↗"}
+                            </a>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+
+                {tab === "activity" && (
+                  <TradeLog
+                    marketId={market.id}
+                    initialEvents={initialTradeLog}
+                  />
+                )}
+
+                {tab === "overview" && (
+                  <div className="space-y-4">
+                    {analysis.error ? (
+                      <div className="text-atnx-magenta text-sm">
+                        Error: {analysis.error}
+                      </div>
+                    ) : (
+                      <>
+                        {analysis.description && (
+                          <p className="text-sm text-primary leading-relaxed font-sans">
+                            {analysis.description}
+                          </p>
+                        )}
+                        {analysis.virality_signals && (
+                          <p className="text-xs text-secondary leading-relaxed font-sans">
+                            <span className="text-tertiary font-mono uppercase tracking-wider text-[10px] mr-2">
+                              Signals
+                            </span>
+                            {analysis.virality_signals}
+                          </p>
+                        )}
+
+                        <dl className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
+                          {[
+                            ["Category", analysis.category],
+                            ["Type", analysis.type],
+                            ["Sentiment", analysis.sentiment],
+                            [
+                              "Peak VI",
+                              trends ? Math.round(trends.peakValue) : undefined,
+                            ],
+                            [
+                              "Current VI",
+                              trends
+                                ? Math.round(trends.currentValue)
+                                : undefined,
+                            ],
+                            ["Source", hostOf(selected.pageUrl)],
+                            ["Volume", compactUsd(volumeUsd)],
+                            ["Trades", tradeCount],
+                          ]
+                            .filter(([, v]) => v !== undefined && v !== "")
+                            .map(([k, v]) => (
+                              <div
+                                key={String(k)}
+                                className="rounded-xl border border-surface bg-elevated p-3 min-w-0"
+                              >
+                                <dt className="text-[10px] font-mono uppercase tracking-wider text-tertiary">
+                                  {k}
+                                </dt>
+                                <dd
+                                  className={`mt-1 font-bold truncate ${
+                                    k === "Sentiment"
+                                      ? sentimentColor(String(v))
+                                      : "text-primary"
+                                  }`}
+                                >
+                                  {String(v)}
+                                </dd>
+                              </div>
+                            ))}
+                        </dl>
+
+                        {analysis.platforms_detected &&
+                          analysis.platforms_detected.length > 0 && (
+                            <div>
+                              <div className="text-[10px] font-mono uppercase tracking-wider text-tertiary mb-1.5">
+                                Platforms
+                              </div>
+                              <div className="flex gap-1.5 flex-wrap">
+                                {analysis.platforms_detected.map((p) => (
+                                  <Chip key={p} tone="cyan">
+                                    {p}
+                                  </Chip>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                        {analysis.metrics_detected &&
+                          Object.keys(analysis.metrics_detected).length > 0 && (
+                            <div>
+                              <div className="text-[10px] font-mono uppercase tracking-wider text-tertiary mb-1.5">
+                                Detected metrics
+                              </div>
+                              <dl className="rounded-xl border border-surface bg-elevated text-xs">
+                                {Object.entries(analysis.metrics_detected).map(
+                                  ([k, v]) => (
+                                    <div
+                                      key={k}
+                                      className="flex justify-between gap-3 px-3 py-2 border-b border-surface last:border-b-0"
+                                    >
+                                      <dt className="text-secondary truncate">
+                                        {k}
+                                      </dt>
+                                      <dd className="text-primary font-mono tabular-nums shrink-0">
+                                        {String(v)}
+                                      </dd>
+                                    </div>
+                                  ),
+                                )}
+                              </dl>
+                            </div>
+                          )}
+
+                        {analysis.raw_text && (
+                          <div>
+                            <button
+                              type="button"
+                              onClick={() => setShowRaw((v) => !v)}
+                              className="text-xs text-secondary hover:text-atnx-cyan cursor-pointer"
+                            >
+                              {showRaw ? "▾" : "▸"} Raw captured text
+                            </button>
+                            {showRaw && (
+                              <pre className="mt-2 rounded-xl border border-surface bg-elevated p-3 text-[11px] text-secondary whitespace-pre-wrap break-words max-h-56 overflow-auto font-sans">
+                                {analysis.raw_text}
+                              </pre>
+                            )}
+                          </div>
+                        )}
+                      </>
+                    )}
                   </div>
                 )}
               </div>
-              <ViChart
-                dataPoints={points}
-                range={range}
-                height={280}
-                entryVi={openPos?.entryIndex}
-                entryType={openPos?.type}
-              />
-            </div>
-          </Card>
-
-          {/* What this market is about, and what is about it. Display only. */}
-          {(parent || childMarkets.length > 0) && (
-            <Card className="p-4 sm:p-5 space-y-3">
-              {parent && (
-                <div>
-                  <div className="text-[10px] font-mono uppercase tracking-wider text-tertiary mb-1.5">
-                    About
-                  </div>
-                  <RelatedMarketLink market={parent} />
-                </div>
-              )}
-              {childMarkets.length > 0 && (
-                <div>
-                  <div className="text-[10px] font-mono uppercase tracking-wider text-tertiary mb-1.5">
-                    Tracked as
-                  </div>
-                  <ul className="space-y-2">
-                    {childMarkets.map((m) => (
-                      <li key={m.id}>
-                        <RelatedMarketLink market={m} />
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
             </Card>
-          )}
+          </div>
 
-          {/* Mobile: order ticket sits right under the chart */}
-          <div className="lg:hidden">
+          {/* ------------------------------------------------ side column */}
+          <aside className="hidden lg:block lg:sticky lg:top-24">
             <TradePanel
               marketId={market.id}
               name={name}
@@ -330,249 +711,17 @@ export function MarketDetailClient({
               openPosition={openPos}
               onOpened={handleOpened}
             />
-          </div>
-
-          {/* Tabs */}
-          <Card>
-            <div role="tablist" className="flex border-b border-surface px-2">
-              {(
-                [
-                  ["pulse", `Pulse (${captures.length})`],
-                  ["activity", "Activity"],
-                  ["overview", "Overview"],
-                ] as [Tab, string][]
-              ).map(([id, label]) => {
-                const active = tab === id;
-                return (
-                  <button
-                    key={id}
-                    role="tab"
-                    type="button"
-                    aria-selected={active}
-                    onClick={() => setTab(id)}
-                    className={`px-4 py-3 text-xs font-bold -mb-px border-b-2 transition-colors cursor-pointer ${
-                      active
-                        ? "border-atnx-cyan text-primary"
-                        : "border-transparent text-secondary hover:text-primary"
-                    }`}
-                  >
-                    {label}
-                  </button>
-                );
-              })}
-            </div>
-
-            <div className="p-4 sm:p-5">
-              {tab === "pulse" && (
-                <ul className="space-y-2">
-                  {captures.map((c, i) => {
-                    const active = i === selectedIdx;
-                    return (
-                      <li key={c.id}>
-                        <button
-                          type="button"
-                          onClick={() => setSelectedIdx(i)}
-                          className={`w-full text-left flex gap-3 p-2.5 rounded-xl border transition-colors cursor-pointer ${
-                            active
-                              ? "border-atnx-cyan/40 bg-atnx-cyan/5"
-                              : "border-surface hover:border-atnx-cyan/30"
-                          }`}
-                        >
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={c.screenshot}
-                            alt=""
-                            loading="lazy"
-                            className="w-24 h-16 rounded-lg object-cover border border-surface bg-black shrink-0"
-                          />
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="text-xs font-bold text-primary truncate">
-                                {c.pageTitle ||
-                                  c.analysis.name ||
-                                  hostOf(c.pageUrl)}
-                              </span>
-                              <span className="text-[11px] text-tertiary shrink-0">
-                                {timeAgo(c.timestamp)}
-                              </span>
-                            </div>
-                            <div className="text-[11px] text-tertiary truncate mt-0.5">
-                              {hostOf(c.pageUrl)}
-                              {c.analysis.sentiment && (
-                                <>
-                                  {" · "}
-                                  <span
-                                    className={sentimentColor(
-                                      c.analysis.sentiment,
-                                    )}
-                                  >
-                                    {c.analysis.sentiment}
-                                  </span>
-                                </>
-                              )}
-                            </div>
-                            {c.analysis.description && (
-                              <p className="text-xs text-secondary mt-1 line-clamp-2 font-sans">
-                                {c.analysis.description}
-                              </p>
-                            )}
-                          </div>
-                        </button>
-                        {active && c.pageUrl && (
-                          <a
-                            href={c.pageUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex items-center gap-1 mt-1 ml-1 text-[11px] text-secondary hover:text-atnx-cyan"
-                          >
-                            Open source {"↗"}
-                          </a>
-                        )}
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-
-              {tab === "activity" && (
-                <TradeLog
-                  marketId={market.id}
-                  initialEvents={initialTradeLog}
-                />
-              )}
-
-              {tab === "overview" && (
-                <div className="space-y-4">
-                  {analysis.error ? (
-                    <div className="text-atnx-magenta text-sm">
-                      Error: {analysis.error}
-                    </div>
-                  ) : (
-                    <>
-                      {analysis.description && (
-                        <p className="text-sm text-primary leading-relaxed font-sans">
-                          {analysis.description}
-                        </p>
-                      )}
-                      {analysis.virality_signals && (
-                        <p className="text-xs text-secondary leading-relaxed font-sans">
-                          <span className="text-tertiary font-mono uppercase tracking-wider text-[10px] mr-2">
-                            Signals
-                          </span>
-                          {analysis.virality_signals}
-                        </p>
-                      )}
-
-                      <dl className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
-                        {[
-                          ["Category", analysis.category],
-                          ["Type", analysis.type],
-                          ["Sentiment", analysis.sentiment],
-                          [
-                            "Peak VI",
-                            trends ? Math.round(trends.peakValue) : undefined,
-                          ],
-                          [
-                            "Current VI",
-                            trends
-                              ? Math.round(trends.currentValue)
-                              : undefined,
-                          ],
-                          ["Source", hostOf(selected.pageUrl)],
-                          ["Volume", compactUsd(volumeUsd)],
-                          ["Trades", tradeCount],
-                        ]
-                          .filter(([, v]) => v !== undefined && v !== "")
-                          .map(([k, v]) => (
-                            <div
-                              key={String(k)}
-                              className="rounded-xl border border-surface bg-elevated p-3 min-w-0"
-                            >
-                              <dt className="text-[10px] font-mono uppercase tracking-wider text-tertiary">
-                                {k}
-                              </dt>
-                              <dd
-                                className={`mt-1 font-bold truncate ${
-                                  k === "Sentiment"
-                                    ? sentimentColor(String(v))
-                                    : "text-primary"
-                                }`}
-                              >
-                                {String(v)}
-                              </dd>
-                            </div>
-                          ))}
-                      </dl>
-
-                      {analysis.platforms_detected &&
-                        analysis.platforms_detected.length > 0 && (
-                          <div>
-                            <div className="text-[10px] font-mono uppercase tracking-wider text-tertiary mb-1.5">
-                              Platforms
-                            </div>
-                            <div className="flex gap-1.5 flex-wrap">
-                              {analysis.platforms_detected.map((p) => (
-                                <Chip key={p} tone="cyan">
-                                  {p}
-                                </Chip>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                      {analysis.metrics_detected &&
-                        Object.keys(analysis.metrics_detected).length > 0 && (
-                          <div>
-                            <div className="text-[10px] font-mono uppercase tracking-wider text-tertiary mb-1.5">
-                              Detected metrics
-                            </div>
-                            <dl className="rounded-xl border border-surface bg-elevated text-xs">
-                              {Object.entries(analysis.metrics_detected).map(
-                                ([k, v]) => (
-                                  <div
-                                    key={k}
-                                    className="flex justify-between gap-3 px-3 py-2 border-b border-surface last:border-b-0"
-                                  >
-                                    <dt className="text-secondary truncate">
-                                      {k}
-                                    </dt>
-                                    <dd className="text-primary font-mono tabular-nums shrink-0">
-                                      {String(v)}
-                                    </dd>
-                                  </div>
-                                ),
-                              )}
-                            </dl>
-                          </div>
-                        )}
-
-                      {analysis.raw_text && (
-                        <div>
-                          <button
-                            type="button"
-                            onClick={() => setShowRaw((v) => !v)}
-                            className="text-xs text-secondary hover:text-atnx-cyan cursor-pointer"
-                          >
-                            {showRaw ? "▾" : "▸"} Raw captured text
-                          </button>
-                          {showRaw && (
-                            <pre className="mt-2 rounded-xl border border-surface bg-elevated p-3 text-[11px] text-secondary whitespace-pre-wrap break-words max-h-56 overflow-auto font-sans">
-                              {analysis.raw_text}
-                            </pre>
-                          )}
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
-          </Card>
+          </aside>
         </div>
+      </div>
 
-        {/* ------------------------------------------------ side column */}
-        <aside className="hidden lg:block lg:sticky lg:top-24">
+      {/* Phones: Long / Short anchored at the bottom, the ticket in a
+          sheet behind them. Outside the swiped element so the fixed dock
+          does not move with the page. */}
+      <TradeDock
+        renderTicket={(side) => (
           <TradePanel
+            key={side}
             marketId={market.id}
             name={name}
             category={analysis.category || market.entity_type || "other"}
@@ -580,9 +729,10 @@ export function MarketDetailClient({
             score={viralityScore}
             openPosition={openPos}
             onOpened={handleOpened}
+            initialSide={side}
           />
-        </aside>
-      </div>
+        )}
+      />
 
       {toast && (
         <DemoToast

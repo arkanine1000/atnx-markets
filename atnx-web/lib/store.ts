@@ -675,8 +675,16 @@ function getFeaturedMarkets(): Promise<Capture[]> {
   });
 }
 
+// The markets either side of this one in the dashboard's virality order,
+// for the page's swipe between markets.
+export interface MarketNeighbor {
+  id: string;
+  name: string;
+}
+
 export interface MarketDetail {
   market: MarketRow;
+  neighbors: { prev: MarketNeighbor | null; next: MarketNeighbor | null };
   // The subject this market is about, when it has one and that market is
   // live; and the live markets that name this one as their subject.
   parent: MarketRow | null;
@@ -740,7 +748,7 @@ export async function getMarketDetail(
   // raw readings (about a day at the five-minute cadence) on top so 1H and
   // 4H still have every sample.
   const parentId = (market as MarketRow).parent_market_id;
-  const [bucketed, recent, traded, parentRes, childrenRes] = await Promise.all([
+  const [bucketed, recent, traded, parentRes, childrenRes, orderRes] = await Promise.all([
     getViSeries([market.id], { days: 90, bucketSeconds: 30 * 60, fallbackRows: 1000 }),
     getRecentViRows(market.id, 300),
     supabase.from('positions').select('size_usd, status').eq('market_id', market.id),
@@ -758,10 +766,27 @@ export async function getMarketDetail(
       .eq('parent_market_id', market.id)
       .is('deleted_at', null)
       .order('current_vi', { ascending: false }),
+    // The listing's order (markets with a live capture, most viral first),
+    // to find the pages a swipe leads to.
+    supabase
+      .from('markets')
+      .select('id, entity_name, captures!inner(id)')
+      .is('deleted_at', null)
+      .is('captures.deleted_at', null)
+      .limit(1, { referencedTable: 'captures' })
+      .order('current_vi', { ascending: false })
+      .order('created_at', { ascending: false })
+      .limit(500)
+      .returns<{ id: string; entity_name: string }[]>(),
   ]);
   if (traded.error) throw traded.error;
   if (parentRes.error) throw parentRes.error;
   if (childrenRes.error) throw childrenRes.error;
+  if (orderRes.error) throw orderRes.error;
+  const order = orderRes.data ?? [];
+  const at = order.findIndex((m) => m.id === market.id);
+  const neighborAt = (i: number): MarketNeighbor | null =>
+    at >= 0 && order[i] ? { id: order[i].id, name: order[i].entity_name } : null;
   const recentStart = recent[0]?.date ?? '';
   const points = [
     ...(bucketed.get(market.id) ?? []).filter((p) => !recentStart || p.date < recentStart),
@@ -772,6 +797,7 @@ export async function getMarketDetail(
 
   return {
     market: market as MarketRow,
+    neighbors: { prev: neighborAt(at - 1), next: neighborAt(at + 1) },
     parent: (parentRes.data as MarketRow | null) ?? null,
     children: (childrenRes.data ?? []) as MarketRow[],
     latest: captures[0],
