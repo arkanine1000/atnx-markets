@@ -166,7 +166,7 @@ function WaitlistDialog({
             <p className="mt-2 text-sm text-secondary">
               We&rsquo;ll write to{" "}
               <span className="font-mono text-primary break-all">{shown}</span>{" "}
-              when your spot opens up.
+              when ATNX launches.
             </p>
             <button
               type="button"
@@ -185,8 +185,8 @@ function WaitlistDialog({
               Get in early
             </h2>
             <p className="mt-2 text-sm text-secondary">
-              Leave an email and we&rsquo;ll let you know when the beta opens
-              up for you. Nothing else, no newsletter.
+              Leave an email and we&rsquo;ll let you know the moment ATNX
+              launches. Nothing else, no newsletter.
             </p>
             <label className="block mt-4">
               <span className="text-[10px] font-mono uppercase tracking-[0.15em] text-tertiary">
