@@ -127,6 +127,9 @@ ignores for Gemini 3.x (measured: 18 s and truncated JSON versus 2.6 s).
 | `npm run categories:backfill [--dry-run]` | Files every live market without a `category` into one of the ten enum values with one text-model call each. Run after any seed that inserts markets without one; `--dry-run` prints the proposals. |
 | `npm run seed:trending` | Seeds a fresh database with a hand-curated set of markets. |
 | `npm run thumbs:backfill [n] [--redo]` | Curates images for up to `n` (default 100) highlighted markets now, the same pass the hourly slow refresh runs a dozen at a time. `--redo` also replaces images an earlier pass chose (never one marked `manual`). Needs migration `008`. |
+| `npm run vi:audit [--json]` | Read-only audit of every live market's VI: score and tier, each source's stored level, momentum and age, `vi_history` coverage and ranges over 24 h and 7 d, the largest one-hour moves, aliases and the Wikipedia title behind the generic-term guard, cron health per hour over 48 h, and the tier spread. `--json` for a diff against an earlier run. |
+| `npm run vi:jumps [threshold]` | Moves larger than the threshold (default 200) within one hour over the last 7 days, smoothed and raw, with each market's first point and peak. Steps cluster at calculation changes and slow-refresh writes. |
+| `npm run vi:report [since]` | What the last slow run (or any run since a given time) did: per-source coverage, tier spread, GDELT health, X and TikTok spend from `vi_samples`, and the top and notable markets with breakdowns. `VI_REPORT_NOTABLE` overrides the notable list. |
 
 ## Layout
 
