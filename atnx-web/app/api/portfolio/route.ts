@@ -61,6 +61,9 @@ export interface PortfolioPoint {
 export type PortfolioRange = '1d' | '1w' | '1m' | 'all';
 
 export interface PortfolioResponse {
+  // The account id: the seed for the avatar, so the extension draws the
+  // same face as the site.
+  userId: string;
   handle: string | null;
   balanceUsd: number;
   realizedPnlUsd: number;
@@ -372,6 +375,7 @@ export async function GET(request: Request) {
     const changeUsd = totalValueUsd - first;
 
     const body: PortfolioResponse = {
+      userId: user.id,
       handle: profile?.handle ?? null,
       balanceUsd,
       realizedPnlUsd: bal?.total_pnl_realized ?? 0,

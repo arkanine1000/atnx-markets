@@ -81,6 +81,20 @@ button {
   flex-shrink: 0;
 }
 
+.avatar {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.avatar .identicon {
+  border-radius: 50%;
+  display: block;
+}
+
 .handle {
   font-size: 14px;
   font-weight: 700;
