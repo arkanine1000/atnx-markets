@@ -121,9 +121,10 @@ function PortfolioIcon() {
   );
 }
 
-function TrophyIcon() {
+// Also the leaderboard page's title icon.
+export function TrophyIcon({ size = 22 }: { size?: number }) {
   return (
-    <svg viewBox="0 0 24 24" width={22} height={22} aria-hidden="true">
+    <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true">
       <path
         d="M7 4h10v4a5 5 0 0 1-10 0V4zM7 6H4v1.5A3.5 3.5 0 0 0 7.5 11M17 6h3v1.5a3.5 3.5 0 0 1-3.5 5M12 13v4M8.5 20h7M12 17c-1.5 0-3 1-3 3h6c0-2-1.5-3-3-3z"
         fill="none"

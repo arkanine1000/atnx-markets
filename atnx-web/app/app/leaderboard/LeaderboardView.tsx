@@ -6,6 +6,7 @@ import { useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { Card, DeltaChip, EmptyState, StatTile, compactUsd } from "@/components/ui";
 import { Identicon } from "@/components/Identicon";
+import { TrophyIcon } from "@/components/Nav";
 import { STARTING_BALANCE, type LeaderboardRow } from "@/lib/leaderboard";
 import { startPolling } from "@/lib/poll";
 
@@ -107,7 +108,10 @@ export function LeaderboardView({ rows }: { rows: LeaderboardRow[] }) {
 
   return (
     <div>
-      <h2 className="font-display text-xl sm:text-2xl font-bold text-primary tracking-tight mb-5">
+      <h2 className="font-display text-xl sm:text-2xl font-bold text-primary tracking-tight mb-5 flex items-center gap-2.5">
+        <span className="text-atnx-yellow light:text-atnx-yellow-light inline-flex">
+          <TrophyIcon size={26} />
+        </span>
         Leaderboard
       </h2>
 
@@ -121,16 +125,20 @@ export function LeaderboardView({ rows }: { rows: LeaderboardRow[] }) {
         />
         <StatTile
           label="Your rank"
-          value={mine ? `#${mine.rank}` : user ? "—" : "Sign in"}
-          sub={
+          value={
             mine ? (
-              <DeltaChip value={mine.returnPct} />
+              // The return sits on the rank's line, a step to its right.
+              <span className="inline-flex items-baseline gap-3">
+                #{mine.rank}
+                <DeltaChip value={mine.returnPct} size="md" />
+              </span>
             ) : user ? (
-              "make a trade to enter"
+              "—"
             ) : (
-              "to see where you stand"
+              "Sign in"
             )
           }
+          sub={mine ? undefined : user ? "make a trade to enter" : "to see where you stand"}
         />
       </div>
 
