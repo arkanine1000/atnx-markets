@@ -66,10 +66,17 @@ interface Tweet {
   retweeted_tweet?: unknown;
 }
 
+// A hundred tweets inside this span is as fast as the estimate goes:
+// 3,000 posts an hour, level ~870. Shorter spans are timestamp noise.
+const MIN_SPAN_H = 2 / 60;
+
 // Posts per hour from the fetched tweets. Under the cap the window is
 // the hour and the count is the rate; at the cap the true count is
 // higher, and the rate is read off the span the fetched tweets cover
-// (they arrive newest first, so the oldest bounds it).
+// (they arrive newest first, so the oldest bounds it). The span floor
+// was a quarter hour at first, which read every busy market as exactly
+// 400 an hour: Google, Bitcoin, Trump and Musk all fill five pages in
+// well under fifteen minutes.
 export function xRate(tweets: { createdAt: string }[], capped: boolean, now = Date.now()): number {
   if (!capped) return tweets.length;
   let oldest = now;
@@ -77,7 +84,7 @@ export function xRate(tweets: { createdAt: string }[], capped: boolean, now = Da
     const ms = Date.parse(t.createdAt);
     if (Number.isFinite(ms) && ms < oldest) oldest = ms;
   }
-  const spanH = Math.max(0.25, (now - oldest) / 3600_000);
+  const spanH = Math.max(MIN_SPAN_H, (now - oldest) / 3600_000);
   return tweets.length / spanH;
 }
 
