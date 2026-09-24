@@ -10,11 +10,14 @@ export function ShareButton({
   text,
   path,
   className = "",
+  compact = false,
 }: {
   title: string;
   text?: string;
   path: string;
   className?: string;
+  // Icon only below sm, where the label would push the row wide.
+  compact?: boolean;
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -50,7 +53,7 @@ export function ShareButton({
       onClick={share}
       aria-label={copied ? "Link copied" : "Share this market"}
       title={copied ? "Link copied" : "Share"}
-      className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-full border border-surface bg-surface text-xs font-bold text-secondary hover:text-primary hover:border-atnx-cyan/50 cursor-pointer transition-colors ${className}`}
+      className={`inline-flex items-center justify-center gap-1.5 h-8 ${compact && !copied ? "w-8 px-0 sm:w-auto sm:px-3" : "px-3"} rounded-full border border-surface bg-surface text-xs font-bold text-secondary hover:text-primary hover:border-atnx-cyan/50 cursor-pointer transition-colors ${className}`}
     >
       <svg viewBox="0 0 24 24" width={14} height={14} aria-hidden="true">
         <path
@@ -62,7 +65,9 @@ export function ShareButton({
           strokeLinejoin="round"
         />
       </svg>
-      {copied ? "Copied" : "Share"}
+      <span className={compact && !copied ? "hidden sm:inline" : undefined}>
+        {copied ? "Copied" : "Share"}
+      </span>
     </button>
   );
 }

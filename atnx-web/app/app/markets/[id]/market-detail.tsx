@@ -165,7 +165,6 @@ export function MarketDetailClient({
   const [showRaw, setShowRaw] = useState(false);
   const [toast, setToast] = useState<{
     message: string;
-    detail: string;
     type: "long" | "short";
   } | null>(null);
 
@@ -195,14 +194,13 @@ export function MarketDetailClient({
   );
 
   const handleOpened = useCallback(
-    (side: "long" | "short", size: number) => {
+    (side: "long" | "short") => {
       setToast({
         message: `${side === "long" ? "Long" : "Short"} opened`,
-        detail: `${name} · $${size.toFixed(2)} @ VI ${viralityScore}`,
         type: side,
       });
     },
-    [name, viralityScore],
+    [],
   );
 
   // --- Swipe between markets. The page content follows the finger with
@@ -455,7 +453,7 @@ export function MarketDetailClient({
             <Card>
               <div
                 role="tablist"
-                className="flex items-center border-b border-surface px-2"
+                className="flex items-center border-b border-surface px-1 sm:px-2"
               >
                 {(
                   [
@@ -472,7 +470,7 @@ export function MarketDetailClient({
                       type="button"
                       aria-selected={active}
                       onClick={() => setTab(id)}
-                      className={`px-4 py-3 text-xs font-bold -mb-px border-b-2 transition-colors cursor-pointer ${
+                      className={`px-3 sm:px-4 py-3 text-xs font-bold whitespace-nowrap -mb-px border-b-2 transition-colors cursor-pointer ${
                         active
                           ? "border-atnx-cyan text-primary"
                           : "border-transparent text-secondary hover:text-primary"
@@ -488,7 +486,8 @@ export function MarketDetailClient({
                   title={`${name} on ATNX`}
                   text={`${name} · Virality Index ${viralityScore}`}
                   path={`/app/markets/${market.id}`}
-                  className="ml-auto mr-1 h-7"
+                  className="ml-auto mr-1 h-7 shrink-0"
+                  compact
                 />
               </div>
 
@@ -737,7 +736,6 @@ export function MarketDetailClient({
       {toast && (
         <DemoToast
           message={toast.message}
-          detail={toast.detail}
           type={toast.type}
           onDismiss={() => setToast(null)}
         />

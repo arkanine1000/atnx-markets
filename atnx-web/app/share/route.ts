@@ -244,7 +244,7 @@ export async function POST(request: Request) {
       return pickImageRedirect(request, {
         url: linkUrl,
         text: caption || undefined,
-        notice: `The screenshot arrived empty (${empty.name || 'unnamed'}, ${empty.type || 'unknown type'}). Chrome for Android has a bug that drops shared images. Pick the screenshot below to finish.`,
+        notice: 'Direct sharing is currently unavailable. Use the upload below.',
       });
     }
 
@@ -332,8 +332,7 @@ export async function POST(request: Request) {
     // so the image was dropped before it reached us: Chrome for Android 153
     // builds the POST with no parts at all.
     return pickImageRedirect(request, {
-      notice:
-        'The share arrived without the image. Chrome for Android 153 has a bug that drops shared screenshots. Pick the screenshot below to finish.',
+      notice: 'Direct sharing is currently unavailable. Use the upload below.',
     });
   } catch (err) {
     if (err instanceof SubmissionRejectedError) {
