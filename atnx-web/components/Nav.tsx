@@ -59,10 +59,8 @@ const LINKS: NavLink[] = [
 // Phones get a bottom bar with the three actions a thumb reaches for:
 // Markets, Create (a plain + like YouTube's), Portfolio. Leaderboard lives
 // under the account menu there. The desktop pill keeps all four. A market
-// page puts its Long / Short dock where the bar would be (TradeDock), so
-// the bar stands down there.
+// page stacks its Long / Short dock (TradeDock) on top of the bar.
 const BOTTOM_BAR = ["/app", "/app/submit", "/app/portfolio"];
-const hasTradeDock = (p: string) => p.startsWith("/app/markets/");
 
 function PlusIcon({ size = 12 }: { size?: number }) {
   return (
@@ -236,50 +234,48 @@ export function Nav() {
         </div>
       </header>
 
-      {!hasTradeDock(pathname) && (
-        <nav
-          aria-label="App"
-          className="sm:hidden fixed inset-x-0 bottom-0 z-40 nav-blur border-t border-surface pb-[env(safe-area-inset-bottom)]"
-        >
-          <div className="h-16 grid grid-cols-3 items-center max-w-sm mx-auto px-6">
-            {LINKS.filter((l) => BOTTOM_BAR.includes(l.href)).map((l) => {
-              const active = l.match(pathname);
-              if (l.plus) {
-                return (
-                  <Link
-                    key={l.href}
-                    href={l.href}
-                    aria-label={l.label}
-                    aria-current={active ? "page" : undefined}
-                    className={`justify-self-center h-12 w-12 -mt-1 rounded-full inline-flex items-center justify-center text-white transition-all ${
-                      active
-                        ? "bg-atnx-magenta-dim ring-2 ring-atnx-cyan/60 shadow-[0_0_24px_rgba(0,212,255,0.3)]"
-                        : "bg-atnx-magenta shadow-[0_0_24px_rgba(255,0,229,0.35)] active:scale-95"
-                    }`}
-                  >
-                    {l.icon(active)}
-                  </Link>
-                );
-              }
+      <nav
+        aria-label="App"
+        className="sm:hidden fixed inset-x-0 bottom-0 z-40 nav-blur border-t border-surface pb-[env(safe-area-inset-bottom)]"
+      >
+        <div className="h-16 grid grid-cols-3 items-center max-w-sm mx-auto px-6">
+          {LINKS.filter((l) => BOTTOM_BAR.includes(l.href)).map((l) => {
+            const active = l.match(pathname);
+            if (l.plus) {
               return (
                 <Link
                   key={l.href}
                   href={l.href}
+                  aria-label={l.label}
                   aria-current={active ? "page" : undefined}
-                  className={`justify-self-center inline-flex flex-col items-center gap-0.5 px-3 py-1 text-[10px] font-bold font-mono uppercase tracking-[0.12em] transition-colors ${
+                  className={`justify-self-center h-12 w-12 -mt-1 rounded-full inline-flex items-center justify-center text-white transition-all ${
                     active
-                      ? "text-atnx-cyan light:text-atnx-cyan-light"
-                      : "text-tertiary"
+                      ? "bg-atnx-magenta-dim ring-2 ring-atnx-cyan/60 shadow-[0_0_24px_rgba(0,212,255,0.3)]"
+                      : "bg-atnx-magenta shadow-[0_0_24px_rgba(255,0,229,0.35)] active:scale-95"
                   }`}
                 >
                   {l.icon(active)}
-                  {l.label}
                 </Link>
               );
-            })}
-          </div>
-        </nav>
-      )}
+            }
+            return (
+              <Link
+                key={l.href}
+                href={l.href}
+                aria-current={active ? "page" : undefined}
+                className={`justify-self-center inline-flex flex-col items-center gap-0.5 px-3 py-1 text-[10px] font-bold font-mono uppercase tracking-[0.12em] transition-colors ${
+                  active
+                    ? "text-atnx-cyan light:text-atnx-cyan-light"
+                    : "text-tertiary"
+                }`}
+              >
+                {l.icon(active)}
+                {l.label}
+              </Link>
+            );
+          })}
+        </div>
+      </nav>
     </>
   );
 }

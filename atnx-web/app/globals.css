@@ -283,6 +283,32 @@ a .recharts-wrapper {
   animation: slide-up 0.25s ease-out;
 }
 
+/* Bottom sheet (the phone trade dock's ticket): in from the bottom edge
+   on an ease-out curve, out faster. The scrim fades with it. */
+@keyframes sheet-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+@keyframes sheet-down {
+  from { transform: translateY(0); }
+  to { transform: translateY(100%); }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+.animate-sheet-up { animation: sheet-up 0.3s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.animate-sheet-down { animation: sheet-down 0.2s ease-in both; }
+.animate-fade-in { animation: fade-in 0.25s ease-out both; }
+.animate-fade-out { animation: fade-out 0.2s ease-in both; }
+@media (prefers-reduced-motion: reduce) {
+  .animate-sheet-up, .animate-sheet-down, .animate-fade-in, .animate-fade-out { animation-duration: 0.01s; }
+}
+
 /* Live pulse */
 @keyframes live-pulse {
   0%, 100% { opacity: 1; }

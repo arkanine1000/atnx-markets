@@ -275,7 +275,9 @@ export function MarketDetailClient({
   };
 
   return (
-    <div>
+    // Bottom room on phones for the dock stacked above the tab bar, and
+    // for the dock alone on tablets.
+    <div className="pb-10 sm:pb-8 lg:pb-0">
       <Suspense fallback={null}>
         <SharedNotice name={name} />
       </Suspense>
@@ -288,24 +290,11 @@ export function MarketDetailClient({
         onTouchCancel={onTouchEnd}
         className="[touch-action:pan-y]"
       >
-        <div className="flex items-center justify-between gap-3 mb-4">
-          <Link
-            href="/app"
-            className="inline-flex items-center gap-1.5 text-xs text-secondary hover:text-atnx-cyan transition-colors"
-          >
-            <span aria-hidden="true">{"←"}</span> Markets
-          </Link>
-          <ShareButton
-            title={`${name} on ATNX`}
-            text={`${name} · Virality Index ${viralityScore}`}
-            path={`/app/markets/${market.id}`}
-          />
-        </div>
-
-        {/* Where a swipe leads, on phones: the market before and after this
-          one by virality. */}
+        {/* The market before and after this one by virality: where a swipe
+            leads on a phone, and a link anywhere. Markets itself is a tap
+            away in the nav, so there is no back link. */}
         {(prev || next) && (
-          <div className="lg:hidden flex items-center justify-between gap-4 mb-3 text-[11px] text-tertiary">
+          <div className="flex items-center justify-between gap-4 mb-3 text-[11px] text-tertiary">
             {prev ? (
               <Link
                 href={`/app/markets/${prev.id}`}
@@ -464,7 +453,10 @@ export function MarketDetailClient({
 
             {/* Tabs */}
             <Card>
-              <div role="tablist" className="flex border-b border-surface px-2">
+              <div
+                role="tablist"
+                className="flex items-center border-b border-surface px-2"
+              >
                 {(
                   [
                     ["pulse", `Pulse (${captures.length})`],
@@ -490,6 +482,14 @@ export function MarketDetailClient({
                     </button>
                   );
                 })}
+                {/* Share sits with the tabs, so nothing sits above the
+                    chart but the market itself. */}
+                <ShareButton
+                  title={`${name} on ATNX`}
+                  text={`${name} · Virality Index ${viralityScore}`}
+                  path={`/app/markets/${market.id}`}
+                  className="ml-auto mr-1 h-7"
+                />
               </div>
 
               <div className="p-4 sm:p-5">
