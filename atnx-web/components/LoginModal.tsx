@@ -1,11 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useAuth } from "@/context/AuthContext";
+import { useAuth, type OAuthProvider } from "@/context/AuthContext";
+
+const PROVIDER_LABEL: Record<OAuthProvider, string> = { google: "Google", x: "X" };
 
 export function LoginModal() {
-  const { isLoginModalOpen, closeLoginModal, signInWithGoogle } = useAuth();
-  const [busy, setBusy] = useState(false);
+  const { isLoginModalOpen, closeLoginModal, signIn } = useAuth();
+  // The provider whose redirect is in flight; both buttons are disabled meanwhile.
+  const [busy, setBusy] = useState<OAuthProvider | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // Close the modal on Escape. The modal unmounts on close, so we don't need
@@ -21,18 +24,21 @@ export function LoginModal() {
 
   if (!isLoginModalOpen) return null;
 
-  async function handleGoogle() {
+  async function handleSignIn(provider: OAuthProvider) {
     if (busy) return;
-    setBusy(true);
+    setBusy(provider);
     setError(null);
     try {
-      await signInWithGoogle();
+      await signIn(provider);
       // signInWithOAuth triggers a full-page redirect; we stay busy until it happens.
     } catch {
-      setError("Could not start Google sign-in. Please try again.");
-      setBusy(false);
+      setError(`Could not start ${PROVIDER_LABEL[provider]} sign-in. Please try again.`);
+      setBusy(null);
     }
   }
+
+  const buttonClass =
+    "w-full py-3 rounded-lg border border-surface bg-surface text-primary font-bold text-sm hover:border-atnx-cyan/60 transition-colors flex items-center justify-center gap-3 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed";
 
   return (
     <div
@@ -66,24 +72,42 @@ export function LoginModal() {
           and access your portfolio.
         </p>
 
-        <button
-          onClick={handleGoogle}
-          disabled={busy}
-          className="w-full py-3 rounded-lg border border-surface bg-surface text-primary font-bold text-sm hover:border-atnx-cyan/60 transition-colors flex items-center justify-center gap-3 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
-        >
-          <GoogleIcon />
-          <span>{busy ? "Redirecting\u2026" : "Continue with Google"}</span>
-        </button>
+        <div className="flex flex-col gap-3">
+          <button
+            onClick={() => handleSignIn("google")}
+            disabled={busy !== null}
+            className={buttonClass}
+          >
+            <GoogleIcon />
+            <span>{busy === "google" ? "Redirecting\u2026" : "Continue with Google"}</span>
+          </button>
+          <button
+            onClick={() => handleSignIn("x")}
+            disabled={busy !== null}
+            className={buttonClass}
+          >
+            <XIcon />
+            <span>{busy === "x" ? "Redirecting\u2026" : "Continue with X"}</span>
+          </button>
+        </div>
+
+        <p className="text-[11px] text-tertiary mt-4 text-center">
+          By continuing you agree to the{" "}
+          <a href="/terms" target="_blank" rel="noopener" className="underline hover:text-secondary">
+            Terms
+          </a>{" "}
+          and{" "}
+          <a href="/privacy" target="_blank" rel="noopener" className="underline hover:text-secondary">
+            Privacy Policy
+          </a>
+          .
+        </p>
 
         {error && (
           <div className="mt-3 text-xs text-atnx-magenta border border-atnx-magenta/40 bg-atnx-magenta/10 rounded px-3 py-2">
             {error}
           </div>
         )}
-
-        <p className="text-[11px] text-tertiary mt-4 text-center">
-          More sign-in options coming soon.
-        </p>
       </div>
     </div>
   );
@@ -114,6 +138,21 @@ function GoogleIcon() {
         fill="#1976D2"
         d="M43.6 20.5H42V20H24v8h11.3c-.8 2.3-2.3 4.3-4.1 5.7l6.2 5.2c-.4.4 6.6-4.8 6.6-14.9 0-1.2-.1-2.3-.4-3.5z"
       />
+    </svg>
+  );
+}
+
+function XIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
     </svg>
   );
 }

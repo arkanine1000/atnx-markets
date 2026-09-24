@@ -3,12 +3,11 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { signOut } from "@/app/actions/auth";
 import { useAuth } from "@/context/AuthContext";
 import { Identicon } from "@/components/Identicon";
 
 export function UserMenu() {
-  const { user, loading, openLoginModal } = useAuth();
+  const { user, loading, openLoginModal, signOut } = useAuth();
   const [handle, setHandle] = useState<string | null>(null);
   const [role, setRole] = useState<"user" | "admin" | "moderator" | null>(null);
   const [open, setOpen] = useState(false);
@@ -114,14 +113,16 @@ export function UserMenu() {
               Admin
             </Link>
           )}
-          <form action={signOut}>
-            <button
-              type="submit"
-              className="w-full text-left px-3 py-2 text-xs text-atnx-magenta hover:bg-surface transition-colors cursor-pointer"
-            >
-              Sign out
-            </button>
-          </form>
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false);
+              void signOut();
+            }}
+            className="w-full text-left px-3 py-2 text-xs text-atnx-magenta hover:bg-surface transition-colors cursor-pointer"
+          >
+            Sign out
+          </button>
         </div>
       )}
     </div>
