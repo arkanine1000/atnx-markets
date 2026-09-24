@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { LegalSection as Section } from "@/components/LegalSection";
 
 export const metadata: Metadata = {
   title: "Privacy Policy — ATNX",
@@ -7,7 +8,7 @@ export const metadata: Metadata = {
     "What the ATNX web app and the ATNX Capture Chrome extension collect, why, and how to delete it.",
 };
 
-const UPDATED = "September 15, 2026";
+const UPDATED = "September 24, 2026";
 
 export default function PrivacyPage() {
   return (
@@ -21,7 +22,8 @@ export default function PrivacyPage() {
 
       <p className="mt-6 text-sm text-secondary leading-relaxed">
         This policy covers the ATNX web app at atnx.app and the ATNX Capture
-        Chrome extension. In short: the extension sends only the region of the
+        Chrome extension. ATNX, based in Rijeka, Croatia, is the controller of
+        the personal data described here. In short: the extension sends only the region of the
         page you deliberately select, we use it to identify the content and
         create or update a market, and you can delete everything by contacting
         us.
@@ -73,9 +75,10 @@ export default function PrivacyPage() {
             their captures are visible to other ATNX users.
           </li>
           <li>
-            Market names are looked up against public sources (Google Trends
-            and Wikipedia) to compute the Virality Index. Your identity is not
-            sent to those services.
+            Market names are looked up against public and third-party sources
+            (such as Google Trends, Wikipedia, YouTube, Bluesky, Hacker News,
+            GDELT, and X and TikTok through data providers) to compute the
+            Virality Index. Only the market name is sent; your identity is not.
           </li>
         </ul>
       </Section>
@@ -93,9 +96,69 @@ export default function PrivacyPage() {
 
       <Section title="Accounts">
         <p>
-          Signing in uses Google OAuth through Supabase. We store your email,
-          the handle you choose, and your simulated trading balance and
-          positions. Simulated trades involve no real money.
+          You sign in with Google or X, through our authentication provider
+          Supabase. The sign-in provider shares your account ID and the basic
+          profile it makes available (name, username, profile picture, and your
+          email address if you have one and allow it); we keep these in our
+          authentication records and do not show them to other users.
+        </p>
+        <p>
+          We also store the handle shown on your profile, your simulated
+          balance, positions and trades, and the markets and captures you
+          submit. Your handle, positions on the leaderboard and submissions are
+          visible to other users. Simulated trades involve no real money.
+        </p>
+      </Section>
+
+      <Section title="Waitlist">
+        <p>
+          If you join the waitlist, we store the email address you enter and
+          use it only to tell you about ATNX access. Ask us and we will remove
+          it.
+        </p>
+      </Section>
+
+      <Section title="Cookies">
+        <p>
+          We use only the cookies needed to keep you signed in. We use no
+          advertising or analytics cookies.
+        </p>
+      </Section>
+
+      <Section title="Who processes your data">
+        <ul className="list-disc pl-5 space-y-2">
+          <li>Supabase: database, file storage and sign-in.</li>
+          <li>Vercel: hosting, and routing requests to AI models.</li>
+          <li>Anthropic: AI analysis of captures and submissions.</li>
+          <li>Google and X: only when you choose them to sign in.</li>
+        </ul>
+        <p>
+          Some of these providers process data outside the EU. Where they do,
+          the transfer relies on safeguards recognised under the GDPR, such as
+          the EU Standard Contractual Clauses.
+        </p>
+      </Section>
+
+      <Section title="Why we are allowed to">
+        <ul className="list-disc pl-5 space-y-2">
+          <li>
+            To run your account and the features you use: because it is
+            necessary to provide the service you signed up for.
+          </li>
+          <li>
+            To keep ATNX secure and prevent abuse, such as rate limiting by IP
+            address: our legitimate interest in running a safe service.
+          </li>
+          <li>The waitlist: your consent, which you can withdraw at any time.</li>
+        </ul>
+      </Section>
+
+      <Section title="Your rights">
+        <p>
+          You can ask for a copy of your data, and ask us to correct, delete or
+          export it, or to restrict or stop processing it. You can also complain
+          to a data protection authority; in Croatia that is the Personal Data
+          Protection Agency (AZOP, azop.hr).
         </p>
       </Section>
 
@@ -107,27 +170,28 @@ export default function PrivacyPage() {
           <a href="mailto:privacy@atnx.app" className="text-atnx-cyan hover:underline">
             privacy@atnx.app
           </a>{" "}
-          from the address on your account. Uninstalling the extension removes
-          its local settings immediately.
+          from the address on your account. If your account has no email
+          address (possible when signing in with X), include your handle and we
+          will confirm it is you through the account before acting. Uninstalling
+          the extension removes its local settings immediately.
         </p>
+      </Section>
+
+      <Section title="Age">
+        <p>ATNX is for people aged 18 and over.</p>
       </Section>
 
       <Section title="Changes">
         <p>
           If this policy changes in a way that affects what is collected, the
           date above will change and the extension&apos;s store listing will
-          link to the new version.
+          link to the new version. See also our{" "}
+          <Link href="/terms" className="text-atnx-cyan hover:underline">
+            Terms of Service
+          </Link>
+          .
         </p>
       </Section>
     </main>
-  );
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <section className="mt-8">
-      <h2 className="text-sm font-bold uppercase tracking-wider text-primary">{title}</h2>
-      <div className="mt-3 text-sm text-secondary leading-relaxed space-y-3">{children}</div>
-    </section>
   );
 }
