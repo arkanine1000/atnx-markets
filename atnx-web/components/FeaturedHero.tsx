@@ -1,7 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { ViSparkline, deltaColor } from "@/components/charts/ViArea";
 import { LogoImage } from "@/components/LogoImage";
 import { tileImage } from "@/components/MarketCard";
@@ -12,6 +19,40 @@ import type { Capture } from "@/lib/store";
 
 const ROTATE_MS = 6000;
 const FEATURED = 5;
+// A swipe on the showcase has to travel this far, and be more sideways
+// than up-and-down, to count as a page turn rather than a scroll.
+const SWIPE_PX = 48;
+
+// The intro card can be closed on phones, where it takes the first screen
+// and the showcase is what a returning visitor came for. The choice lives
+// in localStorage, read through useSyncExternalStore so the server render
+// and the first client render agree (shown) and the saved value applies
+// right after hydration. Desktop keeps the card: there it is a column.
+const INTRO_KEY = "atnx:intro:dismissed";
+const introListeners = new Set<() => void>();
+function subscribeIntro(listener: () => void) {
+  introListeners.add(listener);
+  window.addEventListener("storage", listener);
+  return () => {
+    introListeners.delete(listener);
+    window.removeEventListener("storage", listener);
+  };
+}
+function readIntroDismissed(): boolean {
+  try {
+    return window.localStorage.getItem(INTRO_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+function dismissIntro() {
+  try {
+    window.localStorage.setItem(INTRO_KEY, "1");
+  } catch {
+    /* private mode etc. */
+  }
+  for (const l of introListeners) l();
+}
 
 // Polymarket-style top row: what the platform is on the left, and a large
 // auto-rotating showcase of the most viral markets on the right.
@@ -26,10 +67,18 @@ export function FeaturedHero({ captures }: { captures: Capture[] }) {
       .slice(0, FEATURED);
   }, [captures]);
 
+  const introDismissed = useSyncExternalStore(
+    subscribeIntro,
+    readIntroDismissed,
+    () => false,
+  );
+
   return (
     // Fixed height on desktop so the row doesn't jump as slides change.
     <section className="grid grid-cols-1 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:h-[400px] gap-4 mb-8">
-      <Intro />
+      <div className={introDismissed ? "hidden lg:block" : ""}>
+        <Intro onDismiss={dismissIntro} />
+      </div>
       {featured.length > 0 && <Showcase items={featured} />}
     </section>
   );
@@ -109,10 +158,20 @@ const BTN_CSS = `
 }
 `;
 
-function Intro() {
+function Intro({ onDismiss }: { onDismiss: () => void }) {
   const [showHow, setShowHow] = useState(false);
   return (
-    <Card className="relative overflow-hidden p-6 sm:p-8 flex flex-col justify-center min-h-[260px]">
+    <Card className="relative overflow-hidden p-6 sm:p-8 flex flex-col justify-center min-h-[260px] lg:h-full">
+      {/* Phones can close the card; the choice is remembered. */}
+      <button
+        type="button"
+        onClick={onDismiss}
+        aria-label="Hide this introduction"
+        title="Hide"
+        className="lg:hidden absolute top-3 right-3 z-10 h-8 w-8 rounded-full inline-flex items-center justify-center text-secondary hover:text-primary hover:bg-elevated cursor-pointer transition-colors"
+      >
+        {"✕"}
+      </button>
       {/* brand wash */}
       <div
         aria-hidden="true"
@@ -175,6 +234,8 @@ function Showcase({ items }: { items: Capture[] }) {
   const [idx, setIdx] = useState(0);
   const [paused, setPaused] = useState(false);
   const [tick, setTick] = useState(0); // restarts the progress animation
+  // Where a touch began, for the swipe between slides.
+  const touchStart = useRef<{ x: number; y: number } | null>(null);
 
   const count = items.length;
   const safeIdx = Math.min(idx, count - 1);
@@ -209,6 +270,30 @@ function Showcase({ items }: { items: Capture[] }) {
         // The rotation timer restarts on resume, so restart the bar with it.
         setPaused(false);
         setTick((t) => t + 1);
+      }}
+      // A sideways swipe turns the page; the rotation waits while a finger
+      // is down. Vertical scrolling is left to the browser.
+      onTouchStart={(e) => {
+        const t = e.touches[0];
+        touchStart.current = { x: t.clientX, y: t.clientY };
+        setPaused(true);
+      }}
+      onTouchEnd={(e) => {
+        const start = touchStart.current;
+        touchStart.current = null;
+        setPaused(false);
+        setTick((t) => t + 1);
+        if (!start) return;
+        const t = e.changedTouches[0];
+        const dx = t.clientX - start.x;
+        const dy = t.clientY - start.y;
+        if (Math.abs(dx) >= SWIPE_PX && Math.abs(dx) > Math.abs(dy) * 1.5) {
+          go(safeIdx + (dx < 0 ? 1 : -1));
+        }
+      }}
+      onTouchCancel={() => {
+        touchStart.current = null;
+        setPaused(false);
       }}
     >
       <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,11fr)_minmax(0,10fr)] flex-1 min-h-0">
