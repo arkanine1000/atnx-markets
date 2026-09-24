@@ -574,19 +574,17 @@ main {
 }
 
 .row:hover,
-.row:focus-visible {
+.row:focus-visible,
+.row[aria-expanded="true"] {
   background: var(--surface-2);
   outline: none;
 }
 
-.row:first-child {
-  border-top-left-radius: var(--radius);
-  border-top-right-radius: var(--radius);
-}
-
-.row:last-child {
-  border-bottom-left-radius: var(--radius);
-  border-bottom-right-radius: var(--radius);
+/* Rows sit in a wrapper with what they expand to, so the cards clip the
+   corners instead of the first and last row rounding themselves. */
+#portfolio,
+.list {
+  overflow: hidden;
 }
 
 .thumb {
@@ -858,4 +856,311 @@ main {
 
 .link-btn:hover {
   color: var(--text);
+}
+
+/* --- Trading in the panel: expanded positions and the order ticket --- */
+
+/* What a row expands to (a position's numbers, a market's ticket) shares
+   the row's hover shade, so the pair reads as one open card. */
+.row-detail,
+.ticket {
+  background: var(--surface-2);
+  padding: 4px 14px 12px;
+}
+
+.detail-caption {
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.fact dt {
+  font-size: 10px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.fact dd {
+  margin-top: 2px;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fact dd.yellow,
+.summary dd.yellow {
+  color: var(--yellow);
+}
+
+.detail-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 10px;
+  font-size: 11px;
+}
+
+.detail-actions .btn-small {
+  padding: 5px 12px;
+  font-size: 11px;
+}
+
+.detail-actions .btn-small:disabled {
+  opacity: 0.5;
+  cursor: progress;
+}
+
+.ticket {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 8px;
+}
+
+.ticket-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ticket-row .link-btn[hidden] {
+  display: none;
+}
+
+/* Segmented control: the side, the leverage. */
+.seg {
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.seg.sides .seg-btn {
+  padding: 7px 0;
+  font-size: 12px;
+}
+
+.seg-btn {
+  flex: 1;
+  min-width: 34px;
+  padding: 4px 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  transition: color 0.12s, background 0.12s, border-color 0.12s;
+}
+
+.seg-btn:hover,
+.seg-btn:focus-visible {
+  color: var(--text);
+  outline: none;
+}
+
+.seg-btn[aria-pressed="true"] {
+  color: var(--text);
+  background: var(--surface);
+  border-color: var(--line);
+}
+
+.seg-btn.long[aria-pressed="true"] {
+  color: var(--cyan);
+  background: rgba(0, 212, 255, 0.12);
+  border-color: rgba(0, 212, 255, 0.4);
+}
+
+.seg-btn.short[aria-pressed="true"] {
+  color: var(--magenta);
+  background: rgba(255, 0, 229, 0.12);
+  border-color: rgba(255, 0, 229, 0.4);
+}
+
+.amount-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  transition: border-color 0.12s;
+}
+
+.amount-field:focus-within {
+  border-color: var(--cyan);
+}
+
+.amount-field.over,
+.amount-field.over:focus-within {
+  border-color: var(--magenta);
+}
+
+.amount-field .currency {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.amount-field .unit {
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.ticket-amount {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: 0;
+  outline: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.quick {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.quick-btn {
+  padding: 5px 0;
+  font-size: 11px;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  transition: color 0.12s, border-color 0.12s, background 0.12s;
+}
+
+.quick-btn:hover,
+.quick-btn:focus-visible {
+  color: var(--text);
+  border-color: rgba(0, 212, 255, 0.4);
+  outline: none;
+}
+
+.quick-btn[aria-pressed="true"] {
+  color: var(--text);
+  background: rgba(0, 212, 255, 0.1);
+  border-color: rgba(0, 212, 255, 0.5);
+}
+
+.summary {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  font-size: 11px;
+}
+
+.summary-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.summary dt {
+  color: var(--muted);
+}
+
+.summary dd {
+  color: var(--text);
+}
+
+.summary dd.strong {
+  font-weight: 700;
+}
+
+.ticket-note {
+  margin-top: 0;
+  min-height: 0;
+}
+
+.ticket-note:empty {
+  display: none;
+}
+
+.btn-trade {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--bg);
+  transition: filter 0.12s, transform 0.1s;
+}
+
+.btn-trade.long {
+  background: var(--cyan);
+}
+
+.btn-trade.short {
+  background: var(--magenta);
+}
+
+.btn-trade.signin {
+  background: transparent;
+  border-color: var(--yellow);
+  color: var(--yellow);
+}
+
+.btn-trade.signin:hover,
+.btn-trade.signin:focus-visible {
+  background: var(--yellow);
+  color: var(--bg);
+}
+
+.btn-trade:hover:not(:disabled),
+.btn-trade:focus-visible {
+  filter: brightness(1.1);
+  outline: none;
+}
+
+.btn-trade:active:not(:disabled) {
+  transform: scale(0.985);
+}
+
+.btn-trade:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* The outcome of a trade, under the card it came from. */
+.trade-note {
+  margin-top: 8px;
+}
+
+.trade-note.up {
+  color: var(--cyan);
+  background: rgba(0, 212, 255, 0.06);
+  border-color: rgba(0, 212, 255, 0.3);
+}
+
+.trade-note.down,
+.trade-note.error {
+  color: var(--magenta);
+  background: rgba(255, 0, 229, 0.06);
+  border-color: rgba(255, 0, 229, 0.3);
 }

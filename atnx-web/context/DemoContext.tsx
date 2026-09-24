@@ -14,8 +14,8 @@ import { positionPnl } from "@/lib/pnl";
 import {
   openPosition as serverOpenPosition,
   closePosition as serverClosePosition,
-  type OpenPositionInput,
 } from "@/app/app/actions/trading";
+import type { OpenPositionInput } from "@/lib/trading";
 
 export interface Position {
   id: string;
