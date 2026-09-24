@@ -8,6 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useRouter } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 
@@ -17,8 +18,11 @@ interface AuthContextType {
   isLoginModalOpen: boolean;
   openLoginModal: () => void;
   closeLoginModal: () => void;
-  signInWithGoogle: () => Promise<void>;
+  signIn: (provider: OAuthProvider) => Promise<void>;
+  signOut: () => Promise<void>;
 }
+
+export type OAuthProvider = "google" | "x";
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
@@ -47,6 +51,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [isLoginModalOpen, setLoginModalOpen] = useState(false);
+  const router = useRouter();
 
   useEffect(() => {
     const supabase = createClient();
@@ -75,7 +80,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const openLoginModal = useCallback(() => setLoginModalOpen(true), []);
   const closeLoginModal = useCallback(() => setLoginModalOpen(false), []);
 
-  const signInWithGoogle = useCallback(async () => {
+  const signIn = useCallback(async (provider: OAuthProvider) => {
     const supabase = createClient();
     // Where to land after the OAuth round-trip: a page that asked to be
     // returned to (the share replay stores it in sessionStorage; links to
@@ -85,7 +90,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const callback = new URL("/auth/callback", window.location.origin);
     if (after) callback.searchParams.set("redirect", after);
     const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
+      provider,
       options: {
         redirectTo: callback.toString(),
       },
@@ -96,6 +101,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // Sign out in the browser client, not a server action: the browser client
+  // holds the session in memory and only a sign-out through it fires
+  // SIGNED_OUT, which clears `user` everywhere without a reload. The refresh
+  // then drops server-rendered pages cached for the signed-in user.
+  const signOut = useCallback(async () => {
+    const supabase = createClient();
+    const { error } = await supabase.auth.signOut();
+    // A failed revoke (e.g. offline) leaves the local session in place;
+    // still end it on this device.
+    if (error) await supabase.auth.signOut({ scope: "local" });
+    setUser(null);
+    router.replace("/");
+    router.refresh();
+  }, [router]);
+
   return (
     <AuthContext.Provider
       value={{
@@ -104,7 +124,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isLoginModalOpen,
         openLoginModal,
         closeLoginModal,
-        signInWithGoogle,
+        signIn,
+        signOut,
       }}
     >
       {children}

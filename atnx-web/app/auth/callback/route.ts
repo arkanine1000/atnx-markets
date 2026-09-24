@@ -25,7 +25,12 @@ export async function GET(request: Request) {
   } = await supabase.auth.getUser();
 
   if (user) {
-    await ensureUserProfile(user.id, user.email);
+    // Every provider linked to this user. Supabase links an X login to an
+    // existing Google user with the same verified email, so this can grow.
+    const methods = (user.app_metadata.providers as string[] | undefined) ?? [
+      user.app_metadata.provider ?? 'google',
+    ];
+    await ensureUserProfile(user.id, user.email, methods);
   }
 
   return NextResponse.redirect(`${origin}${redirect}`);
@@ -40,16 +45,29 @@ function safeRedirect(value: string | null): string {
   return value;
 }
 
-async function ensureUserProfile(userId: string, email: string | null | undefined) {
+async function ensureUserProfile(
+  userId: string,
+  email: string | null | undefined,
+  methods: string[],
+) {
   const admin = createAdminClient();
 
   const { data: existing } = await admin
     .from('user_profiles')
-    .select('id')
+    .select('id, auth_methods')
     .eq('id', userId)
     .maybeSingle();
 
-  if (existing) return;
+  if (existing) {
+    const current = (existing.auth_methods as string[] | null) ?? [];
+    if (methods.some((m) => !current.includes(m))) {
+      await admin
+        .from('user_profiles')
+        .update({ auth_methods: [...new Set([...current, ...methods])] })
+        .eq('id', userId);
+    }
+    return;
+  }
 
   // Generate a default handle in the Attn_seeker#XXXX pattern. Collisions are
   // unlikely at our scale; if the unique constraint rejects, retry with a new
@@ -60,7 +78,7 @@ async function ensureUserProfile(userId: string, email: string | null | undefine
       id: userId,
       handle,
       email: email ?? null,
-      auth_methods: ['google'],
+      auth_methods: methods,
     });
     if (!insertErr) break;
     if (insertErr.code !== '23505') throw insertErr;

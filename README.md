@@ -105,7 +105,7 @@ How a submission is decided, stage by stage, is in [`atnx-web/README.md`](atnx-w
 
 ### React context + components
 
-- **`AuthContext`** — `user`, `loading`, `openLoginModal`, `signInWithGoogle`. Subscribes to `onAuthStateChange` and auto-closes the modal when a session appears.
+- **`AuthContext`** — `user`, `loading`, `openLoginModal`, `signIn(provider)` (Google or X). Subscribes to `onAuthStateChange` and auto-closes the modal when a session appears.
 - **`DemoContext`** — `positions`, `balance`, `openPosition`, `closePosition`. Refreshes when auth state flips.
 - **`LoginModal`** — Google-only right now. Backdrop-blurred. Escape-to-close.
 - **`LiveLogo`** — The brand mark drawn as SVG (the lens, cyan | magenta, black pupil; no light cone). The pupil eases toward the pointer, glances about on its own when nobody is pointing, and the lids blink every few seconds; still under reduced motion. The flat `public/logo_*.png` marks are kept for a revert.
@@ -122,7 +122,7 @@ How a submission is decided, stage by stage, is in [`atnx-web/README.md`](atnx-w
 
 1. Anyone hits `/` → lands on splash → clicks **Launch Beta** → `/app`.
 2. Guests can browse the dashboard and market detail pages. Trade buttons turn into **Login** buttons; `/app/portfolio` shows a login panel.
-3. Clicking any Login opens the blurred modal → Google OAuth via `supabase.auth.signInWithOAuth`.
+3. Clicking any Login opens the blurred modal → Google or X OAuth via `supabase.auth.signInWithOAuth`.
 4. `/auth/callback` exchanges the code for a session, sets the auth cookie with `SameSite=None; Secure` (via `proxy.ts`), redirects back.
 5. `proxy.ts` only protects `/admin` and `/app/settings`. Everything else is open for guests.
 6. Because the cookie is `SameSite=None; Secure`, the Chrome extension's `fetch(..., { credentials: 'include' })` attaches it when posting captures — the server can attribute the capture to the signed-in user without a token exchange.
@@ -275,7 +275,7 @@ by the web app at `/privacy`, so deploy the web app before submitting. Bump
 | --- | --- |
 | Framework | Next.js 16.2.2 (App Router, Server Actions, `proxy.ts` — renamed from `middleware.ts` in 16) |
 | UI | React 19.2, Tailwind v4, `next-themes`, `recharts` for sparklines |
-| Auth + DB | Supabase (Postgres + RLS + Storage + Google OAuth), `@supabase/ssr` 0.10 |
+| Auth + DB | Supabase (Postgres + RLS + Storage + Google + X OAuth), `@supabase/ssr` 0.10 |
 | Signals | `google-trends-api`, Wikipedia REST (opensearch + per-article-daily) |
 | Extension | Manifest V3, in-worker `OffscreenCanvas` cropping, Shadow DOM + Popover API overlay, `chrome.storage.local` for config |
 | Models | Vercel AI SDK + AI Gateway: Gemini Flash / Flash-Lite for vision and text, Cohere Embed v4 for embeddings. The extension only ships the cropped image |
