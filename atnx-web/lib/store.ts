@@ -4,7 +4,7 @@ import { forget, forgetPrefix, memo } from './memo';
 import { PAGE_SIZE, type MarketsQuery, type SortMode } from './markets-query';
 import type { TrendsResult } from './trends';
 import type { Database, Json } from './supabase/database';
-import { smooth, type Components } from './vi/score';
+import { smooth, type Components, mergeComponents } from './vi/score';
 
 type DbClient = SupabaseClient<Database>;
 
@@ -209,10 +209,14 @@ export async function recordVi(
 
   const { data: market, error: readErr } = await supabase
     .from('markets')
-    .select('current_vi, vi_last_updated')
+    .select('current_vi, vi_last_updated, vi_components')
     .eq('id', marketId)
     .single();
   if (readErr) throw readErr;
+
+  // The caller read this market minutes ago; another pass may have written
+  // a fresher reading for a source since. Newer per source wins.
+  const merged = mergeComponents((market.vi_components as Components | null) ?? null, components);
 
   // First capture of a market: backfill vi_history with the Trends series
   // (already on the VI axis) so the sparkline has a shape immediately.
@@ -238,7 +242,7 @@ export async function recordVi(
 
   const { error: updateErr } = await supabase
     .from('markets')
-    .update({ current_vi: vi, vi_components: components as unknown as Json, vi_last_updated: new Date().toISOString() })
+    .update({ current_vi: vi, vi_components: merged as unknown as Json, vi_last_updated: new Date().toISOString() })
     .eq('id', marketId);
   if (updateErr) throw updateErr;
 

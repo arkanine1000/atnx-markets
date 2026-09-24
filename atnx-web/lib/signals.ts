@@ -13,6 +13,7 @@ import {
   SLOW_SOURCES,
   type Components,
   type Composite,
+  type SourceComponent,
   type SourceName,
 } from './vi/score';
 import { fetchTrendsSignals, type TrendsSignal } from './vi/trends';
@@ -28,6 +29,15 @@ export interface ScoreRequest {
   aliases?: string[];
   // Breakdown stored on the market from earlier passes, if any.
   stored?: Components | null;
+  // markets.entity_type. Brands may resolve to a company-suffixed
+  // Wikipedia article ("Meta Platforms").
+  entityType?: string | null;
+}
+
+export interface ScoreOptions {
+  // Epoch ms after which no GDELT request starts (the reading is then
+  // unknown and the stored one kept). 0 skips GDELT altogether.
+  gdeltDeadline?: number;
 }
 
 export interface SignalResult {
@@ -37,6 +47,8 @@ export interface SignalResult {
   components: Components;
   // Trends series on the VI axis, for seeding a new market's sparkline.
   seedSeries: { date: string; value: number }[];
+  // Sources that answered with a reading on this pass (not stored copies).
+  fetched: SourceName[];
 }
 
 export type Cadence = 'fast' | 'slow' | 'all';
@@ -57,7 +69,11 @@ function neverScored(r: ScoreRequest): boolean {
 }
 
 // Scores many terms at once so Trends can batch them.
-export async function scoreTerms(requests: ScoreRequest[], cadence: Cadence): Promise<SignalResult[]> {
+export async function scoreTerms(
+  requests: ScoreRequest[],
+  cadence: Cadence,
+  { gdeltDeadline }: ScoreOptions = {}
+): Promise<SignalResult[]> {
   const fresh = new Set(FRESH_FOR[cadence]);
   const all = new Set(FRESH_FOR.all);
 
@@ -73,11 +89,14 @@ export async function scoreTerms(requests: ScoreRequest[], cadence: Cadence): Pr
       const components: Components = { ...(stored ?? {}) };
       const trends = trendsMap.get(term);
       if (trends) components.trends = trends;
+      const corporate = req.entityType === 'brand';
 
       const [bluesky, gdelt, wikipedia] = await Promise.all([
         want.has('bluesky') ? fetchBlueskySignal(term, aliases).catch(() => null) : null,
-        want.has('gdelt') ? fetchGdeltSignal(term, aliases).catch(() => null) : null,
-        want.has('wikipedia') ? fetchWikipediaSignal(term, aliases).catch(() => null) : null,
+        want.has('gdelt') && gdeltDeadline !== 0
+          ? fetchGdeltSignal(term, aliases, { deadline: gdeltDeadline }).catch(() => null)
+          : null,
+        want.has('wikipedia') ? fetchWikipediaSignal(term, aliases, { corporate }).catch(() => null) : null,
       ]);
       if (bluesky) components.bluesky = bluesky;
       if (gdelt) components.gdelt = gdelt;
@@ -85,15 +104,17 @@ export async function scoreTerms(requests: ScoreRequest[], cadence: Cadence): Pr
 
       // A source that answered "unknown" this pass must not erase a real
       // earlier reading; keep the stored one.
+      const fetched: SourceName[] = [];
       for (const name of Object.keys(components) as SourceName[]) {
         const c = components[name];
-        if (c && c.level === null && stored?.[name]?.level != null) components[name] = stored[name];
+        if (!c) continue;
+        if (c.level === null && stored?.[name]?.level != null) components[name] = stored[name];
+        else if (c !== stored?.[name] && c.level !== null) fetched.push(name);
       }
 
       // Single common words score big on search and social by accident.
       // Only count those sources when Wikipedia knows the term by that name.
-      const wikiTitle = (components.wikipedia?.meta?.title as string | undefined) ?? null;
-      if (isGenericTerm(term, wikiTitle)) {
+      if (isGenericTerm(term, (components.wikipedia as SourceComponent | undefined)?.meta)) {
         delete components.trends;
         delete components.bluesky;
       }
@@ -113,13 +134,13 @@ export async function scoreTerms(requests: ScoreRequest[], cadence: Cadence): Pr
         persisted[name] = { source, level, momentum, fetchedAt, meta };
       }
 
-      return { score: composite?.score ?? null, composite, components: persisted, seedSeries };
+      return { score: composite?.score ?? null, composite, components: persisted, seedSeries, fetched };
     })
   );
 }
 
 // Single-term convenience for the capture path: every source, fresh.
-export async function composeVi({ term, aliases = [] }: { term: string; aliases?: string[] }): Promise<SignalResult> {
-  const [result] = await scoreTerms([{ term, aliases }], 'all');
+export async function composeVi(request: ScoreRequest, options: ScoreOptions = {}): Promise<SignalResult> {
+  const [result] = await scoreTerms([request], 'all', options);
   return result;
 }
