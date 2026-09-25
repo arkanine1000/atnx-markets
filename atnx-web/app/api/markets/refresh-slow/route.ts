@@ -2,14 +2,14 @@ import { NextResponse } from 'next/server';
 import { authorized, refreshScores } from '../refresh/route';
 import { refreshThumbnails } from '@/lib/thumbnails';
 import { sweepExpiredDrafts } from '@/lib/review';
+import { runGdeltJob } from '@/lib/vi/gdelt';
 
-// Slow refresh, hourly (vercel.json): GDELT news volume and Wikipedia
-// pageviews, both daily-resolution sources that also rate-limit hard.
-// GDELT calls are serialised at one per 5 s, so this route needs the
-// long budget: 52 markets is about 4.5 minutes when GDELT answers, and
-// the scoring pass stops asking GDELT after 8 minutes and stops starting
-// markets after ~10.5 (../refresh/route.ts), writing each group of
-// markets as it goes, so a run that runs out of time keeps what it has.
+// Slow refresh, hourly (vercel.json): the quota-bound and daily sources
+// (GDELT, Wikipedia, YouTube, HN, X, TikTok). It first runs the GDELT
+// count on BigQuery (lib/vi/gdelt.ts), which writes the samples the
+// scoring pass then reads. The scoring pass stops starting markets after
+// ~10.5 minutes (../refresh/route.ts), writing each group of markets as
+// it goes, so a run that runs out of time keeps what it has.
 //
 // The same run sweeps expired review drafts first and curates images
 // for highlighted markets that still show a raw capture
@@ -49,6 +49,17 @@ export async function GET(request: Request) {
     drafts = { error: (err as Error).message };
   }
 
+  // GDELT counts before scoring, so this run reads this hour's samples. A
+  // failed count leaves the earlier samples, which the reading still uses
+  // until they are two days old.
+  let gdelt: Record<string, unknown>;
+  try {
+    gdelt = { ...(await runGdeltJob()) };
+  } catch (err) {
+    console.error('[gdelt] job failed:', err);
+    gdelt = { error: (err as Error).message };
+  }
+
   const [scores, thumbs] = await Promise.allSettled([refreshScores('slow', { limit }), refreshThumbnails()]);
 
   if (scores.status === 'rejected') {
@@ -65,7 +76,7 @@ export async function GET(request: Request) {
   }
 
   if (scores.status === 'rejected') {
-    return NextResponse.json({ error: (scores.reason as Error).message, thumbnails, drafts }, { status: 500 });
+    return NextResponse.json({ error: (scores.reason as Error).message, gdeltJob: gdelt, thumbnails, drafts }, { status: 500 });
   }
-  return NextResponse.json({ ...scores.value, thumbnails, drafts });
+  return NextResponse.json({ ...scores.value, gdeltJob: gdelt, thumbnails, drafts });
 }

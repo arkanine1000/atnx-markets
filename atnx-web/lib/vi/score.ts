@@ -30,8 +30,8 @@ export type Components = Partial<Record<SourceName, SourceComponent>>;
 // broadest views of attention; social, news and the encyclopedia each
 // see a narrower world. HN and DexScreener only answer for the
 // categories they cover (tech, crypto) and count as unknown elsewhere.
-// GDELT is down-weighted for reliability, not relevance: its API is
-// throttled by design and answers some hours and not others.
+// GDELT (news coverage) is back at its original weight since it moved
+// from the throttled DOC API to BigQuery on 2026-09-25.
 export const WEIGHTS: Record<SourceName, number> = {
   trends: 0.3,
   x: 0.25,
@@ -39,7 +39,7 @@ export const WEIGHTS: Record<SourceName, number> = {
   tiktok: 0.2,
   bluesky: 0.2,
   wikipedia: 0.15,
-  gdelt: 0.1,
+  gdelt: 0.15,
   hn: 0.1,
   dex: 0.2,
 };
@@ -80,14 +80,22 @@ export interface Composite {
   multiplier: number;
 }
 
+export interface CombineOptions {
+  // Sources whose known zero is treated as unknown instead of pulling the
+  // level down. For a creator whose audience is on their own channels, the
+  // sources that count talk about them read zero because nobody writes
+  // their name, not because nothing is happening.
+  ignoreZeros?: readonly SourceName[];
+}
+
 // Null when no source has data. Callers must keep the last known score in
 // that case rather than writing a zero.
-export function combine(components: Components): Composite | null {
+export function combine(components: Components, { ignoreZeros = [] }: CombineOptions = {}): Composite | null {
   // "Known" sources answered; "seeing" sources found any attention at all.
   // A known zero counts against the level but earns no momentum credit and
   // no presence credit: nothing is happening there.
   const known = (Object.values(components) as SourceComponent[]).filter(
-    (c): c is SourceComponent => !!c && c.level !== null
+    (c): c is SourceComponent => !!c && c.level !== null && !(c.level === 0 && ignoreZeros.includes(c.source))
   );
   if (known.length === 0) return null;
   const seeing = known.filter((c) => (c.level as number) > 0);
@@ -159,6 +167,19 @@ export function smooth(prev: number | null, prevAt: string | null, raw: number, 
 // each would overwrite the other's fresher reading. Per source, the newer
 // fetchedAt wins; a source the pass left out stays out (the generic-term
 // guard drops sources on purpose).
+// A change to how a market is scored (a new source, a new weighting) rolls
+// in over RAMP_MS instead of landing in one write: positions liquidate on
+// every write of current_vi, and a jump of a few hundred points would take
+// out leveraged positions that the old score justified. Linear from the old
+// score at `since` to the new one at `since + spanMs`. Pure.
+export const RAMP_MS = 48 * 3600 * 1000;
+export function blendScores(oldScore: number, newScore: number, since: number, now: number, spanMs = RAMP_MS): number {
+  if (!Number.isFinite(since) || now >= since + spanMs) return newScore;
+  if (now <= since) return oldScore;
+  const t = (now - since) / spanMs;
+  return Math.round(oldScore + (newScore - oldScore) * t);
+}
+
 export function mergeComponents(current: Components | null | undefined, ours: Components): Components {
   const merged: Components = {};
   for (const name of Object.keys(ours) as SourceName[]) {

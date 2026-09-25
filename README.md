@@ -84,7 +84,7 @@ How a submission is decided, stage by stage, is in [`atnx-web/README.md`](atnx-w
 | `POST /api/positions` | Extension side panel: opens a position. JSON `{ marketId, direction, sizeUsd, leverage }`, the same checks and database call as the site's own ticket (`lib/trading.ts`); a rule the database refuses (insufficient balance, a market with no score yet) is a 400 with its message, signed out is 401 |
 | `POST /api/positions/[id]/close` | Extension side panel: closes one of the caller's open positions and answers `{ realizedPnl, exitVi, liquidated }`; a position that is not the caller's or is already closed is 404 |
 | `GET /api/markets/refresh` | Cron-only, every 5 min; re-reads the fast VI sources (Google Trends, Bluesky) for every live market, combines them with the stored slow readings, appends an EMA-smoothed point to `vi_history` |
-| `GET /api/markets/refresh-slow` | Cron-only, hourly; same for the slow sources (GDELT, Wikipedia). Then expires review drafts nobody committed, and curates images and descriptions for up to a dozen highlighted markets (see `thumbnails.ts`) |
+| `GET /api/markets/refresh-slow` | Cron-only, hourly; runs the GDELT count on BigQuery, then the same for the slow sources (GDELT, Wikipedia, YouTube, HN, X, TikTok). Then expires review drafts nobody committed, and curates images and descriptions for up to a dozen highlighted markets (see `thumbnails.ts`) |
 
 ### Key libraries (`atnx-web/lib/`)
 
@@ -137,7 +137,7 @@ VI is a composite 0-1000 score from four sources, each reporting an absolute lev
 | --- | --- | --- |
 | Google Trends | every 5 min | Co-queried against a benchmark keyword so scores compare across markets; quantises small terms |
 | Bluesky | every 5 min | Post counts over the last day and hour; needs `BLUESKY_*` |
-| GDELT | hourly | News volume, daily resolution past 72 h, serialised to one call per 5 s |
+| GDELT | hourly | News coverage from GDELT's Global Knowledge Graph on BigQuery: an hourly job counts, per market and day, distinct stories (syndicated copies merged) whose extracted names or page title contain the name or an alias, as a share of the day's stories. Not the `memes` category. Needs `GCP_SA_KEY_B64` |
 | Wikipedia | hourly | Daily pageviews with a two-day lag; also the guard that lets a single-word name count on the fast sources |
 
 A market whose sources all answer "unknown" keeps its last value. A brand-new market is scored right after its commit; if that misses, the next five-minute pass fetches every source for it.

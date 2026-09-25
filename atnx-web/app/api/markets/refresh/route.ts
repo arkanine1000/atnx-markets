@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { prefetchSlowSources, scoreTerms, type ScoreRequest, type SignalResult } from '@/lib/signals';
 import { recordVi } from '@/lib/store';
-import { gdeltPaused } from '@/lib/vi/gdelt';
 import { xSpendUsd } from '@/lib/vi/x';
 import { USD_PER_HASHTAG } from '@/lib/vi/tiktok';
 import type { Components } from '@/lib/vi/score';
@@ -11,7 +10,8 @@ import { normalizeSearchTerm } from '@/lib/vi/trends';
 // Fast refresh, every 5 minutes (vercel.json). Re-reads the fast sources
 // (Google Trends, Bluesky) for every live market, combines them with the
 // stored slow-source readings, and appends a smoothed point to vi_history.
-// The hourly sibling in ../refresh-slow owns GDELT and Wikipedia.
+// The hourly sibling in ../refresh-slow owns the slow sources (GDELT,
+// Wikipedia, YouTube, HN, X, TikTok).
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
 
@@ -21,14 +21,9 @@ const CONCURRENCY = 8;
 
 // The slow path scores a few markets at a time and writes each group as
 // soon as it resolves, so a run that hits its time limit keeps what it
-// has. GDELT is serialised at one call per 5 s whatever the group size;
-// the group only lets the Wikipedia calls overlap the wait.
+// has. No new group starts after the hard budget, which sits inside the
+// slow route's maxDuration (800 s) with room for the thumbnail pass.
 const SLOW_CHUNK = 4;
-// No GDELT request starts after this; the reading is then unknown and
-// the stored one is kept. No new group starts after the hard budget.
-// Both sit inside the slow route's maxDuration (800 s) with room for the
-// last group's GDELT calls and the thumbnail pass.
-const SLOW_GDELT_BUDGET_MS = 480_000;
 const SLOW_HARD_BUDGET_MS = 640_000;
 
 export async function GET(request: Request) {
@@ -66,9 +61,9 @@ export interface RefreshSummary {
   skipped: number;
   total: number;
   elapsedMs: number;
-  // Slow path: markets whose GDELT reading was fetched this run, kept
-  // from an earlier one, or not attempted because the source is paused.
-  gdelt?: { fresh: number; kept: number; paused: boolean };
+  // Slow path: markets with a GDELT reading from the samples, and those
+  // still unknown (no history yet, or the job has fallen behind).
+  gdelt?: { known: number; unknown: number };
   // Slow path: what the paid X source fetched and roughly cost this run.
   x?: { markets: number; tweets: number; requests: number; estUsd: number };
   // Slow path: hashtags sent to the TikTok actor this run, markets read.
@@ -97,13 +92,6 @@ function toRequest(m: MarketRow): ScoreRequest {
   };
 }
 
-// A failed GDELT fetch is stored as an unknown reading with the time it
-// failed, which is not a reading at all: those markets sort first.
-function gdeltAge(m: MarketRow): number {
-  const g = m.vi_components?.gdelt;
-  return g && g.level !== null ? Date.parse(g.fetchedAt) : 0;
-}
-
 export async function refreshScores(cadence: 'fast' | 'slow', { dryRun = false, limit }: RefreshOptions = {}): Promise<RefreshSummary> {
   const t0 = Date.now();
   const supabase = createAdminClient();
@@ -113,13 +101,12 @@ export async function refreshScores(cadence: 'fast' | 'slow', { dryRun = false, 
     .is('deleted_at', null);
   if (error) throw new Error(error.message);
   let markets = (data ?? []) as unknown as MarketRow[];
-  if (cadence === 'slow') markets = [...markets].sort((a, b) => gdeltAge(a) - gdeltAge(b));
   if (limit !== undefined) markets = markets.slice(0, Math.max(0, limit));
 
   const summary: RefreshSummary = { cadence, refreshed: 0, skipped: 0, total: markets.length, elapsedMs: 0 };
   if (dryRun) summary.dryRun = [];
   if (cadence === 'slow') {
-    summary.gdelt = { fresh: 0, kept: 0, paused: gdeltPaused() };
+    summary.gdelt = { known: 0, unknown: 0 };
     summary.x = { markets: 0, tweets: 0, requests: 0, estUsd: 0 };
     summary.tiktok = { hashtags: 0, markets: 0, estUsd: 0 };
   }
@@ -132,7 +119,6 @@ export async function refreshScores(cadence: 'fast' | 'slow', { dryRun = false, 
   }
 
   const chunkSize = cadence === 'fast' ? CONCURRENCY : SLOW_CHUNK;
-  const gdeltDeadline = cadence === 'slow' ? t0 + SLOW_GDELT_BUDGET_MS : undefined;
 
   for (let i = 0; i < markets.length; i += chunkSize) {
     if (cadence === 'slow' && Date.now() - t0 > SLOW_HARD_BUDGET_MS) {
@@ -141,7 +127,7 @@ export async function refreshScores(cadence: 'fast' | 'slow', { dryRun = false, 
       break;
     }
     const chunk = markets.slice(i, i + chunkSize);
-    const results = await scoreTerms(chunk.map(toRequest), cadence, { gdeltDeadline });
+    const results = await scoreTerms(chunk.map(toRequest), cadence);
     await Promise.all(chunk.map((market, k) => settle(market, results[k], cadence, dryRun, summary, t0)));
   }
 
@@ -151,8 +137,8 @@ export async function refreshScores(cadence: 'fast' | 'slow', { dryRun = false, 
 
 async function settle(market: MarketRow, result: SignalResult, cadence: 'fast' | 'slow', dryRun: boolean, summary: RefreshSummary, startedAt: number) {
   if (summary.gdelt) {
-    if (result.fetched.includes('gdelt')) summary.gdelt.fresh++;
-    else if (result.components.gdelt?.level != null) summary.gdelt.kept++;
+    if (result.components.gdelt?.level != null) summary.gdelt.known++;
+    else if (result.components.gdelt) summary.gdelt.unknown++;
   }
   // A TikTok market counts when its row was read this run, even on the
   // first sample, which has a mapping but no level yet.
