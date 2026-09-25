@@ -2,6 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { positionPnl } from "@/lib/pnl";
+import { Confetti } from "@/components/Confetti";
+
+// A close that makes more than this gets confetti.
+const CONFETTI_MIN_PROFIT_USD = 10;
 
 // Toast notification
 interface ToastProps {
@@ -89,6 +93,7 @@ export function ClosePositionModal({ position, onClose }: CloseModalProps) {
         backdropFilter: "blur(4px)",
       }}
     >
+      {!liquidated && pnlAmount > CONFETTI_MIN_PROFIT_USD && <Confetti />}
       <div className="bg-elevated border border-surface rounded-2xl p-7 w-full max-w-sm mx-4 text-center">
         <div
           className="mx-auto mb-3 h-12 w-12 rounded-full inline-flex items-center justify-center text-xl"
