@@ -27,7 +27,7 @@ export default function LandingPage() {
         <span
           aria-disabled="true"
           title="Docs are coming soon"
-          className="inline-flex items-center justify-center gap-2 px-8 py-3 rounded-lg border border-surface text-tertiary font-semibold opacity-60 cursor-not-allowed select-none"
+          className="inline-flex items-center justify-center gap-2 px-8 py-3 rounded-lg border border-atnx-yellow/35 bg-atnx-yellow/5 text-atnx-yellow/55 font-semibold cursor-not-allowed select-none light:border-atnx-yellow-light/50 light:bg-atnx-yellow/15 light:text-black/45"
         >
           <svg
             viewBox="0 0 24 24"
