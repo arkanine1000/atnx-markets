@@ -1450,8 +1450,10 @@ function renderPortfolio() {
   rerender(portfolioEl, () => [toggle, list]);
 }
 
-// /api/captures returns the capture feed newest-first; the dashboard groups
-// it by market and ranks by VI, so do the same here.
+// The top markets by VI: /api/markets ranks every live market in the
+// database (one entry each, its newest capture as the card). An older web
+// app without that endpoint answers with the capture feed instead, which
+// only covers the 50 newest captures; grouped and ranked here as before.
 function topMarkets(captures) {
   const byMarket = new Map();
   for (const c of captures) {
@@ -1474,12 +1476,16 @@ function marketRow(c, base, rank, heat) {
   row.dataset.focusKey = `mkt-${c.marketId}`;
   row.setAttribute('aria-expanded', String(open));
   const trend = c.trends?.trend;
-  row.title = trend ? `Virality Index ${c.viralityScore} · ${trend}` : `Virality Index ${c.viralityScore}`;
+  row.title = c.viScoring
+    ? 'Scoring this new market'
+    : trend
+      ? `Virality Index ${c.viralityScore} · ${trend}`
+      : `Virality Index ${c.viralityScore}`;
   row.addEventListener('click', () => toggleTicket(c));
 
   const name = c.analysis?.name || 'Unknown';
   const end = el('div', 'end');
-  end.appendChild(el('div', 'big', String(c.viralityScore)));
+  end.appendChild(el('div', 'big', c.viScoring ? '…' : String(c.viralityScore)));
 
   // The market's curated image when the web app has one (the logo, the
   // portrait, the meme's reference picture); the newest capture otherwise.
@@ -1507,8 +1513,15 @@ function renderMarkets() {
 async function loadMarkets() {
   let res;
   let base;
+  let data;
   try {
-    ({ res, base } = await fetchJson('/api/captures'));
+    ({ res, base } = await fetchJson('/api/markets?sort=virality'));
+    data = res.ok ? await readJson(res) : null;
+    if (!res.ok || !Array.isArray(data?.items)) {
+      ({ res, base } = await fetchJson('/api/captures'));
+      data = res.ok ? await readJson(res) : null;
+      if (data && Array.isArray(data.captures)) data = { items: data.captures };
+    }
   } catch {
     marketsEl.replaceChildren(placeholder(`Can't reach ${hostOf(await getWebAppUrl())}`));
     marketsMeta.textContent = '';
@@ -1522,13 +1535,12 @@ async function loadMarkets() {
     return res.status === 401;
   }
 
-  const data = await readJson(res);
-  if (!data || !Array.isArray(data.captures)) {
+  if (!data || !Array.isArray(data.items)) {
     marketsEl.replaceChildren(placeholder(`Unexpected response from ${hostOf(base)}`));
     marketsMeta.textContent = '';
     return false;
   }
-  const top = topMarkets(data.captures);
+  const top = topMarkets(data.items);
   marketsMeta.textContent = top.length ? 'VI Score' : '';
 
   if (top.length === 0) {
