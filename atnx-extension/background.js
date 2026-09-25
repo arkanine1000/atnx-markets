@@ -187,6 +187,8 @@ async function handleCapture(msg, tab) {
 
     updateStatus('capturing');
     notifyTab(tab, 'capturing');
+    // A new capture replaces the last one's "Open market" note.
+    await chrome.storage.local.remove('lastResult');
 
     // 2. Crop (and cap the size) right here in the worker. OffscreenCanvas
     //    and createImageBitmap are available to service workers, so the old
@@ -256,8 +258,13 @@ async function handleCapture(msg, tab) {
       await chrome.storage.local.set({ captureCount: captureCount + 1 });
 
       const name = serverPayload?.entityName || 'Content';
+      if (serverPayload?.marketId) {
+        await chrome.storage.local.set({
+          lastResult: { marketId: serverPayload.marketId, name: serverPayload.entityName, isNew: !!serverPayload.isNew, base: webAppUrl, at: Date.now() }
+        });
+      }
       updateStatus('done');
-      notifyTab(tab, 'done', `Identified: ${name}`);
+      notifyTab(tab, 'done', `Identified: ${name}`, serverPayload?.marketId ? `${webAppUrl}/app/markets/${serverPayload.marketId}` : undefined);
       resetStatusAfter(3000);
     }
   } catch (err) {
@@ -270,10 +277,10 @@ async function handleCapture(msg, tab) {
   }
 }
 
-function notifyTab(tab, status, detail) {
+function notifyTab(tab, status, detail, url) {
   if (!tab?.id) return;
   chrome.tabs
-    .sendMessage(tab.id, { action: 'capture-status', status, detail })
+    .sendMessage(tab.id, { action: 'capture-status', status, detail, url })
     .catch(() => {});
 }
 

@@ -247,6 +247,44 @@ const captureBtn = $('captureBtn');
 const captureText = $('captureText');
 const captureNote = $('captureNote');
 const authNote = $('authNote');
+const resultNote = $('resultNote');
+const resultText = $('resultText');
+const resultOpen = $('resultOpen');
+const resultDismiss = $('resultDismiss');
+
+// The last capture's market (written on success by the worker, or by the
+// review below), shown with a link until it is dismissed, the next capture
+// starts, or five minutes pass.
+const RESULT_FRESH_MS = 5 * 60 * 1000;
+let resultUrl = null;
+let resultTimer = null;
+
+function renderResult({ lastResult } = {}) {
+  clearTimeout(resultTimer);
+  const left = lastResult?.marketId ? RESULT_FRESH_MS - (Date.now() - (lastResult.at || 0)) : 0;
+  resultNote.hidden = left <= 0;
+  if (left <= 0) {
+    resultUrl = null;
+    return;
+  }
+  resultTimer = setTimeout(() => chrome.storage.local.remove('lastResult'), left);
+  const name = lastResult.name || 'the market';
+  resultText.textContent = lastResult.isNew ? `Created ${name}` : `Added to ${name}`;
+  resultText.title = resultText.textContent;
+  resultUrl = `${lastResult.base}/app/markets/${lastResult.marketId}`;
+}
+
+async function loadResult() {
+  renderResult(await chrome.storage.local.get('lastResult'));
+}
+
+resultOpen.addEventListener('click', () => {
+  if (resultUrl) openTab(resultUrl);
+});
+
+resultDismiss.addEventListener('click', () => chrome.storage.local.remove('lastResult'));
+
+loadResult();
 
 captureBtn.addEventListener('click', async () => {
   captureNote.hidden = true;
@@ -318,6 +356,7 @@ async function loadStatus() {
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local') return;
   if ('captureStatus' in changes) loadStatus();
+  if ('lastResult' in changes) loadResult();
   if ('pendingReview' in changes) loadReview();
 });
 
@@ -453,6 +492,11 @@ async function commitReview(draft, base, choice) {
     if (res.ok && body?.success) {
       const { captureCount = 0 } = await chrome.storage.local.get('captureCount');
       await chrome.storage.local.set({ captureCount: captureCount + 1 });
+      if (body.marketId) {
+        await chrome.storage.local.set({
+          lastResult: { marketId: body.marketId, name: body.entityName, isNew: !!body.isNew, base, at: Date.now() }
+        });
+      }
       await dropReview('done');
       loadReview();
       refreshData();

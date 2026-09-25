@@ -94,6 +94,16 @@
       transition: opacity 0.3s ease, transform 0.3s ease;
     }
     .toast.visible { opacity: 1; transform: translateY(0); }
+    /* The host lets clicks through to the page; only the link takes them. */
+    .toast .open {
+      pointer-events: auto;
+      color: #00D4FF;
+      font-size: 11px;
+      font-weight: 700;
+      text-decoration: none;
+      margin-top: 2px;
+    }
+    .toast .open:hover { color: #F0F0F0; }
     .toast.error { border-color: #FF00E5; box-shadow: 0 4px 20px rgba(255, 0, 229, 0.15); }
     .toast.error .title { color: #FF00E5; }
     .toast .icon { font-size: 18px; line-height: 1; flex-shrink: 0; }
@@ -178,7 +188,7 @@
 
   chrome.runtime.onMessage.addListener((msg) => {
     if (msg.action === 'activate-capture') activateSelection();
-    if (msg.action === 'capture-status') handleStatusUpdate(msg.status, msg.detail);
+    if (msg.action === 'capture-status') handleStatusUpdate(msg.status, msg.detail, msg.url);
   });
 
   function activateSelection() {
@@ -334,7 +344,7 @@
   let toast = null;
   let toastTimer = null;
 
-  function showToast({ title, subtitle, icon, spinner, isError, duration }) {
+  function showToast({ title, subtitle, icon, spinner, isError, duration, link }) {
     dismissToast(true);
     const shadow = getRoot();
 
@@ -364,6 +374,15 @@
       sub.className = 'subtitle';
       sub.textContent = subtitle;
       text.appendChild(sub);
+    }
+    if (link) {
+      const a = document.createElement('a');
+      a.className = 'open';
+      a.href = link;
+      a.target = '_blank';
+      a.rel = 'noopener';
+      a.textContent = 'Open market →';
+      text.appendChild(a);
     }
     toast.appendChild(text);
 
@@ -400,7 +419,7 @@
   const BUSY_TOAST_MS = 100_000;
   let busyToastTimer = null;
 
-  function handleStatusUpdate(status, detail) {
+  function handleStatusUpdate(status, detail, url) {
     clearTimeout(busyToastTimer);
     busyToastTimer = null;
     switch (status) {
@@ -429,7 +448,9 @@
           title: 'DONE',
           subtitle: detail || 'Analysis complete — check the dashboard',
           icon: '✓',
-          duration: 4000
+          // Longer when there is a link to reach for.
+          duration: url ? 8000 : 4000,
+          link: url
         });
         break;
       case 'error':
