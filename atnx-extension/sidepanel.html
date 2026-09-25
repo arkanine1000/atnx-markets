@@ -49,6 +49,14 @@
         <span id="captureText">CAPTURE</span>
       </button>
       <div id="captureNote" class="note" hidden></div>
+      <!-- The last capture's market, with a way to open it. -->
+      <div id="resultNote" class="note result-note" hidden>
+        <span id="resultText"></span>
+        <span class="result-actions">
+          <button id="resultOpen" class="result-open" type="button">Open market →</button>
+          <button id="resultDismiss" class="result-dismiss" type="button" aria-label="Dismiss">✕</button>
+        </span>
+      </div>
       <!-- Shown while signed out: a capture would be analysed and then fail to save. -->
       <div id="authNote" class="note auth-note" hidden></div>
     </section>
