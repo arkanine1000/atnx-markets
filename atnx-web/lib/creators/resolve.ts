@@ -42,6 +42,9 @@ export interface Candidate {
 
 export interface Resolution {
   status: 'verified' | 'candidate' | 'none';
+  // Worth an admin's look: a candidate big enough to be the real channel.
+  // Smaller ones (placeholders, namesakes) are recorded but not queued.
+  review: boolean;
   best: Candidate | null;
   candidates: Candidate[];
   reason: string;
@@ -130,16 +133,16 @@ export function decide(candidates: Candidate[]): Resolution {
     .filter((c) => c.nameMatch || c.fragmentMatch || c.evidence.includes('wikidata'))
     .sort((a, b) => audience(b.channel) - audience(a.channel));
   const best = eligible[0] ?? null;
-  if (!best) return { status: 'none', best: null, candidates, reason: 'no channel matches the name' };
+  if (!best) return { status: 'none', review: false, best: null, candidates, reason: 'no channel matches the name' };
   const wiki = best.evidence.includes('wikidata');
   const independent = new Set(best.evidence).size;
   const big = audience(best.channel) >= MIN_SUBSCRIBERS;
   const next = eligible[1] ? audience(eligible[1].channel) : 0;
   const dwarfs = next === 0 || audience(best.channel) >= DWARF_RATIO * next;
-  if (wiki) return { status: 'verified', best, candidates, reason: 'Wikidata lists the channel' };
-  if (independent >= 2 && big && dwarfs) return { status: 'verified', best, candidates, reason: `${independent} independent pieces of evidence, dwarfs the rest` };
+  if (wiki) return { status: 'verified', review: false, best, candidates, reason: 'Wikidata lists the channel' };
+  if (independent >= 2 && big && dwarfs) return { status: 'verified', review: false, best, candidates, reason: `${independent} independent pieces of evidence, dwarfs the rest` };
   const why = [!big && 'audience below minimum', independent < 2 && 'only one piece of evidence', !dwarfs && 'a comparable channel exists'].filter(Boolean).join(', ');
-  return { status: 'candidate', best, candidates, reason: why };
+  return { status: 'candidate', review: big, best, candidates, reason: why };
 }
 
 function audience(ch: Channel): number {

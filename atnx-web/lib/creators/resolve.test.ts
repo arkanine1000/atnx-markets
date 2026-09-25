@@ -62,6 +62,9 @@ test('Wikidata verifies on its own; a non-matching capture poster never does', (
   assert.equal(decide([cand(ch({ id: 'c', handle: 'westjett', subscribers: 820_000 }), ['capture_url'], false)]).status, 'none');
 });
 
-test('small channels stay candidates', () => {
-  assert.equal(decide([cand(ch({ id: 's', handle: 'doveellis', subscribers: 3630 }), ['handle_guess', 'screen_handle'])]).status, 'candidate');
+test('small channels stay candidates and are not queued for review', () => {
+  const r = decide([cand(ch({ id: 's', handle: 'doveellis', subscribers: 3630 }), ['handle_guess', 'screen_handle'])]);
+  assert.equal(r.status, 'candidate');
+  assert.equal(r.review, false);
+  assert.equal(decide([cand(ch({ id: 'x', handle: 'cobratate', subscribers: 18_500 }), ['handle_guess'])]).review, true);
 });

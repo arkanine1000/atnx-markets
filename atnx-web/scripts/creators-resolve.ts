@@ -29,7 +29,7 @@ async function main() {
     units += r.cost.units;
     searches += r.cost.searches;
     const b = r.best?.channel;
-    console.log(`\n${m.entity_name}  →  ${r.status.toUpperCase()}${b ? `  @${b.handle ?? '?'} "${b.title}" ${b.subscribers ?? 'hidden'} subs` : ''}  (${r.reason})`);
+    console.log(`\n${m.entity_name}  →  ${r.status.toUpperCase()}${r.review ? ' → REVIEW QUEUE' : ''}${b ? `  @${b.handle ?? '?'} "${b.title}" ${b.subscribers ?? 'hidden'} subs` : ''}  (${r.reason})`);
     for (const c of r.candidates.sort((x, y) => (y.channel.subscribers ?? 0) - (x.channel.subscribers ?? 0))) {
       console.log(`   @${String(c.channel.handle).padEnd(28)} ${String(c.channel.subscribers ?? 'hidden').padStart(10)} subs  ${c.channel.videos} videos  name:${c.nameMatch ? 'y' : 'n'}  evidence: ${c.evidence.join(', ')}`);
     }
