@@ -22,7 +22,9 @@
   </header>
 
   <section id="settings" class="card settings" hidden>
-    <form id="urlForm">
+    <!-- Admins only (and anyone already pointed away from the default, so
+         they can point back); sidepanel.js reveals it. -->
+    <form id="urlForm" hidden>
       <label for="webAppUrl">Web App URL</label>
       <div class="input-row">
         <input type="url" id="webAppUrl" placeholder="https://www.atnx.app" autocomplete="off" spellcheck="false">

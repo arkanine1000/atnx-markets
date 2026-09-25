@@ -346,8 +346,7 @@ export function TradePanel({
           </div>
           <div className="flex items-baseline justify-between text-xs font-mono tabular-nums">
             <span className="text-secondary">
-              ${openPos.size.toFixed(2)} in {"·"} entry {openPos.entryIndex}{" "}
-              {"→"} {openPos.currentIndex}
+              ${openPos.size.toFixed(2)} at {openPos.entryIndex} VI
             </span>
             <span
               className={

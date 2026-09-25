@@ -9,7 +9,7 @@ upload with `node package.mjs` (writes `dist/atnx-capture-v<version>.zip`).
    $5 registration). Verify the publisher email; it is shown on the listing.
 2. **Deploy the web app first.** The privacy policy lives at
    https://atnx.app/privacy and the reviewer will open it.
-3. `node package.mjs` → upload `dist/atnx-capture-v1.7.0.zip`.
+3. `node package.mjs` → upload `dist/atnx-capture-v1.7.1.zip`.
 4. Store listing tab: paste the text below; upload `store/screenshot-*.png`
    (1280×800) and `store/promo-small.png` (440×280).
 5. Privacy tab: single purpose, permission justifications, data disclosures,
@@ -48,17 +48,18 @@ WHAT YOU GET
 
 • One-shortcut capture on any page. Drag to select; the crop is uploaded, not
   the whole screen.
-• AI identification. Claude vision names the subject, reads the visible
+• AI identification. A vision model names the subject, reads the visible
   metrics, and files it under the right market.
-• A side panel that stays out of the way: your portfolio value with a 7-day
-  chart, open positions, and the five hottest markets right now, ranked by VI.
+• A side panel that stays out of the way: your portfolio value with a chart
+  (1 day to all time), open positions, and the five hottest markets right
+  now, ranked by VI.
 • Trade without leaving the page: open a long or short on any of the top
   five from the panel, and close a position from the portfolio list.
 • Deep links back into atnx.app for every market and position.
 
 HOW IT WORKS
 
-1. Sign in at atnx.app (Google).
+1. Sign in at atnx.app (Google or X).
 2. Click the ATNX icon to open the side panel, or just press the shortcut on
    any page.
 3. Drag a selection. A toast tells you what was identified.
@@ -95,10 +96,10 @@ on them.
 | --- | --- |
 | `activeTab` | Granted per tab when the user presses the shortcut or clicks the toolbar icon. Needed to take the screenshot (`tabs.captureVisibleTab`) and to inject the selection overlay into that one tab. |
 | `scripting` | Injects the drag-to-select overlay (`content.js`) into the active tab on demand. The extension declares no content scripts that run automatically. |
-| `storage` | Stores the user's web app URL, the side panel's expanded/collapsed state, and the last capture status. No browsing data is stored. |
+| `storage` | Stores the web app URL (changeable by ATNX staff only), the side panel's expanded/collapsed state, and the last capture status. No browsing data is stored. |
 | `sidePanel` | The extension's UI is a side panel (portfolio, top markets, capture button) rather than a popup. |
 | Host permission `https://*.atnx.app/*` | The extension posts the captured image to www.atnx.app, reads the user's portfolio and the market list from it, and sends the user's own open and close orders to it. Host access lets the user's atnx.app sign-in cookie accompany those requests even when third-party cookies are blocked. The pattern covers the apex domain and the www host the site serves from; no other subdomains exist. |
-| Optional host permissions `http://*/*`, `https://*/*` | Only used if the user enters a self-hosted or local ATNX instance URL in settings. At that moment the extension requests access to that single origin (for example `http://localhost:3000/*`) via `permissions.request`; it never requests access to all sites. |
+| Optional host permissions `http://localhost/*`, `http://127.0.0.1/*` | Development only. ATNX staff can point the extension at a local copy of the web app (for example `http://localhost:3000`); the extension then requests access to that one local origin via `permissions.request`. Regular users never see this setting, and no other sites can be requested. |
 
 **Remote code**
 No. All code ships in the package. The extension makes network requests to

@@ -8,8 +8,10 @@ import {
   type Position,
 } from "@/context/DemoContext";
 import { useAuth } from "@/context/AuthContext";
-import { ClosePositionModal, DemoToast } from "@/components/Trading";
+import { ClosePositionModal, ConfirmCloseModal, DemoToast } from "@/components/Trading";
 import { PortfolioMobile } from "@/components/PortfolioMobile";
+import { PortfolioChart } from "@/components/PortfolioChart";
+import { usePortfolioFeed } from "@/components/usePortfolioFeed";
 import { Card, Chip, DeltaChip, EmptyState, Readout, StatTile } from "@/components/ui";
 import { timeAgo } from "@/lib/capture-view";
 
@@ -98,26 +100,53 @@ export default function PortfolioPage() {
   const { positions, balance, fees, closePosition } = useDemoContext();
   const { user, loading: authLoading, openLoginModal } = useAuth();
   const [closingPosition, setClosingPosition] = useState<Position | null>(null);
+  // Any trade elsewhere on the page changes the ids and refetches the feed.
+  const feed = usePortfolioFeed(positions.map((p) => p.id).join(","));
   const [toast, setToast] = useState<{
     message: string;
     detail: string;
     type: "long" | "short" | "close-profit" | "close-loss";
   } | null>(null);
 
+  // Both layouts ask before closing. The phone rows await the answer (and
+  // the close, if it's a yes) so they can refetch afterwards.
+  const [confirming, setConfirming] = useState<{
+    position: Position;
+    settle: () => void;
+  } | null>(null);
+
+  const requestClose = useCallback(
+    (pos: Position) =>
+      new Promise<void>((resolve) => setConfirming({ position: pos, settle: resolve })),
+    [],
+  );
   const handleClose = useCallback(
-    async (pos: Position) => {
-      const closed = await closePosition(pos.id);
-      if (closed) setClosingPosition(closed);
+    (pos: Position) => {
+      void requestClose(pos);
     },
-    [closePosition],
+    [requestClose],
   );
   const handleCloseById = useCallback(
     async (id: string) => {
-      const closed = await closePosition(id);
-      if (closed) setClosingPosition(closed);
+      const pos = positions.find((p) => p.id === id);
+      if (pos) await requestClose(pos);
     },
-    [closePosition],
+    [positions, requestClose],
   );
+  const confirmClose = useCallback(async () => {
+    if (!confirming) return;
+    try {
+      const closed = await closePosition(confirming.position.id);
+      if (closed) setClosingPosition(closed);
+    } finally {
+      confirming.settle();
+      setConfirming(null);
+    }
+  }, [confirming, closePosition]);
+  const cancelClose = useCallback(() => {
+    confirming?.settle();
+    setConfirming(null);
+  }, [confirming]);
 
   const handleCloseModalDismiss = useCallback(() => {
     if (closingPosition) {
@@ -169,42 +198,43 @@ export default function PortfolioPage() {
         <h2 className="font-display text-xl sm:text-2xl font-bold text-primary tracking-tight">
           Portfolio
         </h2>
-        <p className="text-xs text-tertiary mt-1">Simulated USDC account</p>
       </div>
 
       {/* Phones: the side-panel layout (value tile, collapsible card). */}
       <div className="md:hidden">
-        <PortfolioMobile
-          onClosePosition={handleCloseById}
-          refreshKey={positions.map((p) => p.id).join(",")}
-        />
+        <PortfolioMobile feed={feed} onClosePosition={handleCloseById} />
       </div>
 
-      <div className="hidden md:grid grid-cols-3 gap-3 sm:gap-4 mb-6">
-        <StatTile
-          label="Equity"
-          value={`$${equity.toFixed(2)}`}
-          hero
-          sub="balance + positions"
-        />
-        <StatTile
-          label="Unrealized PnL"
-          value={
-            <span className={pnlTone}>
-              {totalPnL >= 0 ? "+" : ""}${totalPnL.toFixed(2)}
-            </span>
-          }
-          sub={<DeltaChip value={totalPnLPercent} />}
-        />
-        <StatTile
-          label="Fees earned"
-          value={
-            <span className={fees.earned > 0 ? "text-atnx-cyan light:text-atnx-cyan-light" : ""}>
-              {fees.earned > 0 ? "+" : ""}${fees.earned.toFixed(2)}
-            </span>
-          }
-          sub="half of every fee on markets you created"
-        />
+      {/* Desktop: Equity over PnL | Fees on the left, the value chart
+          filling the space to their right. */}
+      <div className="hidden md:grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-4 mb-6">
+        <div className="flex flex-col gap-4 min-w-0">
+          <StatTile
+            label="Equity"
+            value={`$${equity.toFixed(2)}`}
+            hero
+          />
+          <div className="grid grid-cols-2 gap-4">
+            <StatTile
+              label="Unrealized PnL"
+              value={
+                <span className={pnlTone}>
+                  {totalPnL >= 0 ? "+" : ""}${totalPnL.toFixed(2)}
+                </span>
+              }
+              sub={<DeltaChip value={totalPnLPercent} />}
+            />
+            <StatTile
+              label="Fees earned"
+              value={
+                <span className={fees.earned > 0 ? "text-atnx-cyan light:text-atnx-cyan-light" : ""}>
+                  {fees.earned > 0 ? "+" : ""}${fees.earned.toFixed(2)}
+                </span>
+              }
+            />
+          </div>
+        </div>
+        <PortfolioChart feed={feed} />
       </div>
 
       <div className="hidden md:block">
@@ -229,6 +259,14 @@ export default function PortfolioPage() {
           </div>
         )}
       </div>
+
+      {confirming && (
+        <ConfirmCloseModal
+          position={confirming.position}
+          onConfirm={confirmClose}
+          onCancel={cancelClose}
+        />
+      )}
 
       {closingPosition && (
         <ClosePositionModal

@@ -76,12 +76,15 @@ export function PortfolioSparkline({
   className = "",
 }: {
   points: ValuePoint[];
-  height?: number;
+  // Pixels, or "fill" to take the height its container gives it.
+  height?: number | "fill";
   formatTime: (t: Date) => string;
   className?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [w, setW] = useState(0);
+  const [fillH, setFillH] = useState(0);
+  const fill = height === "fill";
   const [hover, setHover] = useState<number>(-1);
   const gradId = useId();
 
@@ -90,15 +93,17 @@ export function PortfolioSparkline({
     if (!el) return;
     const ro = new ResizeObserver((entries) => {
       const width = Math.floor(entries[0]?.contentRect.width ?? 0);
+      const tall = Math.floor(entries[0]?.contentRect.height ?? 0);
       setW((prev) => (prev === width ? prev : width));
+      setFillH((prev) => (prev === tall ? prev : tall));
     });
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
 
-  const h = height;
+  const h = fill ? fillH : height;
   const values = points.map((p) => p.value);
-  const ready = w > 0 && points.length >= 2;
+  const ready = w > 0 && h > PAD_Y * 2 && points.length >= 2;
 
   let plotted: { x: number; y: number; t: number; value: number }[] = [];
   let color = UP;
@@ -154,8 +159,8 @@ export function PortfolioSparkline({
   return (
     <div
       ref={ref}
-      style={{ height: h }}
-      className={`relative w-full select-none touch-pan-y ${className}`}
+      style={fill ? undefined : { height: h }}
+      className={`relative w-full select-none touch-pan-y ${fill ? "h-full" : ""} ${className}`}
       onPointerMove={(e) => setHover(nearest(e.clientX))}
       onPointerDown={(e) => setHover(nearest(e.clientX))}
       onPointerLeave={() => setHover(-1)}

@@ -80,6 +80,14 @@ function normalizeWebAppUrl(value) {
   }
 }
 
+// atnx.app (the install-time host permission) or a local dev server (the
+// optional one). Nothing else can be granted.
+function isAllowedWebAppUrl(url) {
+  const { protocol, hostname } = new URL(url);
+  if (protocol === 'https:' && (hostname === 'atnx.app' || hostname.endsWith('.atnx.app'))) return true;
+  return protocol === 'http:' && (hostname === 'localhost' || hostname === '127.0.0.1');
+}
+
 async function getWebAppUrl() {
   const { webAppUrl } = await chrome.storage.local.get('webAppUrl');
   return normalizeWebAppUrl(webAppUrl) || DEFAULT_WEB_APP_URL;
@@ -134,8 +142,24 @@ settingsToggle.addEventListener('click', () => {
   const open = settings.hidden;
   settings.hidden = !open;
   settingsToggle.setAttribute('aria-expanded', String(open));
-  if (open) webAppUrlInput.focus();
+  if (open && !urlForm.hidden) webAppUrlInput.focus();
 });
+
+// The Web App URL setting is for admins. It also stays visible while a
+// non-default URL is saved, so nobody is stranded on a host where they
+// aren't (or can't be seen as) an admin. `isAdmin` comes from the
+// portfolio answer; null until the first one arrives.
+let isAdmin = null;
+async function updateUrlFormVisibility() {
+  const { webAppUrl } = await chrome.storage.local.get('webAppUrl');
+  const custom = normalizeWebAppUrl(webAppUrl);
+  urlForm.hidden = !(isAdmin === true || (custom && custom !== DEFAULT_WEB_APP_URL));
+}
+function setIsAdmin(value) {
+  if (isAdmin === value) return;
+  isAdmin = value;
+  updateUrlFormVisibility();
+}
 
 function setUrlStatus(text, kind = '') {
   urlStatus.textContent = text;
@@ -161,6 +185,8 @@ async function loadSettings() {
     );
   }
 
+  await updateUrlFormVisibility();
+
   const commands = await chrome.commands.getAll();
   const cmd = commands.find((c) => c.name === 'activate-capture');
   shortcutLink.textContent = cmd?.shortcut || 'Set shortcut';
@@ -173,10 +199,17 @@ urlForm.addEventListener('submit', async (e) => {
     setUrlStatus('Enter a valid http(s) URL', 'error');
     return;
   }
+  // The manifest can only ever grant atnx.app and a local dev server, so
+  // any other host would save fine and then fail on every request.
+  if (!isAllowedWebAppUrl(normalized)) {
+    setUrlStatus('Use an atnx.app address or a local one (localhost)', 'error');
+    return;
+  }
 
   // Host permission for the web app keeps the auth cookie flowing even when
-  // third-party cookies are blocked. *.atnx.app is granted at install; any
-  // other origin (e.g. localhost) is requested here, inside the click.
+  // third-party cookies are blocked. *.atnx.app is granted at install; a
+  // local dev server (the optional localhost / 127.0.0.1 permission) is
+  // requested here, inside the click.
   let granted = true;
   try {
     granted = await chrome.permissions.request({ origins: [originPattern(normalized)] });
@@ -187,6 +220,9 @@ urlForm.addEventListener('submit', async (e) => {
 
   await chrome.storage.local.set({ webAppUrl: normalized });
   webAppUrlInput.value = normalized;
+  // Whether they are an admin on the new host is for its answer to say.
+  isAdmin = null;
+  updateUrlFormVisibility();
   setUrlStatus(
     granted ? 'URL saved' : 'Saved, but site access denied — captures may not authenticate',
     granted ? 'saved' : 'error'
@@ -1257,6 +1293,7 @@ async function openSignIn(base) {
 function setSignedOut(base) {
   signedIn = false;
   setHandle(null);
+  setIsAdmin(false);
   valueTile.hidden = true;
   portfolioCache.clear();
   balanceUsd = null;
@@ -1317,6 +1354,7 @@ async function loadPortfolio() {
   signedIn = true;
   authNote.hidden = true;
   setHandle(data.handle, data.userId);
+  setIsAdmin(data.isAdmin === true);
   portfolioCache.set(range, data);
   balanceUsd = Number(data.balanceUsd) || 0;
   // The user switched range while this request was in flight; the newer

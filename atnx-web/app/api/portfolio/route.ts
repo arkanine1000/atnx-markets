@@ -66,6 +66,9 @@ export interface PortfolioResponse {
   // same face as the site.
   userId: string;
   handle: string | null;
+  // Admin or moderator: the extension shows its Web App URL setting only
+  // to these accounts.
+  isAdmin: boolean;
   balanceUsd: number;
   realizedPnlUsd: number;
   totalTrades: number;
@@ -329,7 +332,7 @@ export async function GET(request: Request) {
       await Promise.all([
         supabase
           .from('user_profiles')
-          .select('handle')
+          .select('handle, role')
           .eq('id', user.id)
           .maybeSingle(),
         supabase
@@ -486,6 +489,7 @@ export async function GET(request: Request) {
     const body: PortfolioResponse = {
       userId: user.id,
       handle: profile?.handle ?? null,
+      isAdmin: profile?.role === 'admin' || profile?.role === 'moderator',
       balanceUsd,
       realizedPnlUsd: bal?.total_pnl_realized ?? 0,
       totalTrades: bal?.total_trades ?? 0,

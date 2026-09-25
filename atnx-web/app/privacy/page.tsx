@@ -8,7 +8,7 @@ export const metadata: Metadata = {
     "What the ATNX web app and the ATNX Capture Chrome extension collect, why, and how to delete it.",
 };
 
-const UPDATED = "September 24, 2026";
+const UPDATED = "September 25, 2026";
 
 export default function PrivacyPage() {
   return (
@@ -55,19 +55,19 @@ export default function PrivacyPage() {
         </ul>
         <p>
           The extension does not run on pages in the background, does not read
-          your browsing history, and requests access only to atnx.app. If you
-          point it at a self-hosted ATNX instance, Chrome asks you to grant
-          access to that one site.
+          your browsing history, and requests access only to atnx.app. (ATNX
+          staff can point it at a local development copy of ATNX; Chrome asks
+          them to grant access to that one local address.)
         </p>
       </Section>
 
       <Section title="What we do with it">
         <ul className="list-disc pl-5 space-y-2">
           <li>
-            The screenshot is analyzed by an AI vision model (Claude, by
-            Anthropic) to identify the subject and extract visible text and
-            metrics. Anthropic processes the image to return that analysis and
-            does not use API inputs to train its models.
+            The screenshot is analyzed by an AI vision model (Gemini, by
+            Google) to identify the subject and extract visible text and
+            metrics. Google processes the image to return that analysis and,
+            under its paid API terms, does not use it to train its models.
           </li>
           <li>
             The screenshot, its analysis, and the source URL are stored with
@@ -129,7 +129,7 @@ export default function PrivacyPage() {
         <ul className="list-disc pl-5 space-y-2">
           <li>Supabase: database, file storage and sign-in.</li>
           <li>Vercel: hosting, and routing requests to AI models.</li>
-          <li>Anthropic: AI analysis of captures and submissions.</li>
+          <li>Google (Gemini): AI analysis of captures and submissions.</li>
           <li>Google and X: only when you choose them to sign in.</li>
         </ul>
         <p>
