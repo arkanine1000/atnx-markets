@@ -85,7 +85,7 @@ function PositionCard({
         <button
           type="button"
           onClick={() => onClose(position)}
-          className="text-[11px] px-3 py-1.5 rounded-full border border-surface bg-surface hover-lift text-secondary hover:text-primary cursor-pointer"
+          className="text-xs px-4 py-2 rounded-full bg-atnx-magenta text-white font-bold shadow-[0_0_16px_rgba(255,0,229,0.25)] hover:brightness-110 transition cursor-pointer"
         >
           Close position
         </button>

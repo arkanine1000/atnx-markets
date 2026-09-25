@@ -52,6 +52,8 @@ export function TradePanel({
   const [side, setSide] = useState<"long" | "short">(initialSide);
   const [amount, setAmount] = useState("100");
   const [lev, setLev] = useState<Lev>("1");
+  // Leverage and the cost breakdown are folded away until asked for.
+  const [advanced, setAdvanced] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -172,75 +174,92 @@ export function TradePanel({
         </div>
       </div>
 
-      {/* Leverage */}
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-[11px] font-mono uppercase tracking-wider text-tertiary">
-          Leverage
+      <button
+        type="button"
+        onClick={() => setAdvanced((v) => !v)}
+        aria-expanded={advanced}
+        className="w-full flex items-center justify-between text-[11px] font-mono uppercase tracking-wider text-tertiary hover:text-primary cursor-pointer"
+      >
+        <span>Advanced</span>
+        <span className="normal-case tracking-normal">
+          {lev !== "1" && <span className="text-primary mr-1.5">{lev}×</span>}
+          {advanced ? "▾" : "▸"}
         </span>
-        <Segmented
-          ariaLabel="Leverage"
-          value={lev}
-          onChange={setLev}
-          options={LEVERAGE.map((l) => ({
-            value: `${l}` as Lev,
-            label: `${l}×`,
-          }))}
-        />
-      </div>
+      </button>
 
-      {/* Summary */}
-      <dl className="space-y-1.5 text-xs border-t border-surface pt-3">
-        <div className="flex justify-between">
-          <dt className="text-tertiary">Entry VI</dt>
-          <dd className="font-mono tabular-nums text-atnx-yellow light:text-atnx-yellow-light font-bold">
-            {score}
-          </dd>
-        </div>
-        <div className="flex justify-between">
-          <dt className="text-tertiary">Exposure</dt>
-          <dd className="font-mono tabular-nums text-primary">
-            ${(amountNum * leverage).toFixed(2)}
-          </dd>
-        </div>
-        <div className="flex justify-between">
-          <dt
-            className="text-tertiary"
-            title={`A ${leverage}× ${side} loses everything when the VI moves ${Math.round(100 / leverage)}% against it`}
-          >
-            Liquidation VI
-          </dt>
-          <dd className="font-mono tabular-nums text-atnx-magenta light:text-atnx-magenta-light">
-            {liqVi}
-          </dd>
-        </div>
-        <div className="flex justify-between">
-          <dt
-            className="text-tertiary"
-            title="Half goes to whoever created this market, half to the treasury"
-          >
-            Fee ({FEE_PCT})
-          </dt>
-          <dd className="font-mono tabular-nums text-primary">
-            ${fee.toFixed(2)}
-          </dd>
-        </div>
-        <div className="flex justify-between">
-          <dt className="text-tertiary">Total</dt>
-          <dd className="font-mono tabular-nums text-primary font-bold">
-            ${total.toFixed(2)}
-          </dd>
-        </div>
-        {user && (
-          <div className="flex justify-between">
-            <dt className="text-tertiary">Available</dt>
-            <dd
-              className={`font-mono tabular-nums ${overBalance ? "text-atnx-magenta" : "text-primary"}`}
-            >
-              ${balance.toFixed(2)}
-            </dd>
+      {advanced && (
+        <>
+          {/* Leverage */}
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-[11px] font-mono uppercase tracking-wider text-tertiary">
+              Leverage
+            </span>
+            <Segmented
+              ariaLabel="Leverage"
+              value={lev}
+              onChange={setLev}
+              options={LEVERAGE.map((l) => ({
+                value: `${l}` as Lev,
+                label: `${l}×`,
+              }))}
+            />
           </div>
-        )}
-      </dl>
+
+          {/* Summary */}
+          <dl className="space-y-1.5 text-xs border-t border-surface pt-3">
+            <div className="flex justify-between">
+              <dt className="text-tertiary">Entry VI</dt>
+              <dd className="font-mono tabular-nums text-atnx-yellow light:text-atnx-yellow-light font-bold">
+                {score}
+              </dd>
+            </div>
+            <div className="flex justify-between">
+              <dt className="text-tertiary">Exposure</dt>
+              <dd className="font-mono tabular-nums text-primary">
+                ${(amountNum * leverage).toFixed(2)}
+              </dd>
+            </div>
+            <div className="flex justify-between">
+              <dt
+                className="text-tertiary"
+                title={`A ${leverage}× ${side} loses everything when the VI moves ${Math.round(100 / leverage)}% against it`}
+              >
+                Liquidation VI
+              </dt>
+              <dd className="font-mono tabular-nums text-atnx-magenta light:text-atnx-magenta-light">
+                {liqVi}
+              </dd>
+            </div>
+            <div className="flex justify-between">
+              <dt
+                className="text-tertiary"
+                title="Half goes to whoever created this market, half to the treasury"
+              >
+                Fee ({FEE_PCT})
+              </dt>
+              <dd className="font-mono tabular-nums text-primary">
+                ${fee.toFixed(2)}
+              </dd>
+            </div>
+            <div className="flex justify-between">
+              <dt className="text-tertiary">Total</dt>
+              <dd className="font-mono tabular-nums text-primary font-bold">
+                ${total.toFixed(2)}
+              </dd>
+            </div>
+            {user && (
+              <div className="flex justify-between">
+                <dt className="text-tertiary">Available</dt>
+                <dd
+                  className={`font-mono tabular-nums ${overBalance ? "text-atnx-magenta" : "text-primary"}`}
+                >
+                  ${balance.toFixed(2)}
+                </dd>
+              </div>
+            )}
+          </dl>
+        </>
+      )}
 
       {error && (
         <div className="text-xs text-atnx-magenta border border-atnx-magenta/40 bg-atnx-magenta/10 rounded-lg px-3 py-2">
