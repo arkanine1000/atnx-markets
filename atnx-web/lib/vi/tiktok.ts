@@ -8,9 +8,10 @@
 // One actor run per pass carries every market's hashtag(s), up to the
 // Free plan's fifty rows: the dispatcher starts it before the markets are
 // scored (prefetchTiktok) and each market reads its row from the batch.
-// The sample is the cumulative count; the reading is the growth since
-// the previous sample of the same hashtag, on a daily axis; the momentum
-// is that growth against the prior day's. Sampled every three hours
+// The sample is the cumulative count; the reading is its growth rate on a
+// daily axis (see tiktokReading: a trend with a spike gate, because the
+// vendor's totals jitter), and the momentum is that rate against the
+// prior day's trend. Sampled every three hours
 // (the stored reading is returned unchanged until then). Views are
 // recorded but not scored: TikTok stopped showing hashtag views in 2024
 // and the vendor's figure is of uncertain origin.
@@ -18,7 +19,7 @@
 // $0.0005 per hashtag plus compute. Bounded by the rows-per-run cap, a
 // daily hashtag budget from the samples ledger, and a pause after a
 // failed run. Without a token the source is unknown.
-import { clamp, ratioToBaseline, type SourceComponent } from './score';
+import { clamp, median, ratioToBaseline, type SourceComponent } from './score';
 import { dailyLedger, pruneSamples, readSamples, writeSample, type Sample } from './samples';
 
 const ACTOR = 'funny_ground~tiktok-hashtag-stats';
@@ -43,10 +44,19 @@ const DEFAULT_DAILY_BUDGET = 400;
 const PAUSE_MS = 30 * 60 * 1000;
 const SAMPLE_KEEP_MS = 3 * 24 * 3600 * 1000;
 const MAX_SAMPLES = 30;
-const MIN_PRIOR_DELTAS = 4;
 // Two samples this far apart bound one growth reading.
 const MIN_GAP_H = 1;
 const MAX_GAP_H = 9;
+// The level's trend covers this much history before the newest read...
+const TREND_WINDOW_H = 12;
+// ...and needs this many earlier reads in it; until then the newest pair.
+const MIN_TREND_READS = 3;
+// Momentum compares with the trend of the prior day, from this many reads.
+const BASELINE_WINDOW_H = 30;
+const MIN_BASELINE_READS = 5;
+// A newest pair this many noise-widths above the trend is a real spike
+// and is taken as it is; anything less is read off the trend.
+const SPIKE_K = 3;
 export const USD_PER_HASHTAG = 0.0005;
 
 export interface HashtagStats {
@@ -120,24 +130,86 @@ export interface TiktokReading {
   videosPerHour: number | null;
 }
 
-// Growth per hour between the newest sample and the one before it under
-// the same hashtag, against the growth readings of the prior day.
+export interface TrendFit {
+  slope: number; // videos per hour
+  noise: number; // robust spread of the counts around the line, in videos
+}
+
+// Theil-Sen line through (hours, count) points: the median of the pairwise
+// slopes, which a stale total or two cannot drag, and the robust sigma
+// (1.4826 x MAD) of the residuals. Needs two points. Pure.
+export function trendFit(points: { h: number; v: number }[]): TrendFit {
+  const slopes: number[] = [];
+  for (let i = 0; i < points.length; i++) {
+    for (let j = i + 1; j < points.length; j++) {
+      const dh = points[j].h - points[i].h;
+      if (dh !== 0) slopes.push((points[j].v - points[i].v) / dh);
+    }
+  }
+  const slope = median(slopes);
+  const intercept = median(points.map((p) => p.v - slope * p.h));
+  const noise = 1.4826 * median(points.map((p) => Math.abs(p.v - (intercept + slope * p.h))));
+  return { slope, noise };
+}
+
+// The growth rate of the current hashtag. The vendor's cumulative totals
+// jitter by about 0.01-0.02 % between reads and sometimes step back to an
+// older value, which on a slow tag swamps three hours of real growth: pair
+// deltas read 0 one read and double the next. So:
+//   - the rate is the Theil-Sen trend over the last TREND_WINDOW_H;
+//   - unless the newest pair rises above the trend of the earlier reads by
+//     more than SPIKE_K times their noise: a real spike shows on its first
+//     read, as with plain pairs. Drops only come through the trend.
+//   - until enough reads exist, the newest pair.
+// Momentum is the rate against the trend of the prior day, and only when
+// the gap clears the same noise band; within it the source says nothing.
 // Samples newest first, the current one included. Pure.
 export function tiktokReading(samples: Sample[], now = Date.now()): TiktokReading {
-  const deltas: { at: number; perHour: number }[] = [];
-  for (let i = 0; i + 1 < samples.length; i++) {
-    const a = samples[i];
-    const b = samples[i + 1];
-    if (!a.meta?.hashtag || a.meta.hashtag !== b.meta?.hashtag) continue;
-    const hours = (Date.parse(a.sampled_at) - Date.parse(b.sampled_at)) / 3600_000;
-    if (hours < MIN_GAP_H || hours > MAX_GAP_H) continue;
-    deltas.push({ at: Date.parse(a.sampled_at), perHour: Math.max(0, a.value - b.value) / hours });
+  const none = { level: null, momentum: null, videosPerHour: null };
+  const tag = samples[0]?.meta?.hashtag;
+  if (!tag) return none;
+
+  // The current hashtag's unbroken run, oldest first, reads at least
+  // MIN_GAP_H apart (an off-cycle read next to a scheduled one is dropped).
+  const run: { h: number; v: number }[] = [];
+  for (const smp of samples) {
+    if (smp.meta?.hashtag !== tag) break;
+    const h = Date.parse(smp.sampled_at) / 3600_000;
+    const v = Number(smp.value);
+    if (!Number.isFinite(h) || !Number.isFinite(v)) continue;
+    const newer = run[0];
+    if (newer && newer.h - h < MIN_GAP_H) continue;
+    if (newer && newer.h - h > MAX_GAP_H) break;
+    if (run.length && run[run.length - 1].h - h > BASELINE_WINDOW_H) break;
+    run.unshift({ h, v });
   }
-  if (deltas.length === 0 || now - deltas[0].at > MAX_GAP_H * 3600_000) return { level: null, momentum: null, videosPerHour: null };
-  const current = deltas[0].perHour;
-  const prior = deltas.slice(1).filter((d) => now - d.at <= 30 * 3600_000).map((d) => d.perHour);
-  const momentum = prior.length >= MIN_PRIOR_DELTAS ? ratioToBaseline(current, prior) : null;
-  return { level: tiktokLevel(current * 24), momentum, videosPerHour: Number(current.toFixed(2)) };
+  if (run.length < 2) return none;
+  const last = run[run.length - 1];
+  const prev = run[run.length - 2];
+  if (now / 3600_000 - last.h > MAX_GAP_H) return none;
+
+  const pair = Math.max(0, (last.v - prev.v) / (last.h - prev.h));
+  const earlier = run.slice(0, -1);
+  const recent = earlier.filter((p) => last.h - p.h <= TREND_WINDOW_H + 0.5);
+
+  let rate = pair;
+  if (recent.length >= MIN_TREND_READS) {
+    const base = trendFit(recent);
+    const band = (SPIKE_K * Math.SQRT2 * Math.max(base.noise, 1)) / (last.h - prev.h);
+    if (pair <= Math.max(0, base.slope) + band) {
+      rate = Math.max(0, trendFit([...recent, last]).slope);
+    }
+  }
+
+  let momentum: number | null = null;
+  if (earlier.length >= MIN_BASELINE_READS) {
+    const day = trendFit(earlier);
+    const dayBand = (SPIKE_K * Math.SQRT2 * Math.max(day.noise, 1)) / (last.h - prev.h);
+    const baseline = Math.max(0, day.slope);
+    if (Math.abs(rate - baseline) > dayBand) momentum = ratioToBaseline(rate, [baseline]);
+  }
+
+  return { level: tiktokLevel(rate * 24), momentum, videosPerHour: Number(rate.toFixed(2)) };
 }
 
 export interface TiktokRequest {

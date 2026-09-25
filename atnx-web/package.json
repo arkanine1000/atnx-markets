@@ -15,6 +15,7 @@
     "vi:audit": "npx --yes tsx --env-file=.env.local scripts/vi-audit.ts",
     "vi:jumps": "npx --yes tsx --env-file=.env.local scripts/vi-jumps.ts",
     "vi:report": "npx --yes tsx --env-file=.env.local scripts/vi-run-report.ts",
+    "test:vi": "npx --yes tsx --test lib/vi/*.test.ts",
     "aliases:backfill": "npx --yes tsx --env-file=.env.local scripts/backfill-aliases.ts",
     "categories:backfill": "npx --yes tsx --env-file=.env.local scripts/backfill-categories.ts",
     "thumbs:backfill": "npx --yes tsx --env-file=.env.local scripts/backfill-thumbnails.ts"

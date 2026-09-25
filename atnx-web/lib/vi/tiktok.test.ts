@@ -1,0 +1,91 @@
+// Run with: npm run test:vi
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { tiktokLevel, tiktokReading, trendFit } from './tiktok';
+import type { Sample } from './samples';
+
+const T0 = Date.parse('2026-09-25T00:09:00Z');
+const H = 3600_000;
+
+// Reads every 3 h of one hashtag, oldest first in `counts`; returned newest
+// first, as readSamples gives them.
+function series(counts: number[], tag = 'tag', stepH = 3): { samples: Sample[]; now: number } {
+  const samples = counts.map((value, i) => ({
+    sampled_at: new Date(T0 + i * stepH * H).toISOString(),
+    value,
+    meta: { hashtag: tag },
+  }));
+  return { samples: samples.reverse(), now: T0 + (counts.length - 1) * stepH * H + 60_000 };
+}
+
+// Steady growth of `perH` a read, with the jitter seen from the vendor.
+function jittered(start: number, perH: number, jitter: number[]): number[] {
+  return jitter.map((j, i) => start + perH * 3 * i + j);
+}
+
+test('trendFit ignores a stale total', () => {
+  const pts = [0, 3, 6, 9, 12].map((h) => ({ h, v: 1000 + 10 * h }));
+  pts[3].v = pts[1].v; // one read repeats an older total
+  assert.equal(trendFit(pts).slope, 10);
+});
+
+test('slow tag: jitter no longer reads as zero growth', () => {
+  // ~15 videos/h with +-20 video jitter; the newest pair happens to be 0.
+  const counts = jittered(234_600, 15, [0, 20, -15, 10, -20, 15, 0]);
+  counts[6] = counts[5];
+  const { samples, now } = series(counts);
+  const r = tiktokReading(samples, now);
+  assert.ok(r.videosPerHour! > 8 && r.videosPerHour! < 22, `rate ${r.videosPerHour}`);
+  assert.ok(r.level! > 350, `level ${r.level}`);
+});
+
+test('drops come through the trend, not the newest pair', () => {
+  const counts = jittered(3_055_000, 150, [0, 100, -80, 60, -40, 90]);
+  counts.push(counts[5] - 450); // the vendor steps back 450 videos
+  const { samples, now } = series(counts);
+  const r = tiktokReading(samples, now);
+  assert.ok(r.videosPerHour! > 100, `rate ${r.videosPerHour}`);
+});
+
+test('a real spike shows on its first read', () => {
+  const counts = jittered(1_765_000, 30, [0, 15, -10, 5, -15, 10]);
+  counts.push(counts[5] + 3 * 150); // 150/h, 5x the recent rate
+  const { samples, now } = series(counts);
+  const r = tiktokReading(samples, now);
+  assert.equal(r.videosPerHour, 150);
+  assert.equal(r.level, tiktokLevel(150 * 24));
+  assert.ok(r.momentum !== null && r.momentum > 2, `momentum ${r.momentum}`);
+});
+
+test('steady growth within the noise has no momentum', () => {
+  const counts = jittered(500_000, 40, [0, 12, -9, 6, -12, 9, -6]);
+  const { samples, now } = series(counts);
+  assert.equal(tiktokReading(samples, now).momentum, null);
+});
+
+test('warm-up: the newest pair until the trend has enough reads', () => {
+  const { samples, now } = series([1000, 1030, 1090]);
+  const r = tiktokReading(samples, now);
+  assert.equal(r.videosPerHour, 20);
+  assert.equal(r.momentum, null);
+});
+
+test('reads of a previous hashtag are not mixed in', () => {
+  const old = series([17_000, 17_100, 17_200]).samples.map((s) => ({ ...s, meta: { hashtag: 'grandtheftautovi' } }));
+  const cur = series([2_190_000, 2_190_500], 'gta6');
+  const shifted = cur.samples.map((s) => ({ ...s, sampled_at: new Date(Date.parse(s.sampled_at) + 9 * H).toISOString() }));
+  const r = tiktokReading([...shifted, ...old], cur.now + 9 * H);
+  assert.equal(r.videosPerHour, Number((500 / 3).toFixed(2)));
+});
+
+test('a stale series has no reading', () => {
+  const { samples, now } = series([1000, 1030, 1060]);
+  assert.equal(tiktokReading(samples, now + 10 * H).level, null);
+});
+
+test('an off-cycle read next to a scheduled one is dropped', () => {
+  const { samples, now } = series([1000, 1030, 1060, 1090]);
+  const extra = { sampled_at: new Date(Date.parse(samples[0].sampled_at) - 20 * 60_000).toISOString(), value: 1500, meta: { hashtag: 'tag' } };
+  const r = tiktokReading([samples[0], extra, ...samples.slice(1)], now);
+  assert.equal(r.videosPerHour, 10);
+});
