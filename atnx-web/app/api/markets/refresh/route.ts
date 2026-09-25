@@ -3,7 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { prefetchSlowSources, scoreTerms, type ScoreRequest, type SignalResult } from '@/lib/signals';
 import { recordVi } from '@/lib/store';
 import { xSpendUsd } from '@/lib/vi/x';
-import { USD_PER_HASHTAG } from '@/lib/vi/tiktok';
+import { usdPerHashtag } from '@/lib/vi/tiktok';
 import type { Components } from '@/lib/vi/score';
 import { normalizeSearchTerm } from '@/lib/vi/trends';
 import { verifiedYoutubeHandles, type CreatorHandle } from '@/lib/creators/channel';
@@ -119,7 +119,7 @@ export async function refreshScores(cadence: 'fast' | 'slow', { dryRun = false, 
   if (cadence === 'slow' && summary.tiktok) {
     const started = prefetchSlowSources(markets.map(request));
     summary.tiktok.hashtags = started.tiktokHashtags;
-    summary.tiktok.estUsd = Number((started.tiktokHashtags * USD_PER_HASHTAG).toFixed(4));
+    summary.tiktok.estUsd = Number((started.tiktokHashtags * usdPerHashtag()).toFixed(4));
   }
 
   const chunkSize = cadence === 'fast' ? CONCURRENCY : SLOW_CHUNK;
