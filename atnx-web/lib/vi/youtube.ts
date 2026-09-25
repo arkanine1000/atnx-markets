@@ -1,8 +1,9 @@
 // YouTube Data API v3 as a VI source. Free, but search.list has its own
-// bucket of 100 calls a day (since 2026-06), so discovery is daily: one
-// search per market finds the most-viewed videos of the last week for
-// the name, and the hourly pass re-reads their view counts with
-// videos.list (1 unit each, 10k a day). The level is the week's views
+// bucket of 100 calls a day (since 2026-06), so discovery is rationed: a
+// search per market finds the most-viewed videos of the last week for the
+// name, repeated every one to three days depending on how the market is
+// moving (see discoveryInterval), and the hourly pass re-reads their view
+// counts with videos.list (1 unit each, 10k a day). The level is the week's views
 // across that set; the momentum is the last hour's view growth against
 // the mean hourly growth over the samples before it, from vi_samples.
 // Growth is only compared between samples of the same video set, so the
@@ -10,11 +11,32 @@
 //
 // The slow path owns it. Without a key the source is unknown.
 import { clamp, ratioToBaseline, type SourceComponent } from './score';
-import { pruneSamples, readSamples, writeSample } from './samples';
+import { dailyLedger, pruneSamples, readSamples, writeSample } from './samples';
 
 const API = 'https://www.googleapis.com/youtube/v3';
 const CACHE_TTL = 50 * 60 * 1000;
-const DISCOVERY_TTL = 24 * 3600 * 1000;
+// How long a video set stands before the market searches again. A busy
+// market's top videos turn over within a day; a quiet one's barely in
+// three; a search that found nothing rarely finds something an hour later
+// (it used to retry every hourly run, which alone spent the day's bucket).
+const HOUR = 3600 * 1000;
+const HOT_TTL = 24 * HOUR;
+const BASE_TTL = 48 * HOUR;
+const QUIET_TTL = 72 * HOUR;
+const EMPTY_TTL = 72 * HOUR;
+const HOT_LEVEL = 600;
+const HOT_MOMENTUM = 1.5;
+const QUIET_LEVEL = 300;
+// Share of the set still inside the week below which it is decaying.
+const DECAY_SHARE = 0.6;
+// A set found a few minutes into one run is otherwise just short of its
+// interval at the matching run a day later.
+const TTL_SLACK = 15 * 60 * 1000;
+// Searches a day for re-discovery; the rest of the 100 stay free for
+// markets that have never searched.
+const SEARCH_BUDGET = 90;
+const SEARCH_CAP = 100;
+const LEDGER_TTL = 5 * 60 * 1000;
 const WINDOW_DAYS = 7;
 const MAX_VIDEOS = 25;
 // Samples kept per market; three days at the hourly cadence.
@@ -26,6 +48,8 @@ const MIN_GAP_H = 0.5;
 const MAX_GAP_H = 3;
 
 const cache = new Map<string, { data: SourceComponent; expiry: number }>();
+let ledger: { spent: number; at: number } | null = null;
+let searchedThisProcess = 0;
 
 export function youtubeConfigured(): boolean {
   return !!process.env.YOUTUBE_API_KEY;
@@ -66,6 +90,36 @@ export function youtubeMomentum(samples: YoutubeSample[], now = Date.now()): { m
   const prior = deltas.slice(1);
   const momentum = latestIsCurrent && prior.length >= MIN_PRIOR_DELTAS ? ratioToBaseline(current, prior) : null;
   return { momentum, views1h: Math.round(current) };
+}
+
+// How long the stored set stands before the market searches again, from
+// the stored reading. Pure.
+export function discoveryInterval(stored: SourceComponent | null | undefined): number {
+  const ids = typeof stored?.meta?.videos === 'string' && stored.meta.videos ? stored.meta.videos.split(',') : [];
+  if (ids.length === 0) return EMPTY_TTL;
+  const level = stored?.level ?? 0;
+  if (level >= HOT_LEVEL || (stored?.momentum ?? 0) >= HOT_MOMENTUM) return HOT_TTL;
+  const inWeek = typeof stored?.meta?.video_count === 'number' ? stored.meta.video_count : ids.length;
+  if (inWeek / ids.length < DECAY_SHARE) return HOT_TTL;
+  if (level < QUIET_LEVEL) return QUIET_TTL;
+  return BASE_TTL;
+}
+
+// Whether the market should search this pass. Pure.
+export function discoveryDue(stored: SourceComponent | null | undefined, now = Date.now()): boolean {
+  const at = typeof stored?.meta?.discovered_at === 'string' ? Date.parse(stored.meta.discovered_at) : NaN;
+  if (!Number.isFinite(at)) return true;
+  return now - at >= discoveryInterval(stored) - TTL_SLACK;
+}
+
+// Searches left today: the budget for re-discovery, the cap for a market
+// that has never searched.
+async function searchesLeft(neverSearched: boolean): Promise<number> {
+  if (!ledger || Date.now() - ledger.at > LEDGER_TTL) {
+    ledger = { spent: await dailyLedger('youtube', 'searched'), at: Date.now() };
+    searchedThisProcess = 0;
+  }
+  return (neverSearched ? SEARCH_CAP : SEARCH_BUDGET) - ledger.spent - searchedThisProcess;
 }
 
 async function api<T>(path: string, params: Record<string, string>): Promise<{ ok: true; body: T } | { ok: false; status: number }> {
@@ -134,18 +188,22 @@ export async function fetchYoutubeSignal({ term, aliases = [], marketId, stored 
   if (!youtubeConfigured() || term.trim().length < 2) return empty;
 
   try {
-    // Yesterday's set until it is a day old; a failed search (quota
-    // spent) keeps using it rather than reporting unknown.
+    // The stored set until its interval is up; a failed or unaffordable
+    // search keeps using it rather than reporting unknown.
     const storedIds = typeof stored?.meta?.videos === 'string' && stored.meta.videos ? stored.meta.videos.split(',') : [];
     const discoveredAt = typeof stored?.meta?.discovered_at === 'string' ? Date.parse(stored.meta.discovered_at) : 0;
     let ids = storedIds;
     let discovered = discoveredAt ? new Date(discoveredAt).toISOString() : null;
-    if (Date.now() - discoveredAt > DISCOVERY_TTL || ids.length === 0) {
-      const found = await discover(term, aliases);
+    let searched = 0;
+    if (discoveryDue(stored)) {
+      const neverSearched = !discoveredAt;
+      const found = (await searchesLeft(neverSearched)) > 0 ? await discover(term, aliases) : null;
       if (found) {
         ids = found;
         discovered = new Date().toISOString();
-      } else if (ids.length === 0) {
+        searched = 1;
+        searchedThisProcess++;
+      } else if (neverSearched) {
         return empty;
       }
     }
@@ -161,7 +219,7 @@ export async function fetchYoutubeSignal({ term, aliases = [], marketId, stored 
     let momentum: number | null = null;
     let views1h: number | null = null;
     if (marketId) {
-      await writeSample(marketId, 'youtube', views7d, { set });
+      await writeSample(marketId, 'youtube', views7d, searched ? { set, searched } : { set });
       ({ momentum, views1h } = youtubeMomentum(await readSamples(marketId, 'youtube', MAX_SAMPLES)));
       await pruneSamples(marketId, 'youtube', SAMPLE_KEEP_MS);
     }
