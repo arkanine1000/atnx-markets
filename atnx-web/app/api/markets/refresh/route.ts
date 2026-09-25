@@ -6,6 +6,7 @@ import { xSpendUsd } from '@/lib/vi/x';
 import { USD_PER_HASHTAG } from '@/lib/vi/tiktok';
 import type { Components } from '@/lib/vi/score';
 import { normalizeSearchTerm } from '@/lib/vi/trends';
+import { verifiedYoutubeHandles, type CreatorHandle } from '@/lib/creators/channel';
 
 // Fast refresh, every 5 minutes (vercel.json). Re-reads the fast sources
 // (Google Trends, Bluesky) for every live market, combines them with the
@@ -81,7 +82,7 @@ interface MarketRow {
   current_vi: number | null;
 }
 
-function toRequest(m: MarketRow): ScoreRequest {
+function toRequest(m: MarketRow, handle?: CreatorHandle): ScoreRequest {
   return {
     term: normalizeSearchTerm({ name: m.entity_name }),
     aliases: m.aliases ?? [],
@@ -89,6 +90,7 @@ function toRequest(m: MarketRow): ScoreRequest {
     entityType: m.entity_type,
     category: m.category,
     marketId: m.id,
+    creator: handle ? { youtubeChannelId: handle.platform_id, verifiedAt: handle.verified_at } : null,
   };
 }
 
@@ -111,9 +113,11 @@ export async function refreshScores(cadence: 'fast' | 'slow', { dryRun = false, 
     summary.tiktok = { hashtags: 0, markets: 0, estUsd: 0 };
   }
   if (markets.length === 0) return summary;
+  const handles = new Map((await verifiedYoutubeHandles(markets.map((m) => m.id))).map((h) => [h.market_id, h]));
+  const request = (m: MarketRow) => toRequest(m, handles.get(m.id));
 
   if (cadence === 'slow' && summary.tiktok) {
-    const started = prefetchSlowSources(markets.map(toRequest));
+    const started = prefetchSlowSources(markets.map(request));
     summary.tiktok.hashtags = started.tiktokHashtags;
     summary.tiktok.estUsd = Number((started.tiktokHashtags * USD_PER_HASHTAG).toFixed(4));
   }
@@ -127,7 +131,7 @@ export async function refreshScores(cadence: 'fast' | 'slow', { dryRun = false, 
       break;
     }
     const chunk = markets.slice(i, i + chunkSize);
-    const results = await scoreTerms(chunk.map(toRequest), cadence);
+    const results = await scoreTerms(chunk.map(request), cadence);
     await Promise.all(chunk.map((market, k) => settle(market, results[k], cadence, dryRun, summary, t0)));
   }
 

@@ -48,6 +48,8 @@ import {
 } from './review';
 import { normalizeSearchTerm } from './trends';
 import { composeVi } from './signals';
+import { verifiedYoutubeHandles } from './creators/channel';
+import { hasYoutubeRow, resolveAndSave } from './creators/store';
 import type { Components } from './vi/score';
 import { addCapture, createMarket, DuplicateCaptureError, recordVi, type Capture } from './store';
 import { createAdminClient } from './supabase/admin';
@@ -951,6 +953,12 @@ async function scoreMarketLater(ctx: ScoringContext): Promise<void> {
       .maybeSingle();
     const term = market?.entity_name ? normalizeSearchTerm({ name: market.entity_name }) : ctx.term;
     const aliases = ctx.aliases ?? ((market?.aliases as string[] | null) ?? []);
+    // A person market's own channel is looked up once, before its first
+    // score; the hourly pass re-checks it weekly (lib/creators/store.ts).
+    if (market?.entity_type === 'person' && !(await hasYoutubeRow(ctx.marketId))) {
+      await resolveAndSave(ctx.marketId).catch((err) => console.error('[creators] resolve at capture failed', (err as Error).message));
+    }
+    const [handle] = await verifiedYoutubeHandles([ctx.marketId]);
     const signal = await composeVi(
       {
         term,
@@ -959,6 +967,7 @@ async function scoreMarketLater(ctx: ScoringContext): Promise<void> {
         category: (market?.category as string | null) ?? null,
         marketId: ctx.marketId,
         stored: (market?.vi_components as Components | null) ?? null,
+        creator: handle ? { youtubeChannelId: handle.platform_id, verifiedAt: handle.verified_at } : null,
       }
     );
     if (signal.score === null) return;

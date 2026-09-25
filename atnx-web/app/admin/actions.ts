@@ -184,3 +184,46 @@ export async function approveCapture(
     reason: reason || "approved",
   });
 }
+
+// A creator market's YouTube channel (supabase/017_market_handles): the
+// resolver verifies what it can prove and queues the rest here. Verifying
+// a candidate channel makes it score the market's creator reach, ramping
+// in over 48 h from now; rejecting stops it. The decision is final: the
+// resolver's weekly re-check leaves an admin-decided row alone.
+export async function decideHandle(
+  marketId: string,
+  decision: "verify" | "reject",
+  channel?: { id: string; handle: string | null; subscribers: number | null }
+): Promise<AdminActionResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: "Not signed in" };
+  const { data: profile } = await supabase.from("user_profiles").select("role").eq("id", user.id).maybeSingle();
+  if (!profile || !["admin", "moderator"].includes(profile.role)) return { success: false, error: "Not allowed" };
+  if (decision === "verify" && !channel) return { success: false, error: "No channel to verify" };
+
+  const admin = createAdminClient();
+  const now = new Date().toISOString();
+  const update =
+    decision === "verify"
+      ? { status: "verified" as const, platform_id: channel!.id, handle: channel!.handle, audience: channel!.subscribers, verified_at: now }
+      : { status: "rejected" as const, verified_at: null };
+  const { error } = await admin
+    .from("market_handles")
+    .update({ ...update, review: false, confidence: "admin", checked_at: now })
+    .eq("market_id", marketId)
+    .eq("platform", "youtube");
+  if (error) return { success: false, error: error.message };
+
+  await admin.from("moderation_log").insert({
+    admin_user_id: user.id,
+    action: decision === "verify" ? "verify_handle" : "reject_handle",
+    target_type: "market",
+    target_id: marketId,
+    metadata: { platform: "youtube", channel_id: channel?.id ?? null, handle: channel?.handle ?? null },
+  });
+  revalidatePath("/admin");
+  return { success: true };
+}

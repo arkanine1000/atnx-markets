@@ -3,6 +3,8 @@ import { authorized, refreshScores } from '../refresh/route';
 import { refreshThumbnails } from '@/lib/thumbnails';
 import { sweepExpiredDrafts } from '@/lib/review';
 import { runGdeltJob } from '@/lib/vi/gdelt';
+import { runChannelJob } from '@/lib/creators/channel';
+import { runResolverPass } from '@/lib/creators/store';
 
 // Slow refresh, hourly (vercel.json): the quota-bound and daily sources
 // (GDELT, Wikipedia, YouTube, HN, X, TikTok). It first runs the GDELT
@@ -60,6 +62,18 @@ export async function GET(request: Request) {
     gdelt = { error: (err as Error).message };
   }
 
+  // Person markets' own YouTube channels: look up the unchecked and the
+  // week-old (lib/creators/store.ts), then read every verified channel's
+  // view total (lib/creators/channel.ts). Both before scoring.
+  let channels: Record<string, unknown>;
+  try {
+    const resolver = await runResolverPass();
+    channels = { resolver, ...(await runChannelJob()) };
+  } catch (err) {
+    console.error('[creators] channel job failed:', err);
+    channels = { error: (err as Error).message };
+  }
+
   const [scores, thumbs] = await Promise.allSettled([refreshScores('slow', { limit }), refreshThumbnails()]);
 
   if (scores.status === 'rejected') {
@@ -76,7 +90,7 @@ export async function GET(request: Request) {
   }
 
   if (scores.status === 'rejected') {
-    return NextResponse.json({ error: (scores.reason as Error).message, gdeltJob: gdelt, thumbnails, drafts }, { status: 500 });
+    return NextResponse.json({ error: (scores.reason as Error).message, gdeltJob: gdelt, channelJob: channels, thumbnails, drafts }, { status: 500 });
   }
-  return NextResponse.json({ ...scores.value, gdeltJob: gdelt, thumbnails, drafts });
+  return NextResponse.json({ ...scores.value, gdeltJob: gdelt, channelJob: channels, thumbnails, drafts });
 }
