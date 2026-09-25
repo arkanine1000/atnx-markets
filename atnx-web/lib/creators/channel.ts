@@ -139,10 +139,10 @@ export interface ChannelJobSummary {
 
 // The hourly pass: every verified channel's total, one call per 50, and a
 // bootstrap for channels without a day of totals yet.
-export async function runChannelJob(now = Date.now()): Promise<ChannelJobSummary> {
+export async function runChannelJob(now = Date.now(), marketIds?: string[]): Promise<ChannelJobSummary> {
   const summary: ChannelJobSummary = { channels: 0, totals: 0, bootstraps: 0, units: 0 };
   if (!youtubeConfigured()) return { ...summary, skipped: 'YOUTUBE_API_KEY not set' };
-  const handles = await verifiedYoutubeHandles();
+  const handles = await verifiedYoutubeHandles(marketIds);
   summary.channels = handles.length;
   const videoCounts = new Map<string, number>();
   for (let i = 0; i < handles.length; i += 50) {

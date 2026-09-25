@@ -229,12 +229,16 @@ export interface GdeltJobSummary {
 }
 
 // The hourly count. Safe to run more often: each run replaces the rows
-// for the days it counted.
-export async function runGdeltJob(now = Date.now()): Promise<GdeltJobSummary> {
+// for the days it counted. `marketIds` limits it to those markets (a new
+// market's first pass counts today only, ~0.25 GB; its history comes with
+// the 03:00 backfill).
+export async function runGdeltJob(now = Date.now(), { marketIds, backfill = true }: { marketIds?: string[]; backfill?: boolean } = {}): Promise<GdeltJobSummary> {
   const summary: GdeltJobSummary = { markets: 0, days: [], backfilled: 0, rows: 0, gbBilled: 0 };
   if (!bigqueryConfigured()) return { ...summary, skipped: 'GCP_SA_KEY_B64 not set' };
   const db = createAdminClient();
-  const { data, error } = await db.from('markets').select('id, entity_name, category, aliases, vi_components').is('deleted_at', null);
+  let q = db.from('markets').select('id, entity_name, category, aliases, vi_components').is('deleted_at', null);
+  if (marketIds) q = q.in('id', marketIds);
+  const { data, error } = await q;
   if (error) throw new Error(error.message);
   const markets: JobMarket[] = [];
   for (const m of data ?? []) {
@@ -256,6 +260,10 @@ export async function runGdeltJob(now = Date.now()): Promise<GdeltJobSummary> {
   summary.days = [...hourly.totals.keys()].sort();
   summary.gbBilled += hourly.bytesBilled / GB;
 
+  if (!backfill) {
+    summary.gbBilled = Number(summary.gbBilled.toFixed(3));
+    return summary;
+  }
   // Markets short of a week of history.
   const since = utcDay(now - BACKFILL_DAYS * DAY_MS);
   const { data: have, error: haveErr } = await db

@@ -112,16 +112,29 @@ export function DeltaChip({
   );
 }
 
-/** The Virality Index number, always yellow. */
+/** The Virality Index number, always yellow; "Scoring…" for a new market
+ *  whose first pass over every source has not finished (supabase/018). */
 export function ScoreBadge({
   value,
   size = "sm",
   className = "",
+  scoring = false,
 }: {
   value: number;
   size?: "sm" | "md" | "lg";
   className?: string;
+  scoring?: boolean;
 }) {
+  if (scoring) {
+    return (
+      <span
+        className={`inline-flex items-center justify-end leading-none text-tertiary font-mono text-[11px] uppercase tracking-wider animate-pulse ${className}`}
+        title="Reading every source for this new market"
+      >
+        Scoring…
+      </span>
+    );
+  }
   // Bare number in the display face; yellow is the VI's colour everywhere.
   const sz =
     size === "lg" ? "text-3xl" : size === "md" ? "text-2xl" : "text-lg";

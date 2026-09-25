@@ -39,6 +39,7 @@ import type {
 } from "@/lib/store";
 import type { TrendsResult } from "@/lib/trends";
 import { viTier } from "@/lib/vi/score";
+import { startPolling } from "@/lib/poll";
 
 interface Props {
   market: MarketRow;
@@ -139,7 +140,7 @@ function RelatedMarketLink({ market }: { market: MarketRow }) {
           VI
         </div>
         <div className="font-bold text-atnx-yellow light:text-atnx-yellow-light tabular-nums">
-          {Math.round(market.current_vi)}
+          {market.vi_state === "scoring" ? "…" : Math.round(market.current_vi)}
         </div>
       </div>
     </Link>
@@ -172,6 +173,13 @@ export function MarketDetailClient({
   const selected = captures[selectedIdx] ?? captures[0];
   const latest = captures[0];
   const { analysis, viralityScore } = selected;
+  const scoring = market.vi_state === "scoring";
+  // A new market's first pass takes a minute or two; re-read the page until
+  // it is live so the number and the trade ticket appear on their own.
+  useEffect(() => {
+    if (!scoring) return;
+    return startPolling(async () => router.refresh(), { intervalMs: 10_000, maxIntervalMs: 30_000 });
+  }, [scoring, router]);
   // The market's own name. Captures carry the name they were analysed
   // under, which for older ones can differ from the market they sit on.
   const name = market.entity_name || latest.analysis.name || "Untitled";
@@ -371,14 +379,22 @@ export function MarketDetailClient({
                   <div className="text-[10px] font-mono uppercase tracking-[0.15em] text-tertiary mb-1">
                     Virality Index
                   </div>
-                  <div className="flex sm:justify-end items-baseline gap-2">
-                    <span className="text-4xl font-bold text-atnx-yellow light:text-atnx-yellow-light leading-none">
-                      {viralityScore}
-                    </span>
-                    <span className="text-[11px] font-mono uppercase tracking-[0.12em] text-secondary">
-                      {viTier(viralityScore).label}
-                    </span>
-                  </div>
+                  {scoring ? (
+                    <div className="flex sm:justify-end items-baseline">
+                      <span className="text-sm font-mono uppercase tracking-[0.12em] text-secondary animate-pulse">
+                        Scoring…
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="flex sm:justify-end items-baseline gap-2">
+                      <span className="text-4xl font-bold text-atnx-yellow light:text-atnx-yellow-light leading-none">
+                        {viralityScore}
+                      </span>
+                      <span className="text-[11px] font-mono uppercase tracking-[0.12em] text-secondary">
+                        {viralityScore > 0 ? viTier(viralityScore).label : "No attention yet"}
+                      </span>
+                    </div>
+                  )}
                   <div className="flex sm:justify-end items-center mt-2">
                     <DeltaChip value={change24h} size="md" />
                   </div>
@@ -707,6 +723,7 @@ export function MarketDetailClient({
               category={analysis.category || market.entity_type || "other"}
               captureId={selected.id}
               score={viralityScore}
+              scoring={scoring}
               openPosition={openPos}
               onOpened={handleOpened}
             />
@@ -726,6 +743,7 @@ export function MarketDetailClient({
             category={analysis.category || market.entity_type || "other"}
             captureId={selected.id}
             score={viralityScore}
+            scoring={scoring}
             openPosition={openPos}
             onOpened={handleOpened}
             initialSide={side}

@@ -62,7 +62,7 @@ export function FeaturedHero({ captures }: { captures: Capture[] }) {
   const featured = useMemo(() => {
     const seen = new Set<string>();
     return captures
-      .filter((c) => c.marketId && !seen.has(c.marketId) && seen.add(c.marketId))
+      .filter((c) => c.marketId && !c.viScoring && !seen.has(c.marketId) && seen.add(c.marketId))
       .sort((a, b) => b.viralityScore - a.viralityScore)
       .slice(0, FEATURED);
   }, [captures]);

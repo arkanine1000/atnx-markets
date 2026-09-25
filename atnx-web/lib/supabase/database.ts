@@ -54,6 +54,8 @@ export type Database = {
           description_source: string | null;
           deleted_at: string | null;
           created_at: string;
+          vi_state: 'scoring' | 'live';
+          vi_scoring_since: string | null;
         };
         Insert: {
           id?: string;
@@ -86,6 +88,8 @@ export type Database = {
           description_source?: string | null;
           deleted_at?: string | null;
           created_at?: string;
+          vi_state?: 'scoring' | 'live';
+          vi_scoring_since?: string | null;
         };
         Update: {
           id?: string;
@@ -118,6 +122,8 @@ export type Database = {
           description_source?: string | null;
           deleted_at?: string | null;
           created_at?: string;
+          vi_state?: 'scoring' | 'live';
+          vi_scoring_since?: string | null;
         };
         Relationships: EmptyRelationships;
       };

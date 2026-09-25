@@ -112,7 +112,7 @@ export function MarketCard({ capture, captureCount, rank, compact }: Props) {
           </div>
         </div>
         <div className="flex flex-col items-end gap-1 shrink-0">
-          <ScoreBadge value={viralityScore} />
+          <ScoreBadge value={viralityScore} scoring={capture.viScoring} />
           <DeltaChip value={change24h} />
         </div>
       </div>
@@ -185,7 +185,7 @@ export function MarketRow({ capture, captureCount, rank }: Props) {
       <div className="hidden xs:block sm:w-20 shrink-0 text-right">
         <DeltaChip value={change24h} />
       </div>
-      <ScoreBadge value={viralityScore} className="w-14 sm:w-16" />
+      <ScoreBadge value={viralityScore} scoring={capture.viScoring} className="w-14 sm:w-16" />
       <span
         className="text-tertiary text-sm w-3 text-center shrink-0"
         aria-hidden="true"

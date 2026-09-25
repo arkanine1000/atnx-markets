@@ -22,6 +22,8 @@ interface Props {
   category: string;
   captureId: string;
   score: number;
+  // The market's first scoring pass is still running (supabase/018).
+  scoring?: boolean;
   openPosition?: Position;
   onOpened: (side: "long" | "short", size: number) => void;
   // Which side the ticket opens on; the phone dock opens it on the side
@@ -43,6 +45,7 @@ export function TradePanel({
   category,
   captureId,
   score,
+  scoring = false,
   openPosition: openPos,
   onOpened,
   initialSide = "long",
@@ -63,7 +66,10 @@ export function TradePanel({
   const leverage = Number(lev);
   const isLong = side === "long";
   const overBalance = !!user && total > balance;
-  const canSubmit = amountNum > 0 && !busy && !overBalance;
+  // No position opens on a market still being scored or without a score
+  // (the database refuses both; this says why before anyone tries).
+  const notReady = scoring || score <= 0;
+  const canSubmit = amountNum > 0 && !busy && !overBalance && !notReady;
   const liqVi = Math.round(liquidationVi(score, side, leverage));
 
   async function submit() {
@@ -286,6 +292,14 @@ export function TradePanel({
       {overBalance && !error && (
         <div className="text-xs text-atnx-magenta">
           Amount plus fee exceeds your available balance.
+        </div>
+      )}
+
+      {notReady && (
+        <div className="text-xs text-secondary">
+          {scoring
+            ? "Scoring this new market. Trading opens once every source has reported, usually within a couple of minutes."
+            : "No attention detected yet. Trading opens when this market has a score."}
         </div>
       )}
 

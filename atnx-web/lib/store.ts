@@ -43,6 +43,9 @@ export interface Capture {
   };
   trends: TrendsResult | null;
   viralityScore: number;
+  // The market is still being scored (supabase/018): show "Scoring..."
+  // instead of the number, and no trading.
+  viScoring?: boolean;
   // markets.total_captures, for the "N captures" chip on a card.
   captureCount?: number;
   // Write-side only: the per-source breakdown behind viralityScore and a
@@ -69,6 +72,8 @@ export type MarketRow = {
   description: string | null;
   // The market this one is about, if any (supabase/010). Display only.
   parent_market_id: string | null;
+  // 'scoring' until its first full pass over every source (supabase/018).
+  vi_state: 'scoring' | 'live';
 };
 
 type CaptureRowWithMarket = {
@@ -127,7 +132,7 @@ async function uploadScreenshot(
 }
 
 const MARKET_COLUMNS =
-  'id, entity_name, entity_type, current_vi, vi_last_updated, total_captures, thumbnail_url, thumbnail_source, category, description, parent_market_id';
+  'id, entity_name, entity_type, current_vi, vi_last_updated, total_captures, thumbnail_url, thumbnail_source, category, description, parent_market_id, vi_state';
 
 export async function getMarketById(id: string): Promise<MarketRow | null> {
   const { data, error } = await createAdminClient()
@@ -177,6 +182,8 @@ export async function createMarket(input: CreateMarketInput): Promise<CreateMark
       embedding: input.embedding,
       created_by: input.createdBy ?? null,
       parent_market_id: input.parentMarketId ?? null,
+      vi_state: 'scoring',
+      vi_scoring_since: new Date().toISOString(),
     })
     .select(MARKET_COLUMNS)
     .single();
@@ -199,17 +206,23 @@ export async function createMarket(input: CreateMarketInput): Promise<CreateMark
 // EMA of readings (2h half-life) so the chart moves as the score converges
 // rather than by injected noise; the raw reading is kept beside it.
 // Returns the smoothed value that was written.
+// How long a new market can stay `scoring` when no full pass has run.
+const MAX_SCORING_MS = 2 * 3600 * 1000;
+
 export async function recordVi(
   marketId: string,
   rawVi: number,
   components: Components,
-  seedSeries: { date: string; value: number }[]
+  seedSeries: { date: string; value: number }[],
+  // A full pass over every source ran (the new-market scoring, or a slow
+  // refresh): a market still `scoring` goes live with this write.
+  { fullPass = false }: { fullPass?: boolean } = {}
 ): Promise<number> {
   const supabase = createAdminClient();
 
   const { data: market, error: readErr } = await supabase
     .from('markets')
-    .select('current_vi, vi_last_updated, vi_components')
+    .select('current_vi, vi_last_updated, vi_components, vi_state, vi_scoring_since')
     .eq('id', marketId)
     .single();
   if (readErr) throw readErr;
@@ -232,8 +245,13 @@ export async function recordVi(
     if (seedErr) throw seedErr;
   }
 
-  const prev = firstWrite ? null : Number(market.current_vi);
-  const vi = smooth(prev, firstWrite ? null : (market.vi_last_updated as string | null), rawVi);
+  // While a market is scoring nobody holds it and nobody has seen a number,
+  // so the score is the reading itself; smoothing starts once it is live.
+  const scoring = market.vi_state === 'scoring';
+  const prev = firstWrite || scoring ? null : Number(market.current_vi);
+  const vi = scoring ? Math.round(rawVi * 100) / 100 : smooth(prev, firstWrite ? null : (market.vi_last_updated as string | null), rawVi);
+  const since = market.vi_scoring_since ? Date.parse(market.vi_scoring_since as string) : 0;
+  const goLive = scoring && (fullPass || Date.now() - since > MAX_SCORING_MS);
 
   const { error: insertErr } = await supabase
     .from('vi_history')
@@ -242,7 +260,7 @@ export async function recordVi(
 
   const { error: updateErr } = await supabase
     .from('markets')
-    .update({ current_vi: vi, vi_components: merged as unknown as Json, vi_last_updated: new Date().toISOString() })
+    .update({ current_vi: vi, vi_components: merged as unknown as Json, vi_last_updated: new Date().toISOString(), ...(goLive ? { vi_state: 'live' as const } : {}) })
     .eq('id', marketId);
   if (updateErr) throw updateErr;
 
@@ -517,6 +535,7 @@ function rowToCapture(
     analysis: cleanedAnalysis,
     trends,
     viralityScore: Math.round(market?.current_vi ?? 0),
+    viScoring: market?.vi_state === 'scoring',
     captureCount: market?.total_captures ?? undefined,
   };
 }
