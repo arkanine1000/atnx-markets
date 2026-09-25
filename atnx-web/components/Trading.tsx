@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { positionPnl } from "@/lib/pnl";
 
 // Toast notification
@@ -151,6 +151,113 @@ export function ClosePositionModal({ position, onClose }: CloseModalProps) {
         >
           Back to portfolio
         </button>
+      </div>
+    </div>
+  );
+}
+
+// Close confirmation: shows what closing now returns, and waits for a yes.
+export function ConfirmCloseModal({
+  position,
+  onConfirm,
+  onCancel,
+}: {
+  position: CloseModalProps["position"];
+  onConfirm: () => Promise<void> | void;
+  onCancel: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const leverage = position.leverage ?? 1;
+  const { pnlUsd, pnlPercent } = positionPnl({
+    sizeUsd: position.size,
+    entryVi: position.entryIndex,
+    currentVi: position.currentIndex,
+    direction: position.type,
+    leverage,
+  });
+  const isProfit = pnlUsd >= 0;
+  const tone = isProfit
+    ? "text-atnx-cyan light:text-atnx-cyan-light"
+    : "text-atnx-magenta light:text-atnx-magenta-light";
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !busy) onCancel();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [busy, onCancel]);
+
+  async function confirm() {
+    setBusy(true);
+    try {
+      await onConfirm();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      style={{ backgroundColor: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)" }}
+      onClick={() => !busy && onCancel()}
+    >
+      <div
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="confirm-close-title"
+        onClick={(e) => e.stopPropagation()}
+        className="bg-elevated border border-surface rounded-2xl p-6 w-full max-w-sm mx-4"
+      >
+        <h2 id="confirm-close-title" className="font-display text-lg font-bold text-primary">
+          Close position?
+        </h2>
+        <p className="text-xs text-secondary mt-1">
+          {position.name} &middot; {position.type.toUpperCase()} {leverage}&times;
+        </p>
+
+        <dl className="mt-5 space-y-1.5 text-xs">
+          <div className="flex justify-between">
+            <dt className="text-tertiary">Position</dt>
+            <dd className="text-primary font-mono tabular-nums">
+              ${position.size.toFixed(2)} at {position.entryIndex} VI
+            </dd>
+          </div>
+          <div className="flex justify-between">
+            <dt className="text-tertiary">Closes at</dt>
+            <dd className="text-atnx-yellow light:text-atnx-yellow-light font-mono tabular-nums">
+              {position.currentIndex} VI
+            </dd>
+          </div>
+          <div className="flex justify-between">
+            <dt className="text-tertiary">PnL</dt>
+            <dd className={`font-mono font-bold tabular-nums ${tone}`}>
+              {isProfit ? "+" : "-"}${Math.abs(pnlUsd).toFixed(2)} ({isProfit ? "+" : ""}
+              {pnlPercent.toFixed(1)}%)
+            </dd>
+          </div>
+        </dl>
+
+        <div className="mt-6 grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={busy}
+            autoFocus
+            className="py-2.5 rounded-xl border border-surface text-sm text-primary hover:bg-surface cursor-pointer transition-colors disabled:opacity-50"
+          >
+            No, keep it
+          </button>
+          <button
+            type="button"
+            onClick={confirm}
+            disabled={busy}
+            className="py-2.5 rounded-xl bg-atnx-magenta text-white text-sm font-bold hover:brightness-110 cursor-pointer transition disabled:opacity-50"
+          >
+            {busy ? "Closing…" : "Yes, close"}
+          </button>
+        </div>
       </div>
     </div>
   );

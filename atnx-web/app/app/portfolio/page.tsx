@@ -8,7 +8,7 @@ import {
   type Position,
 } from "@/context/DemoContext";
 import { useAuth } from "@/context/AuthContext";
-import { ClosePositionModal, DemoToast } from "@/components/Trading";
+import { ClosePositionModal, ConfirmCloseModal, DemoToast } from "@/components/Trading";
 import { PortfolioMobile } from "@/components/PortfolioMobile";
 import { PortfolioChart } from "@/components/PortfolioChart";
 import { usePortfolioFeed } from "@/components/usePortfolioFeed";
@@ -108,20 +108,45 @@ export default function PortfolioPage() {
     type: "long" | "short" | "close-profit" | "close-loss";
   } | null>(null);
 
+  // Both layouts ask before closing. The phone rows await the answer (and
+  // the close, if it's a yes) so they can refetch afterwards.
+  const [confirming, setConfirming] = useState<{
+    position: Position;
+    settle: () => void;
+  } | null>(null);
+
+  const requestClose = useCallback(
+    (pos: Position) =>
+      new Promise<void>((resolve) => setConfirming({ position: pos, settle: resolve })),
+    [],
+  );
   const handleClose = useCallback(
-    async (pos: Position) => {
-      const closed = await closePosition(pos.id);
-      if (closed) setClosingPosition(closed);
+    (pos: Position) => {
+      void requestClose(pos);
     },
-    [closePosition],
+    [requestClose],
   );
   const handleCloseById = useCallback(
     async (id: string) => {
-      const closed = await closePosition(id);
-      if (closed) setClosingPosition(closed);
+      const pos = positions.find((p) => p.id === id);
+      if (pos) await requestClose(pos);
     },
-    [closePosition],
+    [positions, requestClose],
   );
+  const confirmClose = useCallback(async () => {
+    if (!confirming) return;
+    try {
+      const closed = await closePosition(confirming.position.id);
+      if (closed) setClosingPosition(closed);
+    } finally {
+      confirming.settle();
+      setConfirming(null);
+    }
+  }, [confirming, closePosition]);
+  const cancelClose = useCallback(() => {
+    confirming?.settle();
+    setConfirming(null);
+  }, [confirming]);
 
   const handleCloseModalDismiss = useCallback(() => {
     if (closingPosition) {
@@ -234,6 +259,14 @@ export default function PortfolioPage() {
           </div>
         )}
       </div>
+
+      {confirming && (
+        <ConfirmCloseModal
+          position={confirming.position}
+          onConfirm={confirmClose}
+          onCancel={cancelClose}
+        />
+      )}
 
       {closingPosition && (
         <ClosePositionModal
