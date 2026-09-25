@@ -52,6 +52,8 @@ export function TradePanel({
   const [side, setSide] = useState<"long" | "short">(initialSide);
   const [amount, setAmount] = useState("100");
   const [lev, setLev] = useState<Lev>("1");
+  // Leverage and the cost breakdown are folded away until asked for.
+  const [advanced, setAdvanced] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -172,75 +174,109 @@ export function TradePanel({
         </div>
       </div>
 
-      {/* Leverage */}
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-[11px] font-mono uppercase tracking-wider text-tertiary">
-          Leverage
+      <button
+        type="button"
+        onClick={() => setAdvanced((v) => !v)}
+        aria-expanded={advanced}
+        className="w-full flex items-center justify-between text-[11px] font-mono uppercase tracking-wider text-tertiary hover:text-primary cursor-pointer"
+      >
+        <span>Advanced</span>
+        <span className="normal-case tracking-normal">
+          {lev !== "1" && <span className="text-primary mr-1.5">{lev}×</span>}
+          <span
+            aria-hidden="true"
+            className={`inline-block transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${
+              advanced ? "rotate-90" : ""
+            }`}
+          >
+            ▸
+          </span>
         </span>
-        <Segmented
-          ariaLabel="Leverage"
-          value={lev}
-          onChange={setLev}
-          options={LEVERAGE.map((l) => ({
-            value: `${l}` as Lev,
-            label: `${l}×`,
-          }))}
-        />
-      </div>
+      </button>
 
-      {/* Summary */}
-      <dl className="space-y-1.5 text-xs border-t border-surface pt-3">
-        <div className="flex justify-between">
-          <dt className="text-tertiary">Entry VI</dt>
-          <dd className="font-mono tabular-nums text-atnx-yellow light:text-atnx-yellow-light font-bold">
-            {score}
-          </dd>
-        </div>
-        <div className="flex justify-between">
-          <dt className="text-tertiary">Exposure</dt>
-          <dd className="font-mono tabular-nums text-primary">
-            ${(amountNum * leverage).toFixed(2)}
-          </dd>
-        </div>
-        <div className="flex justify-between">
-          <dt
-            className="text-tertiary"
-            title={`A ${leverage}× ${side} loses everything when the VI moves ${Math.round(100 / leverage)}% against it`}
-          >
-            Liquidation VI
-          </dt>
-          <dd className="font-mono tabular-nums text-atnx-magenta light:text-atnx-magenta-light">
-            {liqVi}
-          </dd>
-        </div>
-        <div className="flex justify-between">
-          <dt
-            className="text-tertiary"
-            title="Half goes to whoever created this market, half to the treasury"
-          >
-            Fee ({FEE_PCT})
-          </dt>
-          <dd className="font-mono tabular-nums text-primary">
-            ${fee.toFixed(2)}
-          </dd>
-        </div>
-        <div className="flex justify-between">
-          <dt className="text-tertiary">Total</dt>
-          <dd className="font-mono tabular-nums text-primary font-bold">
-            ${total.toFixed(2)}
-          </dd>
-        </div>
-        {user && (
-          <div className="flex justify-between">
-            <dt className="text-tertiary">Available</dt>
-            <dd
-              className={`font-mono tabular-nums ${overBalance ? "text-atnx-magenta" : "text-primary"}`}
-            >
-              ${balance.toFixed(2)}
-            </dd>
+      {/* Always mounted so it can animate: the rows open from 0fr to 1fr
+          and the contents fade in a beat later (motion in globals.css,
+          .trade-advanced). Inert while folded away. The wrapper takes no
+          space-y gap of its own, so a folded section leaves none behind. */}
+      <div
+        data-open={advanced ? "" : undefined}
+        inert={!advanced}
+        className="trade-advanced grid !mt-0"
+      >
+        <div className="trade-advanced-body min-h-0 overflow-hidden">
+          <div className="pt-4 space-y-4">
+            {/* Leverage */}
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-[11px] font-mono uppercase tracking-wider text-tertiary">
+                Leverage
+              </span>
+              <Segmented
+                ariaLabel="Leverage"
+                value={lev}
+                onChange={setLev}
+                options={LEVERAGE.map((l) => ({
+                  value: `${l}` as Lev,
+                  label: `${l}×`,
+                }))}
+              />
+            </div>
+
+            {/* Summary */}
+            <dl className="space-y-1.5 text-xs border-t border-surface pt-3">
+              <div className="flex justify-between">
+                <dt className="text-tertiary">Entry VI</dt>
+                <dd className="font-mono tabular-nums text-atnx-yellow light:text-atnx-yellow-light font-bold">
+                  {score}
+                </dd>
+              </div>
+              <div className="flex justify-between">
+                <dt className="text-tertiary">Exposure</dt>
+                <dd className="font-mono tabular-nums text-primary">
+                  ${(amountNum * leverage).toFixed(2)}
+                </dd>
+              </div>
+              <div className="flex justify-between">
+                <dt
+                  className="text-tertiary"
+                  title={`A ${leverage}× ${side} loses everything when the VI moves ${Math.round(100 / leverage)}% against it`}
+                >
+                  Liquidation VI
+                </dt>
+                <dd className="font-mono tabular-nums text-atnx-magenta light:text-atnx-magenta-light">
+                  {liqVi}
+                </dd>
+              </div>
+              <div className="flex justify-between">
+                <dt
+                  className="text-tertiary"
+                  title="Half goes to whoever created this market, half to the treasury"
+                >
+                  Fee ({FEE_PCT})
+                </dt>
+                <dd className="font-mono tabular-nums text-primary">
+                  ${fee.toFixed(2)}
+                </dd>
+              </div>
+              <div className="flex justify-between">
+                <dt className="text-tertiary">Total</dt>
+                <dd className="font-mono tabular-nums text-primary font-bold">
+                  ${total.toFixed(2)}
+                </dd>
+              </div>
+              {user && (
+                <div className="flex justify-between">
+                  <dt className="text-tertiary">Available</dt>
+                  <dd
+                    className={`font-mono tabular-nums ${overBalance ? "text-atnx-magenta" : "text-primary"}`}
+                  >
+                    ${balance.toFixed(2)}
+                  </dd>
+                </div>
+              )}
+            </dl>
           </div>
-        )}
-      </dl>
+        </div>
+      </div>
 
       {error && (
         <div className="text-xs text-atnx-magenta border border-atnx-magenta/40 bg-atnx-magenta/10 rounded-lg px-3 py-2">
@@ -277,10 +313,6 @@ export function TradePanel({
           Login to trade
         </button>
       )}
-      <p className="text-[10px] text-tertiary text-center">
-        Simulated USDC. Entry at the current Virality Index. The {FEE_PCT} fee
-        is split between the market&apos;s creator and the treasury.
-      </p>
 
       {/* Open position */}
       {openPos && pnl && (
