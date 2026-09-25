@@ -1,49 +1,20 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
-import type {
-  PortfolioPosition,
-  PortfolioRange,
-  PortfolioResponse,
-} from "@/app/api/portfolio/route";
+import { useEffect, useState } from "react";
+import type { PortfolioPosition } from "@/app/api/portfolio/route";
 import { PortfolioSparkline } from "@/components/charts/PortfolioSparkline";
 import { Card } from "@/components/ui";
+import { RANGES, RangeTabs, readStored, writeStored, type PortfolioFeed } from "@/components/usePortfolioFeed";
 import { timeAgo } from "@/lib/capture-view";
 
 // The portfolio the way the extension's side panel shows it, for phones:
 // one value tile (hero number, range delta, sparkline, range tabs), then a
 // collapsible card with unrealized PnL and fees earned that expands into
 // position rows. Same three figures as the desktop tiles.
-// Reads /api/portfolio, the same endpoint the extension uses, so the two
-// always agree.
+// Reads /api/portfolio (via the page's shared feed), the same endpoint the
+// extension uses, so the two always agree.
 
-const REFRESH_MS = 30_000;
-
-const RANGES: Record<PortfolioRange, { label: string; delta: string; time: Intl.DateTimeFormat }> = {
-  "1d": {
-    label: "1D",
-    delta: "24h",
-    time: new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit" }),
-  },
-  "1w": {
-    label: "1W",
-    delta: "7d",
-    time: new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }),
-  },
-  "1m": {
-    label: "1M",
-    delta: "30d",
-    time: new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }),
-  },
-  all: {
-    label: "ALL",
-    delta: "all time",
-    time: new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }),
-  },
-};
-const RANGE_ORDER: PortfolioRange[] = ["1d", "1w", "1m", "all"];
-const RANGE_KEY = "atnx:portfolio:range";
 const OPEN_KEY = "atnx:portfolio:open";
 
 const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 });
@@ -51,22 +22,6 @@ const usdCompact = new Intl.NumberFormat("en-US", { style: "currency", currency:
 
 function signed(n: number, fmt: (x: number) => string) {
   return `${n >= 0 ? "+" : "-"}${fmt(Math.abs(n))}`;
-}
-
-function readStored<T extends string>(key: string, ok: (v: string) => v is T, fallback: T): T {
-  try {
-    const v = window.localStorage.getItem(key);
-    return v !== null && ok(v) ? v : fallback;
-  } catch {
-    return fallback;
-  }
-}
-function writeStored(key: string, value: string) {
-  try {
-    window.localStorage.setItem(key, value);
-  } catch {
-    /* private mode etc. */
-  }
 }
 
 const UP = "text-atnx-cyan light:text-atnx-cyan-light";
@@ -168,88 +123,27 @@ function PositionRow({
 }
 
 export function PortfolioMobile({
+  feed,
   onClosePosition,
-  refreshKey,
 }: {
+  feed: PortfolioFeed;
   // Closes the position and resolves once the server has done so; the
-  // caller shows its own confirmation. The list refetches afterwards.
+  // caller shows its own confirmation. The feed refetches afterwards.
   onClosePosition: (id: string) => Promise<void>;
-  // Any change here (a trade elsewhere on the page) triggers a refetch.
-  refreshKey?: string;
 }) {
-  const [range, setRange] = useState<PortfolioRange>("1w");
+  const { range, pickRange, data, error, busy, refresh } = feed;
   // Positions are what the page is for: open by default, collapsed only
   // when the person has folded it.
   const [open, setOpen] = useState(true);
-  const [data, setData] = useState<PortfolioResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [closingId, setClosingId] = useState<string | null>(null);
-  const cache = useRef(new Map<PortfolioRange, PortfolioResponse>());
-  const inflight = useRef(0);
 
-  // Saved preferences apply after hydration (the server render uses the
-  // defaults, so the first client render must match it).
+  // The saved preference applies after hydration (the server render uses
+  // the default, so the first client render must match it).
   useEffect(() => {
-    setRange(readStored(RANGE_KEY, (v): v is PortfolioRange => v in RANGES, "1w"));
     setOpen(readStored(OPEN_KEY, (v): v is "1" | "0" => v === "1" || v === "0", "1") === "1");
   }, []);
 
-  const load = useCallback(async (r: PortfolioRange) => {
-    const id = ++inflight.current;
-    setBusy(true);
-    try {
-      const res = await fetch(`/api/portfolio?range=${r}`, { credentials: "same-origin" });
-      if (!res.ok) throw new Error(res.status === 401 ? "Sign in to see your portfolio" : `Portfolio unavailable (${res.status})`);
-      const body = (await res.json()) as PortfolioResponse;
-      cache.current.set(r, body);
-      // A newer request (range switch) will draw its own answer.
-      if (id !== inflight.current) return;
-      setData(body);
-      setError(null);
-    } catch (err) {
-      if (id !== inflight.current) return;
-      setError((err as Error).message);
-    } finally {
-      if (id === inflight.current) setBusy(false);
-    }
-  }, []);
-
-  // Fetch on mount, on range change, on an external change, and every 30 s
-  // while the tab is visible.
-  useEffect(() => {
-    const cached = cache.current.get(range);
-    if (cached) setData(cached);
-    load(range);
-    let timer: ReturnType<typeof setInterval> | null = null;
-    const start = () => {
-      if (timer) return;
-      timer = setInterval(() => load(range), REFRESH_MS);
-    };
-    const stop = () => {
-      if (timer) clearInterval(timer);
-      timer = null;
-    };
-    const onVis = () => {
-      if (document.visibilityState === "visible") {
-        load(range);
-        start();
-      } else stop();
-    };
-    if (document.visibilityState === "visible") start();
-    document.addEventListener("visibilitychange", onVis);
-    return () => {
-      stop();
-      document.removeEventListener("visibilitychange", onVis);
-    };
-  }, [range, load, refreshKey]);
-
-  function pickRange(r: PortfolioRange) {
-    if (r === range) return;
-    setRange(r);
-    writeStored(RANGE_KEY, r);
-  }
   function toggleOpen() {
     setOpen((v) => {
       writeStored(OPEN_KEY, v ? "0" : "1");
@@ -261,8 +155,7 @@ export function PortfolioMobile({
     setClosingId(id);
     try {
       await onClosePosition(id);
-      cache.current.clear();
-      await load(range);
+      await refresh();
     } finally {
       setClosingId(null);
       setExpanded(null);
@@ -293,26 +186,7 @@ export function PortfolioMobile({
           height={72}
           formatTime={(t) => delta.time.format(t)}
         />
-        <div role="group" aria-label="Chart range" className="mt-2 flex gap-1">
-          {RANGE_ORDER.map((r) => {
-            const active = r === range;
-            return (
-              <button
-                key={r}
-                type="button"
-                aria-pressed={active}
-                onClick={() => pickRange(r)}
-                className={`flex-1 py-1.5 rounded-md text-[10px] font-bold tracking-[0.1em] border transition-colors cursor-pointer ${
-                  active
-                    ? "bg-elevated border-surface text-primary"
-                    : "border-transparent text-tertiary hover:text-primary hover:bg-elevated"
-                }`}
-              >
-                {RANGES[r].label}
-              </button>
-            );
-          })}
-        </div>
+        <RangeTabs range={range} onPick={pickRange} stretch className="mt-2" />
       </Card>
 
       {/* Positions */}
@@ -321,7 +195,7 @@ export function PortfolioMobile({
           <h3 className="text-[11px] font-semibold font-mono uppercase tracking-[0.15em] text-tertiary">Portfolio</h3>
           <button
             type="button"
-            onClick={() => load(range)}
+            onClick={() => refresh()}
             aria-label="Refresh"
             title="Refresh"
             className="h-7 w-7 inline-flex items-center justify-center rounded-md text-tertiary hover:text-primary hover:bg-elevated cursor-pointer transition-colors"

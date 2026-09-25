@@ -10,6 +10,8 @@ import {
 import { useAuth } from "@/context/AuthContext";
 import { ClosePositionModal, DemoToast } from "@/components/Trading";
 import { PortfolioMobile } from "@/components/PortfolioMobile";
+import { PortfolioChart } from "@/components/PortfolioChart";
+import { usePortfolioFeed } from "@/components/usePortfolioFeed";
 import { Card, Chip, DeltaChip, EmptyState, Readout, StatTile } from "@/components/ui";
 import { timeAgo } from "@/lib/capture-view";
 
@@ -98,6 +100,8 @@ export default function PortfolioPage() {
   const { positions, balance, fees, closePosition } = useDemoContext();
   const { user, loading: authLoading, openLoginModal } = useAuth();
   const [closingPosition, setClosingPosition] = useState<Position | null>(null);
+  // Any trade elsewhere on the page changes the ids and refetches the feed.
+  const feed = usePortfolioFeed(positions.map((p) => p.id).join(","));
   const [toast, setToast] = useState<{
     message: string;
     detail: string;
@@ -174,37 +178,41 @@ export default function PortfolioPage() {
 
       {/* Phones: the side-panel layout (value tile, collapsible card). */}
       <div className="md:hidden">
-        <PortfolioMobile
-          onClosePosition={handleCloseById}
-          refreshKey={positions.map((p) => p.id).join(",")}
-        />
+        <PortfolioMobile feed={feed} onClosePosition={handleCloseById} />
       </div>
 
-      <div className="hidden md:grid grid-cols-3 gap-3 sm:gap-4 mb-6">
-        <StatTile
-          label="Equity"
-          value={`$${equity.toFixed(2)}`}
-          hero
-          sub="balance + positions"
-        />
-        <StatTile
-          label="Unrealized PnL"
-          value={
-            <span className={pnlTone}>
-              {totalPnL >= 0 ? "+" : ""}${totalPnL.toFixed(2)}
-            </span>
-          }
-          sub={<DeltaChip value={totalPnLPercent} />}
-        />
-        <StatTile
-          label="Fees earned"
-          value={
-            <span className={fees.earned > 0 ? "text-atnx-cyan light:text-atnx-cyan-light" : ""}>
-              {fees.earned > 0 ? "+" : ""}${fees.earned.toFixed(2)}
-            </span>
-          }
-          sub="half of every fee on markets you created"
-        />
+      {/* Desktop: Equity over PnL | Fees on the left, the value chart
+          filling the space to their right. */}
+      <div className="hidden md:grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-4 mb-6">
+        <div className="flex flex-col gap-4 min-w-0">
+          <StatTile
+            label="Equity"
+            value={`$${equity.toFixed(2)}`}
+            hero
+            sub="balance + positions"
+          />
+          <div className="grid grid-cols-2 gap-4">
+            <StatTile
+              label="Unrealized PnL"
+              value={
+                <span className={pnlTone}>
+                  {totalPnL >= 0 ? "+" : ""}${totalPnL.toFixed(2)}
+                </span>
+              }
+              sub={<DeltaChip value={totalPnLPercent} />}
+            />
+            <StatTile
+              label="Fees earned"
+              value={
+                <span className={fees.earned > 0 ? "text-atnx-cyan light:text-atnx-cyan-light" : ""}>
+                  {fees.earned > 0 ? "+" : ""}${fees.earned.toFixed(2)}
+                </span>
+              }
+              sub="half of every fee on markets you created"
+            />
+          </div>
+        </div>
+        <PortfolioChart feed={feed} />
       </div>
 
       <div className="hidden md:block">
