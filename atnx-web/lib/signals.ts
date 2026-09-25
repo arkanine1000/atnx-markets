@@ -221,14 +221,26 @@ export async function scoreTerms(
         }
       }
 
-      let { composite, score } = rampedScore(components, {}, now);
+      // Internet-native memes rarely get a Wikipedia article: for them "no
+      // article" is structural, not a lack of attention, so it scores as
+      // unknown instead of pulling the average down (as GDELT's scope
+      // does). The stored reading keeps its 0 and its `own` verdict, which
+      // the generic-term guard reads. Decided 2026-09-25, pre-launch;
+      // revisit with more meme data.
+      const scoring: Components = { ...components };
+      const wiki = components.wikipedia;
+      if (request.category === 'memes' && wiki && wiki.level === 0 && !wiki.meta?.title) {
+        scoring.wikipedia = { ...wiki, level: null };
+      }
+
+      let { composite, score } = rampedScore(scoring, {}, now);
       // Creator reach: the channel scores the YouTube slot when it reads
       // higher than the name search, the talk sources' zeros drop out, and
       // the score walks there over the ramp from the handle's verification.
       if (req.creator) {
         const yt = effectiveYoutube(components.youtube);
         if (yt.channel) {
-          const creator = rampedScore({ ...components, youtube: yt.component }, { ignoreZeros: TALK_SOURCES }, now);
+          const creator = rampedScore({ ...scoring, youtube: yt.component }, { ignoreZeros: TALK_SOURCES }, now);
           if (creator.composite && creator.score !== null) {
             const since = Date.parse(req.creator.verifiedAt ?? '');
             score = score === null ? creator.score : blendScores(score, creator.score, since, now);

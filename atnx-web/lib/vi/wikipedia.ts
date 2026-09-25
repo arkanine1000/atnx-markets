@@ -60,7 +60,7 @@ export async function fetchWikipediaSignal(
       const viaAlias = await resolvePageviewArticle(alias, { corporate });
       if (viaAlias.title) {
         from = 'alias';
-        resolved = { ...viaAlias, ambiguous: resolved.ambiguous, namedRedirect: resolved.namedRedirect };
+        resolved = { ...viaAlias, ambiguous: resolved.ambiguous, namedRedirect: resolved.namedRedirect, redirectTitle: resolved.redirectTitle };
       }
     }
     // Whether the article (or the absence of one) is the term's own
@@ -77,9 +77,12 @@ export async function fetchWikipediaSignal(
         resolved.namedRedirect)
         ? 1
         : 0;
-    const base = { match: resolved.match, from, own };
+    // No article of its own, but the name redirects into a section of one:
+    // score the redirect title's own pageviews (see redirectTitle).
+    const sectionRedirect = !resolved.title && from === 'term' && resolved.namedRedirect && !!resolved.redirectTitle;
+    const base = { match: sectionRedirect ? ('section_redirect' as const) : resolved.match, from, own };
 
-    const title = resolved.title;
+    const title = resolved.title ?? (sectionRedirect ? resolved.redirectTitle : null);
     if (!title) {
       // No article is a real observation: Wikipedia has nothing on it.
       const none: WikipediaSignal = { ...empty, level: 0, meta: { title: null, ...base } };
@@ -127,6 +130,8 @@ export async function fetchWikipediaSignal(
 // and followed any redirect.
 export interface PageInfo {
   requested: string;
+  // The requested title as MediaWiki normalised it, before any redirect.
+  source: string;
   // The article actually reached (the redirect target when redirected).
   title: string;
   // Set when the redirect points into a section: the term is a part of
@@ -181,6 +186,7 @@ export async function lookupPages(titles: string[]): Promise<Map<string, PageInf
     const page = pages.get(title);
     out.set(requested, {
       requested,
+      source: normalized.get(requested) ?? requested,
       title,
       fragment,
       redirected,
@@ -191,7 +197,7 @@ export async function lookupPages(titles: string[]): Promise<Map<string, PageInf
   return out;
 }
 
-export type ArticleMatch = 'exact' | 'qualified' | 'corporate' | 'redirect';
+export type ArticleMatch = 'exact' | 'qualified' | 'corporate' | 'redirect' | 'section_redirect';
 
 export interface CandidateVerdict {
   // The article whose pageviews stand for the term, or null.
@@ -201,11 +207,17 @@ export interface CandidateVerdict {
   // several things, and search and social counts of it are not ours.
   ambiguous: boolean;
   // The term's own title redirects into a section of a broader article:
-  // no pageviews of its own, but a name Wikipedia knows.
+  // a name Wikipedia knows, whose subject is a part of another one.
   namedRedirect: boolean;
+  // That redirect's own title ("Big Chungus"). Its pageviews are the
+  // people who looked up the name itself: the pageviews API does not
+  // follow redirects, so they are counted apart from the target article's
+  // (the 1941 cartoon's). PR #20 assumed a section redirect had no
+  // pageviews and scored it 0; Big Chungus had 368 in a week.
+  redirectTitle: string | null;
 }
 
-const none = (): CandidateVerdict => ({ title: null, match: null, ambiguous: false, namedRedirect: false });
+const none = (): CandidateVerdict => ({ title: null, match: null, ambiguous: false, namedRedirect: false, redirectTitle: null });
 
 // Whether a looked-up candidate is the term's article. Pure.
 export function judgeCandidate(term: string, info: PageInfo, { corporate = false } = {}): CandidateVerdict {
@@ -222,7 +234,7 @@ export function judgeCandidate(term: string, info: PageInfo, { corporate = false
           : null;
     return match ? { ...none(), title: info.title, match } : none();
   }
-  if (info.fragment) return { ...none(), namedRedirect: bare };
+  if (info.fragment) return { ...none(), namedRedirect: bare, redirectTitle: bare ? info.source : null };
   if (titleMatchesTerm(term, info.title, { corporate })) return { ...none(), title: info.title, match: 'redirect' };
   // "Donald Trump mugshot" -> "Mug shot of Donald Trump": the target is
   // the same subject under another title when every word of the term is
@@ -260,7 +272,8 @@ export async function resolvePageviewArticle(term: string, { corporate = false }
     const v = judgeCandidate(term, info, { corporate });
     verdict.ambiguous ||= v.ambiguous;
     verdict.namedRedirect ||= v.namedRedirect;
-    if (v.title) return { ...v, ambiguous: verdict.ambiguous, namedRedirect: verdict.namedRedirect };
+    verdict.redirectTitle ??= v.redirectTitle;
+    if (v.title) return { ...v, ambiguous: verdict.ambiguous, namedRedirect: verdict.namedRedirect, redirectTitle: verdict.redirectTitle };
   }
   return verdict;
 }
