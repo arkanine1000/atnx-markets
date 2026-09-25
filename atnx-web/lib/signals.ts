@@ -6,8 +6,10 @@
 // and Bluesky and reuses the stored GDELT and Wikipedia readings; the slow
 // path (hourly) does the reverse. A fresh capture fetches everything.
 import {
+  blendScores,
   combine,
   FAST_SOURCES,
+  RAMP_MS,
   isGenericTerm,
   isSearchableAlias,
   SLOW_SOURCES,
@@ -18,7 +20,7 @@ import {
 } from './vi/score';
 import { fetchTrendsSignals, type TrendsSignal } from './vi/trends';
 import { fetchBlueskySignal } from './vi/bluesky';
-import { fetchGdeltSignal } from './vi/gdelt';
+import { GDELT_BQ_SINCE, gdeltApplies, readGdeltSignal } from './vi/gdelt';
 import { fetchWikipediaSignal } from './vi/wikipedia';
 import { fetchYoutubeSignal } from './vi/youtube';
 import { fetchHnSignal } from './vi/hn';
@@ -55,16 +57,12 @@ const APPLIES: Partial<Record<SourceName, (r: ScoreRequest) => boolean>> = {
   // Where people post under a tag: not tech, crypto or politics, which
   // are argued in text elsewhere.
   tiktok: (r) => TIKTOK_CATEGORIES.has(r.category ?? ''),
+  // News coverage, except coined meme names (lib/vi/gdelt.ts).
+  gdelt: (r) => gdeltApplies(r.category),
 };
 const TIKTOK_CATEGORIES = new Set(['memes', 'people', 'music', 'film_tv', 'gaming', 'other']);
 function applies(name: SourceName, r: ScoreRequest): boolean {
   return APPLIES[name]?.(r) ?? true;
-}
-
-export interface ScoreOptions {
-  // Epoch ms after which no GDELT request starts (the reading is then
-  // unknown and the stored one kept). 0 skips GDELT altogether.
-  gdeltDeadline?: number;
 }
 
 export interface SignalResult {
@@ -114,8 +112,7 @@ export function prefetchSlowSources(requests: ScoreRequest[]): { tiktokHashtags:
 // Scores many terms at once so Trends can batch them.
 export async function scoreTerms(
   requests: ScoreRequest[],
-  cadence: Cadence,
-  { gdeltDeadline }: ScoreOptions = {}
+  cadence: Cadence
 ): Promise<SignalResult[]> {
   const fresh = new Set(FRESH_FOR[cadence]);
   const all = new Set(FRESH_FOR.all);
@@ -137,9 +134,7 @@ export async function scoreTerms(
       const request = { term, stored, ...req };
       const [bluesky, gdelt, wikipedia, youtube, hn, dex, x, tiktok] = await Promise.all([
         want.has('bluesky') ? fetchBlueskySignal(term, aliases).catch(() => null) : null,
-        want.has('gdelt') && gdeltDeadline !== 0
-          ? fetchGdeltSignal(term, aliases, { deadline: gdeltDeadline }).catch(() => null)
-          : null,
+        want.has('gdelt') && applies('gdelt', request) ? readGdeltSignal(req.marketId).catch(() => null) : null,
         want.has('wikipedia') ? fetchWikipediaSignal(term, aliases, { corporate }).catch(() => null) : null,
         want.has('youtube')
           ? fetchYoutubeSignal({ term, aliases, marketId: req.marketId, stored: stored?.youtube ?? null }).catch(() => null)
@@ -161,7 +156,7 @@ export async function scoreTerms(
       if (tiktok) components.tiktok = tiktok;
       // A category-bound source keeps nothing once the market leaves its
       // category.
-      for (const name of ['hn', 'dex', 'tiktok'] as const) {
+      for (const name of ['hn', 'dex', 'tiktok', 'gdelt'] as const) {
         if (components[name] && !applies(name, request)) delete components[name];
       }
 
@@ -177,14 +172,7 @@ export async function scoreTerms(
         else if (c !== stored?.[name] && c.level !== null) fetched.push(name);
         const kept = components[name];
         if (kept && kept === stored?.[name]) {
-          if (Date.now() - Date.parse(kept.fetchedAt) > MAX_KEPT_MS) {
-            delete components[name];
-          } else if (name === 'gdelt' && kept.meta?.resolution === undefined && kept.momentum !== null) {
-            // A GDELT reading from before the daily-bucketing fix (no
-            // `resolution` in its meta) compared one hour to the rest and
-            // read a collapse. Its level is fine; its momentum is not.
-            components.gdelt = { ...kept, momentum: null };
-          }
+          if (Date.now() - Date.parse(kept.fetchedAt) > MAX_KEPT_MS) delete components[name];
         }
       }
 
@@ -196,6 +184,17 @@ export async function scoreTerms(
       }
 
       const composite = combine(components);
+      // GDELT moved to BigQuery (and back to its full weight) at
+      // GDELT_BQ_SINCE; the score walks there from the composite without
+      // it over the ramp instead of jumping on the first write.
+      let score = composite?.score ?? null;
+      const now = Date.now();
+      if (composite && components.gdelt && now < GDELT_BQ_SINCE + RAMP_MS) {
+        const withoutGdelt: Components = { ...components };
+        delete withoutGdelt.gdelt;
+        const before = combine(withoutGdelt);
+        if (before) score = blendScores(before.score, composite.score, GDELT_BQ_SINCE, now);
+      }
       // Seed the sparkline only from a Trends reading that counts toward
       // the score. A series dropped by the generic-term guard would draw
       // a week of history the score itself refuses to use.
@@ -210,13 +209,13 @@ export async function scoreTerms(
         persisted[name] = { source, level, momentum, fetchedAt, meta };
       }
 
-      return { score: composite?.score ?? null, composite, components: persisted, seedSeries, fetched };
+      return { score, composite, components: persisted, seedSeries, fetched };
     })
   );
 }
 
 // Single-term convenience for the capture path: every source, fresh.
-export async function composeVi(request: ScoreRequest, options: ScoreOptions = {}): Promise<SignalResult> {
-  const [result] = await scoreTerms([request], 'all', options);
+export async function composeVi(request: ScoreRequest): Promise<SignalResult> {
+  const [result] = await scoreTerms([request], 'all');
   return result;
 }

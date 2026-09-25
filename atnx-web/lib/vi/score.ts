@@ -30,8 +30,8 @@ export type Components = Partial<Record<SourceName, SourceComponent>>;
 // broadest views of attention; social, news and the encyclopedia each
 // see a narrower world. HN and DexScreener only answer for the
 // categories they cover (tech, crypto) and count as unknown elsewhere.
-// GDELT is down-weighted for reliability, not relevance: its API is
-// throttled by design and answers some hours and not others.
+// GDELT (news coverage) is back at its original weight since it moved
+// from the throttled DOC API to BigQuery on 2026-09-25.
 export const WEIGHTS: Record<SourceName, number> = {
   trends: 0.3,
   x: 0.25,
@@ -39,7 +39,7 @@ export const WEIGHTS: Record<SourceName, number> = {
   tiktok: 0.2,
   bluesky: 0.2,
   wikipedia: 0.15,
-  gdelt: 0.1,
+  gdelt: 0.15,
   hn: 0.1,
   dex: 0.2,
 };

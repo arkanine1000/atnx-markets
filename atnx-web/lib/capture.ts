@@ -939,10 +939,9 @@ interface ScoringContext {
 // The market row supplies the term, aliases, type and the breakdown from
 // earlier passes, so the capture scores the same string the refresh does
 // and a source that fails here keeps its stored reading instead of
-// thinning the breakdown to whatever answered. GDELT gets a short
-// deadline: the capture routes have a 60 s budget and GDELT's queue and
-// back-offs could outlast it.
-const CAPTURE_GDELT_BUDGET_MS = 25_000;
+// thinning the breakdown to whatever answered. GDELT is read from the
+// hourly job's samples, so a new market's first GDELT reading comes with
+// the next slow refresh.
 async function scoreMarketLater(ctx: ScoringContext): Promise<void> {
   try {
     const { data: market } = await createAdminClient()
@@ -960,8 +959,7 @@ async function scoreMarketLater(ctx: ScoringContext): Promise<void> {
         category: (market?.category as string | null) ?? null,
         marketId: ctx.marketId,
         stored: (market?.vi_components as Components | null) ?? null,
-      },
-      { gdeltDeadline: Date.now() + CAPTURE_GDELT_BUDGET_MS }
+      }
     );
     if (signal.score === null) return;
     await recordVi(ctx.marketId, signal.score, signal.components, signal.seedSeries);
