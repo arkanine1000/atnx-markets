@@ -89,3 +89,27 @@ test('an off-cycle read next to a scheduled one is dropped', () => {
   const r = tiktokReading([samples[0], extra, ...samples.slice(1)], now);
   assert.equal(r.videosPerHour, 10);
 });
+
+import { hashtagsWanted } from './tiktok';
+
+test('a market with no hashtag asks again after a day, not every read', () => {
+  const t0 = Date.parse('2026-09-25T15:07:00Z');
+  const none = {
+    term: 'Lego Tuxedo Cat Alt Builds',
+    aliases: ['Lego Cat Alt Builds'],
+    stored: { source: 'tiktok' as const, level: null, momentum: null, fetchedAt: new Date(t0).toISOString(), meta: { hashtag: null, discovered_at: new Date(t0).toISOString(), queried: 0 } },
+  };
+  assert.deepEqual(hashtagsWanted(none, t0 + 3 * H), [], 'three hours later: still nothing to ask');
+  assert.deepEqual(hashtagsWanted(none, t0 + 23 * H), []);
+  assert.ok(hashtagsWanted(none, t0 + 25 * H).length > 0, 'a day later: the guesses again');
+});
+
+test('a mapped market asks for its hashtag every three hours', () => {
+  const t0 = Date.parse('2026-09-25T15:07:00Z');
+  const mapped = {
+    term: 'Skibidi Toilet',
+    stored: { source: 'tiktok' as const, level: 500, momentum: null, fetchedAt: new Date(t0).toISOString(), meta: { hashtag: 'skibiditoilet', discovered_at: new Date(t0 - 2 * 24 * H).toISOString() } },
+  };
+  assert.deepEqual(hashtagsWanted(mapped, t0 + 1 * H), []);
+  assert.deepEqual(hashtagsWanted(mapped, t0 + 3 * H), ['skibiditoilet']);
+});

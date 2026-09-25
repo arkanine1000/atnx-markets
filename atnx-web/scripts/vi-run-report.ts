@@ -10,7 +10,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { viTier, type Components, type SourceComponent } from '../lib/vi/score';
 import { USD_PER_TWEET, USD_PER_REQUEST_MIN } from '../lib/vi/x';
-import { USD_PER_HASHTAG } from '../lib/vi/tiktok';
+import { usdPerHashtag } from '../lib/vi/tiktok';
 
 (async () => {
 
@@ -57,7 +57,7 @@ console.log(`x: ${xr.length} markets, ${tweets} tweets, ${requests} requests, ${
 const { data: ts } = await s.from('vi_samples').select('meta').eq('source', 'tiktok').gte('sampled_at', since);
 const tr = (ts ?? []) as { meta: Record<string, number | string | null> | null }[];
 const queried = tr.reduce((a, r) => a + Number(r.meta?.queried ?? 0), 0);
-console.log(`tiktok: ${tr.length} markets sampled, ${queried} hashtags queried, ≈ $${(queried * USD_PER_HASHTAG).toFixed(3)}`);
+console.log(`tiktok: ${tr.length} markets sampled, ${queried} hashtags queried, ≈ $${(queried * usdPerHashtag()).toFixed(3)}`);
 
 console.log('\ntop and notable:');
 const notable = new Set((process.env.VI_REPORT_NOTABLE ?? 'Meta,Doge,Clavicular,Google,Skibidi Toilet,Loki Edits,Goonmobile,Logan Paul,Michael Saylor,Kirkiversary,Anthropic').split(',').map((x) => x.trim()));

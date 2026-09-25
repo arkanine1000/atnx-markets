@@ -26,9 +26,11 @@ const ACTOR = 'funny_ground~tiktok-hashtag-stats';
 const API = `https://api.apify.com/v2/acts/${ACTOR}/run-sync-get-dataset-items`;
 const RUN_TIMEOUT_S = 240;
 // The actor now and then leaves a hashtag out of its results: a tag we
-// know has 10k videos comes back as no row at all. Those are asked once
-// more in a short second run. A tag that does not exist (or is banned)
-// is missing again and costs nothing.
+// know has 10k videos comes back as no row at all. A market's own mapped
+// hashtag that comes back missing is asked once more in a short second
+// run. Discovery guesses are not: most of them do not exist (TikTok
+// answers "challenge is failed"), so a retry of them always failed and
+// still paid the run's start (~$0.0055, every hour, until 2026-09-25).
 const RETRY_TIMEOUT_S = 90;
 export const MAX_ROWS_PER_RUN = 50;
 export const INTERVAL_MS = 3 * 3600 * 1000;
@@ -37,6 +39,10 @@ export const INTERVAL_MS = 3 * 3600 * 1000;
 // the read slipped to four hours. The slack lets that run take it.
 const INTERVAL_SLACK_MS = 15 * 60 * 1000;
 const DISCOVERY_TTL_MS = 7 * 24 * 3600 * 1000;
+// A market none of whose guessed hashtags exists asks again after this,
+// not on every three-hour read: a coined meme name rarely becomes a tag
+// within hours, and each check sends four tags that do not exist.
+const NO_HASHTAG_TTL_MS = 24 * 3600 * 1000;
 const MAX_CANDIDATES = 4;
 // A hashtag with fewer videos than this is not where the market lives.
 const MIN_VIDEOS = 100;
@@ -57,7 +63,13 @@ const MIN_BASELINE_READS = 5;
 // A newest pair this many noise-widths above the trend is a real spike
 // and is taken as it is; anything less is read off the trend.
 const SPIKE_K = 3;
-export const USD_PER_HASHTAG = 0.0005;
+// What one hashtag result costs, for the refresh summary and vi:report.
+// The actor charges $0.0025 a result on Apify's Free plan and $0.0005 on
+// the paid tiers; set APIFY_USD_PER_HASHTAG when the plan changes.
+export function usdPerHashtag(): number {
+  const n = Number(process.env.APIFY_USD_PER_HASHTAG);
+  return Number.isFinite(n) && n > 0 ? n : 0.0025;
+}
 
 export interface HashtagStats {
   hashtag: string;
@@ -228,6 +240,7 @@ export function hashtagsWanted({ term, aliases = [], stored }: TiktokRequest, no
   if (stored && now - fetchedAt < INTERVAL_MS - INTERVAL_SLACK_MS && (hasMapping || stored.meta?.hashtag === null)) return [];
   const discoveredAt = typeof stored?.meta?.discovered_at === 'string' ? Date.parse(stored.meta.discovered_at) : 0;
   if (hasMapping && now - discoveredAt < DISCOVERY_TTL_MS) return [stored!.meta!.hashtag as string];
+  if (stored?.meta?.hashtag === null && now - discoveredAt < NO_HASHTAG_TTL_MS) return [];
   return hashtagCandidates(term, aliases);
 }
 
@@ -250,11 +263,13 @@ export function prefetchTiktok(requests: TiktokRequest[], now = Date.now()): num
   }
   if (tags.size === 0) return 0;
   batchStarted = now;
-  batch = runActor([...tags]);
+  batch = runActor([...tags], new Set(mapped.map((t) => t.toLowerCase())));
   return tags.size;
 }
 
-async function runActor(hashtags: string[]): Promise<Map<string, HashtagStats>> {
+// `retryable`: the mapped hashtags, known to exist; only those are asked
+// again when the first run leaves them out.
+async function runActor(hashtags: string[], retryable: Set<string>): Promise<Map<string, HashtagStats>> {
   const out = new Map<string, HashtagStats>();
   try {
     const budget = tiktokDailyBudget();
@@ -264,7 +279,7 @@ async function runActor(hashtags: string[]): Promise<Map<string, HashtagStats>> 
       return out;
     }
     if (!(await callActor(hashtags, RUN_TIMEOUT_S, out))) return out;
-    const missing = hashtags.filter((t) => !out.has(t.toLowerCase()));
+    const missing = hashtags.filter((t) => !out.has(t.toLowerCase()) && retryable.has(t.toLowerCase()));
     if (missing.length > 0 && budget - spent - out.size >= missing.length) {
       await callActor(missing, RETRY_TIMEOUT_S, out);
     }
@@ -327,7 +342,7 @@ export async function fetchTiktokSignal(req: TiktokRequest): Promise<SourceCompo
 
   if (!stats) {
     // No hashtag with enough videos under any name: unknown, not zero
-    // (a hashtag is not the phrase), remembered for a week.
+    // (a hashtag is not the phrase), asked again after a day.
     if (marketId) await writeSample(marketId, 'tiktok', 0, { hashtag: null, queried, view_count: null });
     return { ...empty, meta: { hashtag: null, discovered_at: discoveredAt, queried } };
   }
