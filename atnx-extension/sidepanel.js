@@ -80,6 +80,14 @@ function normalizeWebAppUrl(value) {
   }
 }
 
+// atnx.app (the install-time host permission) or a local dev server (the
+// optional one). Nothing else can be granted.
+function isAllowedWebAppUrl(url) {
+  const { protocol, hostname } = new URL(url);
+  if (protocol === 'https:' && (hostname === 'atnx.app' || hostname.endsWith('.atnx.app'))) return true;
+  return protocol === 'http:' && (hostname === 'localhost' || hostname === '127.0.0.1');
+}
+
 async function getWebAppUrl() {
   const { webAppUrl } = await chrome.storage.local.get('webAppUrl');
   return normalizeWebAppUrl(webAppUrl) || DEFAULT_WEB_APP_URL;
@@ -191,10 +199,17 @@ urlForm.addEventListener('submit', async (e) => {
     setUrlStatus('Enter a valid http(s) URL', 'error');
     return;
   }
+  // The manifest can only ever grant atnx.app and a local dev server, so
+  // any other host would save fine and then fail on every request.
+  if (!isAllowedWebAppUrl(normalized)) {
+    setUrlStatus('Use an atnx.app address or a local one (localhost)', 'error');
+    return;
+  }
 
   // Host permission for the web app keeps the auth cookie flowing even when
-  // third-party cookies are blocked. *.atnx.app is granted at install; any
-  // other origin (e.g. localhost) is requested here, inside the click.
+  // third-party cookies are blocked. *.atnx.app is granted at install; a
+  // local dev server (the optional localhost / 127.0.0.1 permission) is
+  // requested here, inside the click.
   let granted = true;
   try {
     granted = await chrome.permissions.request({ origins: [originPattern(normalized)] });
