@@ -5,9 +5,9 @@ import { useEffect, useId, useRef } from "react";
 // The brand mark drawn in code: the lens from the logo (two circular arcs
 // meeting at the corners), cyan on the left, magenta on the right, with a
 // black pupil, minus the light cone. Being live, the pupil follows the
-// pointer around the page, glances about on its own when nobody is
-// pointing, and the lids blink every few seconds. With reduced motion
-// on, it is the still mark.
+// pointer around the page (the cyan/magenta seam slides with it), glances
+// about on its own when nobody is pointing, and the lids blink every few
+// seconds. With reduced motion on, it is the still mark.
 //
 // The flat marks (public/logo_dark.png, public/logo_light.png) are kept
 // for a revert: swap this for the <img> in Nav.tsx.
@@ -59,13 +59,15 @@ export function LiveLogo({
   const svgRef = useRef<SVGSVGElement>(null);
   const lidsRef = useRef<SVGGElement>(null);
   const pupilRef = useRef<SVGGElement>(null);
+  const seamRef = useRef<SVGGElement>(null);
   const lensClip = `${useId()}-lens`;
 
   useEffect(() => {
     const svg = svgRef.current;
     const lids = lidsRef.current;
     const pupil = pupilRef.current;
-    if (!svg || !lids || !pupil) return;
+    const seam = seamRef.current;
+    if (!svg || !lids || !pupil || !seam) return;
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
 
     let cancelled = false;
@@ -89,6 +91,8 @@ export function LiveLogo({
       cur.x += (target.x - cur.x) * 0.18;
       cur.y += (target.y - cur.y) * 0.18;
       pupil!.setAttribute("transform", `translate(${cur.x.toFixed(2)} ${cur.y.toFixed(2)})`);
+      // The seam is vertical, so it only follows sideways.
+      seam!.setAttribute("transform", `translate(${cur.x.toFixed(2)} 0)`);
       if (Math.abs(target.x - cur.x) > 0.03 || Math.abs(target.y - cur.y) > 0.03) {
         raf = requestAnimationFrame(frame);
       }
@@ -177,8 +181,13 @@ export function LiveLogo({
         style={{ transformBox: "fill-box", transformOrigin: "center" }}
       >
         <g clipPath={`url(#${lensClip})`}>
-          <rect x="0" y="0" width="50" height="100" fill={INK_LEFT} />
-          <rect x="50" y="0" width="50" height="100" fill={INK_RIGHT} />
+          {/* Cyan fills the lens; the magenta half sits on top and slides
+              with the pupil so the seam always splits it down the middle.
+              It runs past the right edge so sliding left leaves no gap. */}
+          <rect x="0" y="0" width="100" height="100" fill={INK_LEFT} />
+          <g ref={seamRef}>
+            <rect x="50" y="0" width="100" height="100" fill={INK_RIGHT} />
+          </g>
           <g ref={pupilRef}>
             <circle cx="50" cy="50" r={PUPIL_R} fill={PUPIL} />
           </g>
