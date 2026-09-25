@@ -167,12 +167,18 @@ export function smooth(prev: number | null, prevAt: string | null, raw: number, 
 // each would overwrite the other's fresher reading. Per source, the newer
 // fetchedAt wins; a source the pass left out stays out (the generic-term
 // guard drops sources on purpose).
-// A change to how a market is scored (a new source, a new weighting) rolls
-// in over RAMP_MS instead of landing in one write: positions liquidate on
-// every write of current_vi, and a jump of a few hundred points would take
-// out leveraged positions that the old score justified. Linear from the old
-// score at `since` to the new one at `since + spanMs`. Pure.
-export const RAMP_MS = 48 * 3600 * 1000;
+// A change to how a market is scored (a new source, a new weighting) can
+// roll in over RAMP_MS instead of landing in one write: positions
+// liquidate on every write of current_vi, and a jump of a few hundred
+// points would take out leveraged positions that the old score justified.
+// Linear from the old score at `since` to the new one at `since + spanMs`.
+// Pure.
+//
+// Off (0) while the platform is unpublished: a ramp also hands anyone a
+// known future price for two days, and protecting positions does not
+// matter yet. Changes land through the two-hour smoothing instead. Set it
+// back (48 h) before launch if method changes should protect holders.
+export const RAMP_MS = 0;
 export function blendScores(oldScore: number, newScore: number, since: number, now: number, spanMs = RAMP_MS): number {
   if (!Number.isFinite(since) || now >= since + spanMs) return newScore;
   if (now <= since) return oldScore;

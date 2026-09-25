@@ -9,7 +9,9 @@ import { corsHeaders, corsPreflight } from '@/lib/cors';
 // choice is one of the options the draft offered (lib/review.ts
 // validateChoice). Persists the capture and, when chosen, the market; the
 // VI scoring runs after the response.
-export const maxDuration = 60;
+// 300: the response returns first; a new market's full scoring pass runs
+// after it (lib/capture.ts scoreNewMarket).
+export const maxDuration = 300;
 
 export async function POST(request: Request) {
   const headers = corsHeaders(request);

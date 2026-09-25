@@ -168,7 +168,8 @@ async function settle(market: MarketRow, result: SignalResult, cadence: 'fast' |
       summary.skipped++;
       return;
     }
-    await recordVi(market.id, result.score, result.components, []);
+    // A slow pass reads every source: a market still scoring goes live.
+    await recordVi(market.id, result.score, result.components, [], { fullPass: cadence === 'slow' });
     summary.refreshed++;
   } catch (err) {
     console.error(`[markets/refresh:${cadence}] ${market.entity_name} failed:`, err);

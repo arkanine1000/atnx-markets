@@ -47,8 +47,9 @@ import {
   type SubjectResolution,
 } from './review';
 import { normalizeSearchTerm } from './trends';
-import { composeVi } from './signals';
-import { verifiedYoutubeHandles } from './creators/channel';
+import { composeVi, prefetchSlowSources, scoreTerms } from './signals';
+import { runChannelJob, verifiedYoutubeHandles } from './creators/channel';
+import { runGdeltJob } from './vi/gdelt';
 import { hasYoutubeRow, resolveAndSave } from './creators/store';
 import type { Components } from './vi/score';
 import { addCapture, createMarket, DuplicateCaptureError, recordVi, type Capture } from './store';
@@ -786,7 +787,11 @@ export async function commitDraft(
     // already has a score and the refresh keeps it fresh, so scoring the
     // retired one would be wasted.
     if (retry && (await retryLowConfidence(retry))) return;
-    await scoreMarketLater(scoring);
+    // A new market gets one full pass over every source before it shows a
+    // number or trades (supabase/018); a capture on an existing market
+    // only refreshes its score.
+    if (createdMarketId) await scoreNewMarket(scoring);
+    else await scoreMarketLater(scoring);
   };
 
   return result;
@@ -944,6 +949,45 @@ interface ScoringContext {
 // thinning the breakdown to whatever answered. GDELT is read from the
 // hourly job's samples, so a new market's first GDELT reading comes with
 // the next slow refresh.
+// A new market's first score, from every source rather than the ones that
+// answer within the capture's minute: the creator handle, GDELT's count for
+// today, the creator channel and a TikTok read are what the hourly refresh
+// would otherwise add over the next hours, drifting the number the market
+// first showed. The market goes live with this write. Runs after the
+// response (the capture routes allow 300 s for it; the TikTok actor alone
+// takes 30-40 s). If it fails, the next slow refresh does the same pass.
+async function scoreNewMarket(ctx: ScoringContext): Promise<void> {
+  try {
+    const { data: market } = await createAdminClient()
+      .from('markets')
+      .select('entity_name, entity_type, category, aliases, vi_components')
+      .eq('id', ctx.marketId)
+      .maybeSingle();
+    if (!market) return;
+    if (market.entity_type === 'person' && !(await hasYoutubeRow(ctx.marketId))) {
+      await resolveAndSave(ctx.marketId).catch((err) => console.error('[capture] resolve failed', (err as Error).message));
+    }
+    const now = Date.now();
+    await Promise.allSettled([runGdeltJob(now, { marketIds: [ctx.marketId], backfill: false }), runChannelJob(now, [ctx.marketId])]);
+    const [handle] = await verifiedYoutubeHandles([ctx.marketId]);
+    const request = {
+      term: normalizeSearchTerm({ name: market.entity_name }),
+      aliases: ctx.aliases ?? ((market.aliases as string[] | null) ?? []),
+      entityType: (market.entity_type as string | null) ?? null,
+      category: (market.category as string | null) ?? null,
+      marketId: ctx.marketId,
+      stored: (market.vi_components as Components | null) ?? null,
+      creator: handle ? { youtubeChannelId: handle.platform_id, verifiedAt: handle.verified_at } : null,
+    };
+    prefetchSlowSources([request]);
+    const [signal] = await scoreTerms([request], 'all');
+    // No source knowing the term is still a finished pass: live at 0.
+    await recordVi(ctx.marketId, signal.score ?? 0, signal.components, signal.seedSeries, { fullPass: true });
+  } catch (err) {
+    console.error('[capture] new-market scoring failed', (err as Error).message);
+  }
+}
+
 async function scoreMarketLater(ctx: ScoringContext): Promise<void> {
   try {
     const { data: market } = await createAdminClient()

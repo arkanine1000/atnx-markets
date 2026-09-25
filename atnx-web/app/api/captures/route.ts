@@ -8,7 +8,9 @@ import { corsHeaders, corsPreflight } from '@/lib/cors';
 // Bounds the model call plus the after() work (VI scoring, and the retry
 // for a low-confidence create). The response itself goes out as soon as the
 // capture is identified and saved.
-export const maxDuration = 60;
+// 300: the response returns first; a new market's full scoring pass runs
+// after it (lib/capture.ts scoreNewMarket).
+export const maxDuration = 300;
 
 // The one-shot path: propose and commit the default choice in one call.
 // The web form, the share sheet and the extension go through
