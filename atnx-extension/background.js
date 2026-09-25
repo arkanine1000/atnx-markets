@@ -232,7 +232,9 @@ async function handleCapture(msg, tab) {
       console.warn('Could not send to web app:', e.message);
       persistFailed = e.name === 'TimeoutError'
         ? 'Analysis timed out — try a smaller selection'
-        : `Can't reach ${hostOf(webAppUrl)} — check the URL in the side panel settings`;
+        : webAppUrl === DEFAULT_WEB_APP_URL
+          ? `Can't reach ${hostOf(webAppUrl)} — check your connection`
+          : `Can't reach ${hostOf(webAppUrl)} — check the URL in the side panel settings`;
     }
 
     if (persistFailed) {
