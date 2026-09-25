@@ -83,6 +83,81 @@ function promptReason(action: string): string | null {
   return reason;
 }
 
+type SortDir = "asc" | "desc";
+type SortValue = string | number | null;
+interface SortState<K extends string> {
+  key: K;
+  dir: SortDir;
+}
+
+// Client-side sorting for the admin tables. Each tab already holds its
+// whole list, so a header click reorders what is loaded, no refetch.
+function useSort<R, K extends string>(
+  rows: R[],
+  columns: Record<K, (row: R) => SortValue>,
+  initial: SortState<NoInfer<K>>
+) {
+  const [sort, setSort] = useState(initial);
+  const get = columns[sort.key];
+  const sorted = [...rows].sort((a, b) => {
+    const x = get(a);
+    const y = get(b);
+    // Empty values sink to the bottom whichever way the column runs.
+    if (x === null || y === null) return x === y ? 0 : x === null ? 1 : -1;
+    const cmp =
+      typeof x === "number" && typeof y === "number"
+        ? x - y
+        : String(x).localeCompare(String(y), undefined, { numeric: true, sensitivity: "base" });
+    return sort.dir === "asc" ? cmp : -cmp;
+  });
+
+  function toggle(key: K) {
+    setSort((s) => {
+      if (s.key === key) return { key, dir: s.dir === "asc" ? "desc" : "asc" };
+      // Text starts A to Z; numbers and dates start largest or newest.
+      const sample = rows.map(columns[key]).find((v) => v !== null);
+      return { key, dir: typeof sample === "string" ? "asc" : "desc" };
+    });
+  }
+
+  return { sorted, sort, toggle };
+}
+
+function SortTh<K extends string>({
+  column,
+  sort,
+  onSort,
+  align = "left",
+  children,
+}: {
+  column: K;
+  sort: SortState<K>;
+  onSort: (key: K) => void;
+  align?: "left" | "right";
+  children: React.ReactNode;
+}) {
+  const active = sort.key === column;
+  return (
+    <th
+      className={`py-2 px-2 ${align === "right" ? "text-right" : "text-left"}`}
+      aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : undefined}
+    >
+      <button
+        type="button"
+        onClick={() => onSort(column)}
+        className={`uppercase tracking-wider cursor-pointer hover:text-primary transition-colors ${
+          active ? "text-primary" : ""
+        }`}
+      >
+        {children}
+        {active && (sort.dir === "asc" ? " ▴" : " ▾")}
+      </button>
+    </th>
+  );
+}
+
+const time = (ts: string) => Date.parse(ts);
+
 export function AdminDashboard({
   handles,
   markets,
@@ -164,6 +239,22 @@ function MarketsTab({ markets }: { markets: MarketRow[] }) {
   const [pending, startTransition] = useTransition();
   const [busyId, setBusyId] = useState<string | null>(null);
   const byId = new Map(markets.map((m) => [m.id, m]));
+  const parentName = (m: MarketRow) =>
+    m.parent_market_id ? (byId.get(m.parent_market_id)?.entity_name ?? m.parent_market_id) : null;
+  const { sorted, sort, toggle } = useSort(
+    markets,
+    {
+      name: (m) => m.entity_name,
+      type: (m) => m.entity_type,
+      about: parentName,
+      captures: (m) => m.total_captures,
+      vi: (m) => m.current_vi,
+      network: (m) => m.network,
+      status: (m) => (m.deleted_at === null ? "active" : "deleted"),
+      created: (m) => time(m.created_at),
+    },
+    { key: "created", dir: "desc" }
+  );
 
   function run(id: string, fn: () => Promise<{ success: boolean; error?: string }>) {
     setBusyId(id);
@@ -183,19 +274,19 @@ function MarketsTab({ markets }: { markets: MarketRow[] }) {
       <table className="w-full text-xs">
         <thead>
           <tr className="text-tertiary font-mono uppercase tracking-wider">
-            <th className="text-left py-2 px-2">Name</th>
-            <th className="text-left py-2 px-2">Type</th>
-            <th className="text-left py-2 px-2">About</th>
-            <th className="text-right py-2 px-2">Captures</th>
-            <th className="text-right py-2 px-2">VI</th>
-            <th className="text-left py-2 px-2">Network</th>
-            <th className="text-left py-2 px-2">Status</th>
-            <th className="text-left py-2 px-2">Created</th>
+            <SortTh column="name" sort={sort} onSort={toggle}>Name</SortTh>
+            <SortTh column="type" sort={sort} onSort={toggle}>Type</SortTh>
+            <SortTh column="about" sort={sort} onSort={toggle}>About</SortTh>
+            <SortTh column="captures" sort={sort} onSort={toggle} align="right">Captures</SortTh>
+            <SortTh column="vi" sort={sort} onSort={toggle} align="right">VI</SortTh>
+            <SortTh column="network" sort={sort} onSort={toggle}>Network</SortTh>
+            <SortTh column="status" sort={sort} onSort={toggle}>Status</SortTh>
+            <SortTh column="created" sort={sort} onSort={toggle}>Created</SortTh>
             <th className="text-right py-2 px-2">Actions</th>
           </tr>
         </thead>
         <tbody>
-          {markets.map((m) => {
+          {sorted.map((m) => {
             const isDeleted = m.deleted_at !== null;
             const busy = pending && busyId === m.id;
             return (
@@ -222,9 +313,7 @@ function MarketsTab({ markets }: { markets: MarketRow[] }) {
                   {m.entity_type ?? "\u2014"}
                 </td>
                 <td className="py-2 px-2 text-secondary">
-                  {m.parent_market_id
-                    ? (byId.get(m.parent_market_id)?.entity_name ?? m.parent_market_id)
-                    : "\u2014"}
+                  {parentName(m) ?? "\u2014"}
                 </td>
                 <td className="py-2 px-2 text-right font-mono">
                   {m.total_captures}
@@ -305,11 +394,21 @@ function MarketsTab({ markets }: { markets: MarketRow[] }) {
                         Restore
                       </button>
                       {/* Permanent, no prompt: it only appears on rows already
-                          soft-deleted, and the server refuses one with trades. */}
+                          soft-deleted. The server refuses one with trades; the
+                          admin is then asked whether to take the trades too. */}
                       <button
                         disabled={busy}
-                        onClick={() => run(m.id, () => purgeMarket(m.id))}
-                        title="Delete permanently: the market, its captures, images and VI history. Refused if anything was traded on it."
+                        onClick={() =>
+                          run(m.id, async () => {
+                            const res = await purgeMarket(m.id);
+                            if (res.success || !res.error?.includes("trade(s) on record")) return res;
+                            const go = window.confirm(
+                              `${res.error}.\n\nPurge it anyway? Its trades are deleted and every account is put back as if they never happened: open stakes and all fees refunded, realized wins taken back and losses returned, the creator's and treasury's fee shares reversed. This cannot be undone.`
+                            );
+                            return go ? purgeMarket(m.id, { withTrades: true }) : { success: true };
+                          })
+                        }
+                        title="Delete permanently: the market, its captures, images and VI history. If anything was traded on it, asks whether to delete the trades too and unwind them from every balance."
                         className="text-atnx-magenta hover:opacity-80 cursor-pointer disabled:opacity-40"
                       >
                         Purge
@@ -373,6 +472,16 @@ function CapturesTab({
   }
 
   const activeMarkets = markets.filter((m) => m.deleted_at === null);
+  const { sorted, sort, toggle } = useSort(
+    captures,
+    {
+      user: (c) => c.user?.handle ?? null,
+      market: (c) => c.market?.entity_name ?? null,
+      confidence: (c) => c.confidence_score,
+      captured: (c) => time(c.created_at),
+    },
+    { key: "captured", dir: "desc" }
+  );
 
   return (
     <div className="overflow-x-auto">
@@ -380,15 +489,15 @@ function CapturesTab({
         <thead>
           <tr className="text-tertiary font-mono uppercase tracking-wider">
             <th className="text-left py-2 px-2">Thumb</th>
-            <th className="text-left py-2 px-2">User</th>
-            <th className="text-left py-2 px-2">Matched to</th>
-            <th className="text-right py-2 px-2">Confidence</th>
-            <th className="text-left py-2 px-2">Captured</th>
+            <SortTh column="user" sort={sort} onSort={toggle}>User</SortTh>
+            <SortTh column="market" sort={sort} onSort={toggle}>Matched to</SortTh>
+            <SortTh column="confidence" sort={sort} onSort={toggle} align="right">Confidence</SortTh>
+            <SortTh column="captured" sort={sort} onSort={toggle}>Captured</SortTh>
             <th className="text-right py-2 px-2">Actions</th>
           </tr>
         </thead>
         <tbody>
-          {captures.map((c) => {
+          {sorted.map((c) => {
             const busy = pending && busyId === c.id;
             const confidence = c.confidence_score;
             const confColor =
@@ -494,21 +603,32 @@ function CapturesTab({
 }
 
 function LogTab({ log }: { log: ModerationLogRow[] }) {
+  const { sorted, sort, toggle } = useSort(
+    log,
+    {
+      when: (r) => time(r.created_at),
+      admin: (r) => r.admin?.handle ?? r.admin_user_id,
+      action: (r) => r.action,
+      target: (r) => `${r.target_type}:${r.target_id}`,
+      reason: (r) => r.reason || null,
+    },
+    { key: "when", dir: "desc" }
+  );
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-xs">
         <thead>
           <tr className="text-tertiary font-mono uppercase tracking-wider">
-            <th className="text-left py-2 px-2">When</th>
-            <th className="text-left py-2 px-2">Admin</th>
-            <th className="text-left py-2 px-2">Action</th>
-            <th className="text-left py-2 px-2">Target</th>
-            <th className="text-left py-2 px-2">Reason</th>
+            <SortTh column="when" sort={sort} onSort={toggle}>When</SortTh>
+            <SortTh column="admin" sort={sort} onSort={toggle}>Admin</SortTh>
+            <SortTh column="action" sort={sort} onSort={toggle}>Action</SortTh>
+            <SortTh column="target" sort={sort} onSort={toggle}>Target</SortTh>
+            <SortTh column="reason" sort={sort} onSort={toggle}>Reason</SortTh>
             <th className="text-left py-2 px-2">Metadata</th>
           </tr>
         </thead>
         <tbody>
-          {log.map((row) => (
+          {sorted.map((row) => (
             <tr key={row.id} className="border-t border-surface">
               <td className="py-2 px-2 text-tertiary whitespace-nowrap">
                 {formatDate(row.created_at)}
@@ -547,6 +667,15 @@ function LogTab({ log }: { log: ModerationLogRow[] }) {
 // the clipboard so a batch of invites can go out from any mail client.
 function WaitlistTab({ rows }: { rows: WaitlistRow[] }) {
   const [copied, setCopied] = useState(false);
+  const { sorted, sort, toggle } = useSort(
+    rows,
+    {
+      when: (r) => time(r.created_at),
+      email: (r) => r.email,
+      source: (r) => r.source,
+    },
+    { key: "when", dir: "desc" }
+  );
   async function copyAll() {
     try {
       await navigator.clipboard.writeText(rows.map((r) => r.email).join("\n"));
@@ -561,7 +690,7 @@ function WaitlistTab({ rows }: { rows: WaitlistRow[] }) {
       <div className="flex items-center justify-between gap-3 mb-3">
         <p className="text-xs text-secondary">
           {rows.length} {rows.length === 1 ? "address" : "addresses"} from
-          the landing page, newest first.
+          the landing page.
         </p>
         <button
           type="button"
@@ -576,13 +705,13 @@ function WaitlistTab({ rows }: { rows: WaitlistRow[] }) {
         <table className="w-full text-xs">
           <thead>
             <tr className="text-tertiary font-mono uppercase tracking-wider">
-              <th className="text-left py-2 px-2">When</th>
-              <th className="text-left py-2 px-2">Email</th>
-              <th className="text-left py-2 px-2">Source</th>
+              <SortTh column="when" sort={sort} onSort={toggle}>When</SortTh>
+              <SortTh column="email" sort={sort} onSort={toggle}>Email</SortTh>
+              <SortTh column="source" sort={sort} onSort={toggle}>Source</SortTh>
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => (
+            {sorted.map((row) => (
               <tr key={row.id} className="border-t border-surface">
                 <td className="py-2 px-2 text-tertiary whitespace-nowrap">
                   {formatDate(row.created_at)}
@@ -621,6 +750,22 @@ function TradingTab({ rows, treasury }: { rows: LeaderboardRow[]; treasury: Trea
   const creatorFees = rows.reduce((sum, r) => sum + r.feesEarnedUsd, 0);
   const tone = (n: number) =>
     n > 0 ? "text-atnx-cyan" : n < 0 ? "text-atnx-magenta" : "text-tertiary";
+  const { sorted, sort, toggle } = useSort(
+    rows,
+    {
+      rank: (r) => r.rank,
+      trader: (r) => r.handle,
+      trades: (r) => r.totalTrades,
+      open: (r) => r.openPositions,
+      volume: (r) => r.volumeUsd,
+      realized: (r) => r.realizedPnl,
+      unrealized: (r) => r.unrealizedPnl,
+      fees: (r) => r.feesEarnedUsd,
+      equity: (r) => r.equity,
+      return: (r) => r.returnPct,
+    },
+    { key: "rank", dir: "asc" }
+  );
   const tiles: { label: string; value: string; sub: string }[] = [
     {
       label: "Treasury",
@@ -672,20 +817,20 @@ function TradingTab({ rows, treasury }: { rows: LeaderboardRow[]; treasury: Trea
         <table className="w-full text-xs">
           <thead>
             <tr className="text-tertiary font-mono uppercase tracking-wider">
-              <th className="text-right py-2 px-2">#</th>
-              <th className="text-left py-2 px-2">Trader</th>
-              <th className="text-right py-2 px-2">Trades</th>
-              <th className="text-right py-2 px-2">Open</th>
-              <th className="text-right py-2 px-2">Volume</th>
-              <th className="text-right py-2 px-2">Realized</th>
-              <th className="text-right py-2 px-2">Unrealized</th>
-              <th className="text-right py-2 px-2">Fees earned</th>
-              <th className="text-right py-2 px-2">Equity</th>
-              <th className="text-right py-2 px-2">Return</th>
+              <SortTh column="rank" sort={sort} onSort={toggle} align="right">#</SortTh>
+              <SortTh column="trader" sort={sort} onSort={toggle}>Trader</SortTh>
+              <SortTh column="trades" sort={sort} onSort={toggle} align="right">Trades</SortTh>
+              <SortTh column="open" sort={sort} onSort={toggle} align="right">Open</SortTh>
+              <SortTh column="volume" sort={sort} onSort={toggle} align="right">Volume</SortTh>
+              <SortTh column="realized" sort={sort} onSort={toggle} align="right">Realized</SortTh>
+              <SortTh column="unrealized" sort={sort} onSort={toggle} align="right">Unrealized</SortTh>
+              <SortTh column="fees" sort={sort} onSort={toggle} align="right">Fees earned</SortTh>
+              <SortTh column="equity" sort={sort} onSort={toggle} align="right">Equity</SortTh>
+              <SortTh column="return" sort={sort} onSort={toggle} align="right">Return</SortTh>
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => (
+            {sorted.map((row) => (
               <tr key={row.userId} className="border-t border-surface font-mono tabular-nums">
                 <td className="py-2 px-2 text-right text-tertiary">{row.rank}</td>
                 <td className="py-2 px-2 text-left text-primary font-sans font-bold">
