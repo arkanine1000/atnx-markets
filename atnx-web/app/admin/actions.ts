@@ -40,10 +40,14 @@ async function callRpc<Args extends Record<string, unknown>>(
 
 // Permanently deletes a soft-deleted market: the row, its captures and
 // their images, its VI history and its curated image. The RPC refuses a
-// market that is live or has trades on record (those stay soft-deleted)
-// and writes the moderation_log row; the files are removed here, since
-// storage is not reachable from SQL.
-export async function purgeMarket(marketId: string): Promise<AdminActionResult> {
+// market that is live, and one with trades on record unless withTrades is
+// set, in which case it deletes the trades and unwinds them from every
+// balance and the treasury (supabase/019). It writes the moderation_log
+// row; the files are removed here, since storage is not reachable from SQL.
+export async function purgeMarket(
+  marketId: string,
+  { withTrades = false }: { withTrades?: boolean } = {}
+): Promise<AdminActionResult> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -52,7 +56,11 @@ export async function purgeMarket(marketId: string): Promise<AdminActionResult> 
 
   const { data, error } = await supabase.rpc("admin_purge_market", {
     market_id: marketId,
-    reason: "purged from the admin dashboard",
+    reason: withTrades
+      ? "purged with its trades from the admin dashboard"
+      : "purged from the admin dashboard",
+    // Only sent when set, so a plain purge also works before 019 is applied.
+    ...(withTrades ? { with_trades: true } : {}),
   });
   if (error) return { success: false, error: error.message };
 

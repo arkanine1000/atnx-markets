@@ -394,11 +394,21 @@ function MarketsTab({ markets }: { markets: MarketRow[] }) {
                         Restore
                       </button>
                       {/* Permanent, no prompt: it only appears on rows already
-                          soft-deleted, and the server refuses one with trades. */}
+                          soft-deleted. The server refuses one with trades; the
+                          admin is then asked whether to take the trades too. */}
                       <button
                         disabled={busy}
-                        onClick={() => run(m.id, () => purgeMarket(m.id))}
-                        title="Delete permanently: the market, its captures, images and VI history. Refused if anything was traded on it."
+                        onClick={() =>
+                          run(m.id, async () => {
+                            const res = await purgeMarket(m.id);
+                            if (res.success || !res.error?.includes("trade(s) on record")) return res;
+                            const go = window.confirm(
+                              `${res.error}.\n\nPurge it anyway? Its trades are deleted and every account is put back as if they never happened: open stakes and all fees refunded, realized wins taken back and losses returned, the creator's and treasury's fee shares reversed. This cannot be undone.`
+                            );
+                            return go ? purgeMarket(m.id, { withTrades: true }) : { success: true };
+                          })
+                        }
+                        title="Delete permanently: the market, its captures, images and VI history. If anything was traded on it, asks whether to delete the trades too and unwind them from every balance."
                         className="text-atnx-magenta hover:opacity-80 cursor-pointer disabled:opacity-40"
                       >
                         Purge
