@@ -13,10 +13,10 @@ export default function LandingPage() {
       <DotMatrixLogo />
 
       <p className="mt-10 text-xl md:text-2xl font-display font-semibold text-secondary tracking-[0.02em]">
-        Trade Attention, Not Tokens
+        The Attention Economy Exchange
       </p>
       <p className="mt-2 text-sm font-mono text-tertiary">
-        The Attention Economy Exchange
+        Trade Attention, Not Tokens
       </p>
 
       <div className="mt-10 flex flex-col sm:flex-row gap-4">
