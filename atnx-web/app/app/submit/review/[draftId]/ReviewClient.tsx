@@ -143,10 +143,9 @@ function CropTool({
     return { x, y, width: Math.abs(a.x - b.x), height: Math.abs(a.y - b.y) };
   }
 
-  const shown = image.cropUrl && !rect ? image.cropUrl : image.url;
-  // When the crop is shown, the overlay coordinates are meaningless; draw
-  // on the original only.
-  const overlayOn = shown === image.url;
+  // Always drawn on the original: the rectangle is in its pixels, and a
+  // second crop starts from the whole image rather than the first crop.
+  const shown = image.url;
   const style = rect
     ? {
         left: `${(rect.x / image.width) * 100}%`,
@@ -160,11 +159,11 @@ function CropTool({
     <div>
       <div
         ref={boxRef}
-        className={`relative select-none rounded-xl overflow-hidden border border-surface bg-black ${
-          disabled || !overlayOn ? "" : "cursor-crosshair touch-none"
+        className={`relative mx-auto w-fit max-w-full select-none rounded-xl overflow-hidden border border-surface bg-black ${
+          disabled ? "" : "cursor-crosshair touch-none"
         }`}
         onPointerDown={(e) => {
-          if (disabled || !overlayOn) return;
+          if (disabled) return;
           e.preventDefault();
           (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
           start.current = toOriginal(e);
@@ -184,8 +183,13 @@ function CropTool({
         }}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={shown} alt="" className="block w-full h-auto pointer-events-none" draggable={false} />
-        {rect && overlayOn && (
+        <img
+          src={shown}
+          alt=""
+          className="block max-w-full max-h-[60dvh] w-auto h-auto pointer-events-none"
+          draggable={false}
+        />
+        {rect && (
           <>
             <div className="absolute inset-0 bg-black/50 pointer-events-none" />
             <div
@@ -199,6 +203,101 @@ function CropTool({
             />
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+// The crop tool, full-screen. It lives behind a button so the review page
+// scrolls normally on a phone: an inline drag surface swallows the swipe
+// of anyone who did not mean to crop.
+function CropModal({
+  image,
+  rect,
+  onChange,
+  onClose,
+  onApply,
+  busy,
+  recropsLeft,
+  disabled,
+}: {
+  image: NonNullable<ReviewDraftView["image"]>;
+  rect: CropRect | null;
+  onChange: (r: CropRect | null) => void;
+  onClose: () => void;
+  onApply: () => void;
+  busy: boolean;
+  recropsLeft: number;
+  disabled: boolean;
+}) {
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape" && !busy) onClose();
+    }
+    document.addEventListener("keydown", onKey);
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = overflow;
+    };
+  }, [busy, onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-3"
+      style={{ backgroundColor: "rgba(0,0,0,0.7)", backdropFilter: "blur(6px)" }}
+      onClick={() => !busy && onClose()}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="crop-modal-title"
+    >
+      <div
+        className="w-full max-w-lg max-h-full overflow-auto rounded-2xl border border-surface bg-surface p-4 space-y-3"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 id="crop-modal-title" className="font-display text-lg font-bold text-primary">
+              Crop image
+            </h2>
+            <p className="text-xs text-tertiary mt-0.5">
+              {rect
+                ? `${rect.width}×${rect.height} px selected`
+                : "Drag over the part that is the subject."}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={busy}
+            aria-label="Close"
+            className="text-secondary hover:text-primary text-xl leading-none px-1 cursor-pointer disabled:opacity-40"
+          >
+            ×
+          </button>
+        </div>
+        <CropTool image={image} rect={rect} onChange={onChange} disabled={disabled || busy} />
+        <div className="flex items-center justify-end gap-3 text-sm">
+          {rect && (
+            <button
+              type="button"
+              onClick={() => onChange(null)}
+              disabled={busy}
+              className="text-secondary hover:text-primary cursor-pointer disabled:opacity-40"
+            >
+              Clear
+            </button>
+          )}
+          <button
+            type="button"
+            disabled={!rect || busy || disabled || recropsLeft === 0}
+            onClick={onApply}
+            className="rounded-xl bg-atnx-cyan px-4 py-2 font-bold text-black disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+          >
+            {busy ? "Analyzing…" : `Re-analyze crop (${recropsLeft} left)`}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -223,6 +322,7 @@ export function ReviewClient({ initial }: { initial: ReviewDraftView }) {
   const [showCreate, setShowCreate] = useState(defaultMode === "create");
 
   const [crop, setCrop] = useState<CropRect | null>(null);
+  const [cropping, setCropping] = useState(false);
   const [busy, setBusy] = useState<"commit" | "recrop" | null>(null);
   const [error, setError] = useState<{ message: string; code?: string } | null>(null);
   const [now, setNow] = useState(() => Date.now());
@@ -245,6 +345,7 @@ export function ReviewClient({ initial }: { initial: ReviewDraftView }) {
     setWithParent(Boolean(next.choices.parentMarketId));
     setShowCreate(d.kind === "create");
     setCrop(null);
+    setCropping(false);
   }
 
   const offered = useMemo(
@@ -350,39 +451,55 @@ export function ReviewClient({ initial }: { initial: ReviewDraftView }) {
   return (
     <div className="space-y-4">
       {view.image && (
-        <Card className="p-3 sm:p-4 space-y-2">
-          <CropTool image={view.image} rect={crop} onChange={setCrop} disabled={busy !== null || expired} />
-          <div className="flex items-center justify-between gap-3 text-xs">
-            <span className="text-tertiary">
-              {view.image.cropUrl && !crop
-                ? "Showing your crop. Drag on it to crop again."
-                : crop
-                  ? `${crop.width}×${crop.height} px selected`
-                  : view.recropsLeft > 0
-                    ? "Drag to crop out the parts that are not the subject."
-                    : "No re-crops left."}
-            </span>
-            {crop && (
-              <span className="flex items-center gap-3 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setCrop(null)}
-                  className="text-secondary hover:text-primary cursor-pointer"
-                >
-                  Clear
-                </button>
-                <button
-                  type="button"
-                  disabled={busy !== null || view.recropsLeft === 0 || expired}
-                  onClick={recrop}
-                  className="rounded-lg bg-elevated border border-surface px-3 py-1.5 font-bold text-primary hover:border-atnx-cyan/50 disabled:opacity-40 cursor-pointer"
-                >
-                  {busy === "recrop" ? "Analyzing…" : `Re-analyze crop (${view.recropsLeft} left)`}
-                </button>
-              </span>
-            )}
+        <Card className="p-3 flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setCropping(true)}
+            aria-label="Open the image"
+            className="shrink-0 cursor-pointer"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={view.image.cropUrl ?? view.image.url}
+              alt=""
+              className="w-16 h-16 rounded-lg object-cover border border-surface bg-black"
+            />
+          </button>
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-bold text-primary">
+              {view.image.cropUrl ? "Your crop" : "Captured image"}
+            </div>
+            <div className="text-[11px] text-tertiary mt-0.5">
+              {view.recropsLeft > 0
+                ? "Caught too much? Crop to the subject."
+                : "No re-crops left."}
+            </div>
           </div>
+          <button
+            type="button"
+            onClick={() => setCropping(true)}
+            disabled={busy !== null || expired || view.recropsLeft === 0}
+            className="shrink-0 rounded-lg bg-elevated border border-surface px-3 py-1.5 text-xs font-bold text-primary hover:border-atnx-cyan/50 disabled:opacity-40 cursor-pointer"
+          >
+            Crop / resize
+          </button>
         </Card>
+      )}
+
+      {view.image && cropping && (
+        <CropModal
+          image={view.image}
+          rect={crop}
+          onChange={setCrop}
+          onClose={() => {
+            setCrop(null);
+            setCropping(false);
+          }}
+          onApply={recrop}
+          busy={busy === "recrop"}
+          recropsLeft={view.recropsLeft}
+          disabled={expired}
+        />
       )}
 
       <Card className="p-4 sm:p-5 space-y-4">

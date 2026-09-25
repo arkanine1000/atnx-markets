@@ -20,6 +20,7 @@ type PositionRow = {
   entry_vi: number;
   leverage: number;
   opened_at: string;
+  fee_usd: number | null;
   market: {
     id: string;
     entity_name: string;
@@ -195,34 +196,70 @@ async function loadViSeries(
   return bucketMedians(rows ?? [], bucketSeconds * 1000);
 }
 
-// Reconstruct portfolio value over the window from each open position's
-// market VI history. Cash is held at its current level; a position not yet
-// opened at time t is counted as the cash it was bought with, so the curve is
-// continuous at the open. The final point is `now` and is marked with each
-// market's live current_vi, so the curve ends exactly on totalValueUsd.
-// Closed trades inside the window are not replayed — this is the equity
-// curve of what the user holds now, not a full ledger.
+// A position as the history replay needs it: open ones have no close yet.
+type LedgerPosition = {
+  market_id: string;
+  direction: 'long' | 'short';
+  size_usd: number;
+  entry_vi: number;
+  leverage: number;
+  opened_at: string;
+  fee_usd: number;
+  closed_at: string | null;
+  realized_pnl: number | null;
+  // Live score, used for the final `now` point of a still-open position.
+  current_vi: number | null;
+};
+
+// A change to cash at a moment in time.
+type CashEvent = { t: number; delta: number };
+
+// Reconstruct portfolio value over the window by replaying the ledger
+// backwards from today's balance. Cash only moves through trading (open:
+// −size −fee; close: +size +realized PnL; creator fee share: +share), so
+// cash at time t is the current balance minus every movement after t. On
+// top of that, each position that was open at t is marked at its market's
+// VI at t. Closed trades therefore show up as the steps they were, and the
+// curve starts where the account really stood. The final point is `now`
+// and is marked with each market's live current_vi, so the curve ends
+// exactly on totalValueUsd.
 function buildHistory(
   balanceUsd: number,
-  positions: PositionRow[],
+  positions: LedgerPosition[],
+  cashEvents: CashEvent[],
   series: ViSeries,
   start: Date,
   now: Date
 ): PortfolioPoint[] {
   const startMs = start.getTime();
   const nowMs = now.getTime();
-  if (positions.length === 0) {
-    return [
-      { t: start.toISOString(), value: balanceUsd },
-      { t: now.toISOString(), value: balanceUsd },
-    ];
+
+  const legs = positions.map((p) => ({
+    row: p,
+    openMs: new Date(p.opened_at).getTime(),
+    closeMs: p.closed_at ? new Date(p.closed_at).getTime() : Infinity,
+  }));
+
+  // Every cash movement, oldest first.
+  const events: CashEvent[] = [...cashEvents];
+  for (const l of legs) {
+    events.push({ t: l.openMs, delta: -(l.row.size_usd + (l.row.fee_usd ?? 0)) });
+    if (Number.isFinite(l.closeMs)) {
+      events.push({ t: l.closeMs, delta: l.row.size_usd + (l.row.realized_pnl ?? 0) });
+    }
   }
+  events.sort((a, b) => a.t - b.t);
 
   const times = new Set<number>([startMs, nowMs]);
   for (const list of series.values()) {
     for (const p of list) times.add(p.t);
   }
-  for (const p of positions) times.add(new Date(p.opened_at).getTime());
+  // Just before and at every movement, so a trade draws as a step rather
+  // than a slope smeared across the neighbouring buckets.
+  for (const e of events) {
+    times.add(e.t - 1);
+    times.add(e.t);
+  }
   let grid = [...times].filter((t) => t >= startMs && t <= nowMs).sort((a, b) => a - b);
 
   // Keep the payload small: thin evenly but always keep the endpoints.
@@ -234,8 +271,8 @@ function buildHistory(
   // Step function: the last bucket at or before t. Before the first bucket
   // the position is worth what it was bought at; at `now` it is worth what
   // the market says right now.
-  const viAt = (p: PositionRow, t: number) => {
-    if (t >= nowMs) return p.market?.current_vi ?? p.entry_vi;
+  const viAt = (p: LedgerPosition, t: number) => {
+    if (t >= nowMs && !p.closed_at) return p.current_vi ?? p.entry_vi;
     const list = series.get(p.market_id);
     let vi = p.entry_vi;
     if (list) {
@@ -247,18 +284,31 @@ function buildHistory(
     return vi;
   };
 
-  return grid.map((t) => {
-    let value = balanceUsd;
-    for (const p of positions) {
-      const openedAt = new Date(p.opened_at).getTime();
-      if (t < openedAt) {
-        value += p.size_usd;
-      } else {
-        value += p.size_usd + pnlAt(p, viAt(p, t)).pnlUsd;
-      }
+  // Walk the grid newest to oldest, peeling off movements as we pass them.
+  const values = new Array<number>(grid.length);
+  let cash = balanceUsd;
+  let e = events.length - 1;
+  for (let i = grid.length - 1; i >= 0; i--) {
+    const t = grid[i];
+    while (e >= 0 && events[e].t > t) {
+      cash -= events[e].delta;
+      e--;
     }
-    return { t: new Date(t).toISOString(), value: Math.round(value * 100) / 100 };
-  });
+    let value = cash;
+    for (const l of legs) {
+      if (t < l.openMs || t >= l.closeMs) continue;
+      const pnl = positionPnl({
+        sizeUsd: l.row.size_usd,
+        entryVi: l.row.entry_vi,
+        currentVi: viAt(l.row, t),
+        direction: l.row.direction,
+        leverage: l.row.leverage,
+      }).pnlUsd;
+      value += l.row.size_usd + pnl;
+    }
+    values[i] = Math.round(value * 100) / 100;
+  }
+  return grid.map((t, i) => ({ t: new Date(t).toISOString(), value: values[i] }));
 }
 
 export async function GET(request: Request) {
@@ -290,7 +340,7 @@ export async function GET(request: Request) {
         supabase
           .from('positions')
           .select(
-            'id, market_id, direction, size_usd, entry_vi, leverage, opened_at, market:markets(id, entity_name, entity_type, current_vi, thumbnail_url, thumbnail_source)'
+            'id, market_id, direction, size_usd, entry_vi, leverage, opened_at, fee_usd, market:markets(id, entity_name, entity_type, current_vi, thumbnail_url, thumbnail_source)'
           )
           .eq('user_id', user.id)
           .eq('status', 'open')
@@ -319,10 +369,69 @@ export async function GET(request: Request) {
       bucketSeconds = WINDOWS[range].bucketSeconds;
     }
 
+    // The rest of the ledger the chart replays: trades closed inside the
+    // window (their cash came back then, and they were marked until then)
+    // and the creator share of fees paid to this account inside it.
+    const [{ data: closedRows, error: closedErr }, { data: feeRows, error: feeErr }] =
+      await Promise.all([
+        supabase
+          .from('positions')
+          .select('market_id, direction, size_usd, entry_vi, leverage, opened_at, fee_usd, closed_at, realized_pnl')
+          .eq('user_id', user.id)
+          .eq('status', 'closed')
+          .gte('closed_at', start.toISOString())
+          .order('closed_at', { ascending: false })
+          .limit(1000),
+        supabase
+          .from('fee_events')
+          .select('creator_usd, created_at')
+          .eq('creator_user_id', user.id)
+          .gt('creator_usd', 0)
+          .gte('created_at', start.toISOString())
+          .order('created_at', { ascending: false })
+          .limit(1000),
+      ]);
+    if (closedErr) throw closedErr;
+    if (feeErr) throw feeErr;
+
+    const ledger: LedgerPosition[] = [
+      ...openPositions.map((p) => ({
+        market_id: p.market_id,
+        direction: p.direction,
+        size_usd: Number(p.size_usd),
+        entry_vi: Number(p.entry_vi),
+        leverage: Number(p.leverage ?? 1),
+        opened_at: p.opened_at,
+        fee_usd: Number(p.fee_usd ?? 0),
+        closed_at: null,
+        realized_pnl: null,
+        current_vi: p.market?.current_vi ?? null,
+      })),
+      ...(closedRows ?? [])
+        .filter((p) => p.closed_at)
+        .map((p) => ({
+          market_id: p.market_id,
+          direction: p.direction as 'long' | 'short',
+          size_usd: Number(p.size_usd),
+          entry_vi: Number(p.entry_vi),
+          leverage: Number(p.leverage ?? 1),
+          opened_at: p.opened_at ?? p.closed_at!,
+          fee_usd: Number(p.fee_usd ?? 0),
+          closed_at: p.closed_at,
+          realized_pnl: p.realized_pnl === null ? 0 : Number(p.realized_pnl),
+          current_vi: null,
+        })),
+    ];
+    const cashEvents: CashEvent[] = (feeRows ?? []).map((f) => ({
+      t: new Date(f.created_at).getTime(),
+      delta: Number(f.creator_usd),
+    }));
+    const seriesIds = [...new Set(ledger.map((p) => p.market_id))];
+
     // Thumbnails and VI history are shared market data (no user scoping), so
     // read them via the admin client like the rest of the market views.
     const admin = createAdminClient();
-    const [{ data: imgRows }, series] = marketIds.length
+    const [{ data: imgRows }, series] = seriesIds.length
       ? await Promise.all([
           admin
             .from('captures')
@@ -331,7 +440,7 @@ export async function GET(request: Request) {
             .is('deleted_at', null)
             .not('image_url', 'is', null)
             .order('created_at', { ascending: false }),
-          loadViSeries(admin, marketIds, start, bucketSeconds),
+          loadViSeries(admin, seriesIds, start, bucketSeconds),
         ])
       : [{ data: [] }, new Map() as ViSeries];
 
@@ -370,7 +479,7 @@ export async function GET(request: Request) {
     const totalValueUsd =
       balanceUsd + positions.reduce((sum, p) => sum + p.valueUsd, 0);
 
-    const history = buildHistory(balanceUsd, openPositions, series, start, now);
+    const history = buildHistory(balanceUsd, ledger, cashEvents, series, start, now);
     const first = history[0]?.value ?? totalValueUsd;
     const changeUsd = totalValueUsd - first;
 
