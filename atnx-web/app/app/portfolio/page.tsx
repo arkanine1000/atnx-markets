@@ -173,7 +173,6 @@ export default function PortfolioPage() {
         <h2 className="font-display text-xl sm:text-2xl font-bold text-primary tracking-tight">
           Portfolio
         </h2>
-        <p className="text-xs text-tertiary mt-1">Simulated USDC account</p>
       </div>
 
       {/* Phones: the side-panel layout (value tile, collapsible card). */}
@@ -189,7 +188,6 @@ export default function PortfolioPage() {
             label="Equity"
             value={`$${equity.toFixed(2)}`}
             hero
-            sub="balance + positions"
           />
           <div className="grid grid-cols-2 gap-4">
             <StatTile
@@ -208,7 +206,6 @@ export default function PortfolioPage() {
                   {fees.earned > 0 ? "+" : ""}${fees.earned.toFixed(2)}
                 </span>
               }
-              sub="half of every fee on markets you created"
             />
           </div>
         </div>
