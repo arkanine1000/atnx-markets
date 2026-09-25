@@ -13,6 +13,7 @@ import {
   isGenericTerm,
   isSearchableAlias,
   SLOW_SOURCES,
+  type CombineOptions,
   type Components,
   type Composite,
   type SourceComponent,
@@ -27,6 +28,7 @@ import { fetchHnSignal } from './vi/hn';
 import { fetchDexSignal } from './vi/dex';
 import { fetchXSignal } from './vi/x';
 import { fetchTiktokSignal, prefetchTiktok } from './vi/tiktok';
+import { effectiveYoutube, readChannelMeta } from './creators/channel';
 
 export interface ScoreRequest {
   term: string;
@@ -44,6 +46,29 @@ export interface ScoreRequest {
   category?: string | null;
   // markets.id, for sources that keep their own sample series.
   marketId?: string | null;
+  // A verified own YouTube channel (market_handles), for creator reach.
+  creator?: { youtubeChannelId: string; verifiedAt: string | null } | null;
+}
+
+// Sources that count other people talking about a name (TikTok here is
+// others' videos under the name's hashtag, not the creator's own). For a
+// creator scored on their own channel, these reading zero means nobody
+// writes the name, not that nothing is happening: their zeros are left out.
+const TALK_SOURCES: SourceName[] = ['x', 'bluesky', 'trends', 'wikipedia', 'gdelt', 'hn', 'tiktok'];
+
+// The composite, with the GDELT switch-over ramp: GDELT moved to BigQuery
+// (and back to its full weight) at GDELT_BQ_SINCE, and the score walks
+// there from the composite without it instead of jumping on one write.
+function rampedScore(components: Components, options: CombineOptions, now: number): { composite: Composite | null; score: number | null } {
+  const composite = combine(components, options);
+  let score = composite?.score ?? null;
+  if (composite && components.gdelt && now < GDELT_BQ_SINCE + RAMP_MS) {
+    const withoutGdelt: Components = { ...components };
+    delete withoutGdelt.gdelt;
+    const before = combine(withoutGdelt, options);
+    if (before) score = blendScores(before.score, composite.score, GDELT_BQ_SINCE, now);
+  }
+  return { composite, score };
 }
 
 // Sources that only cover some categories. Elsewhere they are not asked
@@ -183,17 +208,33 @@ export async function scoreTerms(
         delete components.bluesky;
       }
 
-      const composite = combine(components);
-      // GDELT moved to BigQuery (and back to its full weight) at
-      // GDELT_BQ_SINCE; the score walks there from the composite without
-      // it over the ramp instead of jumping on the first write.
-      let score = composite?.score ?? null;
       const now = Date.now();
-      if (composite && components.gdelt && now < GDELT_BQ_SINCE + RAMP_MS) {
-        const withoutGdelt: Components = { ...components };
-        delete withoutGdelt.gdelt;
-        const before = combine(withoutGdelt);
-        if (before) score = blendScores(before.score, composite.score, GDELT_BQ_SINCE, now);
+      // A creator's own channel, read on the slow paths and carried on the
+      // YouTube component so the fast path sees it too.
+      if (req.creator && req.marketId && want.has('youtube')) {
+        try {
+          const meta = await readChannelMeta(req.marketId, req.creator.youtubeChannelId, now);
+          const yt = components.youtube ?? { source: 'youtube' as const, level: null, momentum: null, fetchedAt: new Date(now).toISOString() };
+          components.youtube = { ...yt, meta: { ...(yt.meta ?? {}), ...meta } };
+        } catch (err) {
+          console.error('[creators] channel reading failed', (err as Error).message);
+        }
+      }
+
+      let { composite, score } = rampedScore(components, {}, now);
+      // Creator reach: the channel scores the YouTube slot when it reads
+      // higher than the name search, the talk sources' zeros drop out, and
+      // the score walks there over the ramp from the handle's verification.
+      if (req.creator) {
+        const yt = effectiveYoutube(components.youtube);
+        if (yt.channel) {
+          const creator = rampedScore({ ...components, youtube: yt.component }, { ignoreZeros: TALK_SOURCES }, now);
+          if (creator.composite && creator.score !== null) {
+            const since = Date.parse(req.creator.verifiedAt ?? '');
+            score = score === null ? creator.score : blendScores(score, creator.score, since, now);
+            composite = creator.composite;
+          }
+        }
       }
       // Seed the sparkline only from a Trends reading that counts toward
       // the score. A series dropped by the generic-term guard would draw

@@ -48,6 +48,7 @@ import {
 } from './review';
 import { normalizeSearchTerm } from './trends';
 import { composeVi } from './signals';
+import { verifiedYoutubeHandles } from './creators/channel';
 import type { Components } from './vi/score';
 import { addCapture, createMarket, DuplicateCaptureError, recordVi, type Capture } from './store';
 import { createAdminClient } from './supabase/admin';
@@ -951,6 +952,7 @@ async function scoreMarketLater(ctx: ScoringContext): Promise<void> {
       .maybeSingle();
     const term = market?.entity_name ? normalizeSearchTerm({ name: market.entity_name }) : ctx.term;
     const aliases = ctx.aliases ?? ((market?.aliases as string[] | null) ?? []);
+    const [handle] = await verifiedYoutubeHandles([ctx.marketId]);
     const signal = await composeVi(
       {
         term,
@@ -959,6 +961,7 @@ async function scoreMarketLater(ctx: ScoringContext): Promise<void> {
         category: (market?.category as string | null) ?? null,
         marketId: ctx.marketId,
         stored: (market?.vi_components as Components | null) ?? null,
+        creator: handle ? { youtubeChannelId: handle.platform_id, verifiedAt: handle.verified_at } : null,
       }
     );
     if (signal.score === null) return;
