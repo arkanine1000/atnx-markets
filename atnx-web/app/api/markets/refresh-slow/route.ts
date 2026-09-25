@@ -4,6 +4,7 @@ import { refreshThumbnails } from '@/lib/thumbnails';
 import { sweepExpiredDrafts } from '@/lib/review';
 import { runGdeltJob } from '@/lib/vi/gdelt';
 import { runChannelJob } from '@/lib/creators/channel';
+import { runResolverPass } from '@/lib/creators/store';
 
 // Slow refresh, hourly (vercel.json): the quota-bound and daily sources
 // (GDELT, Wikipedia, YouTube, HN, X, TikTok). It first runs the GDELT
@@ -61,11 +62,13 @@ export async function GET(request: Request) {
     gdelt = { error: (err as Error).message };
   }
 
-  // Verified creator channels' view totals (lib/creators/channel.ts),
-  // also before scoring.
+  // Person markets' own YouTube channels: look up the unchecked and the
+  // week-old (lib/creators/store.ts), then read every verified channel's
+  // view total (lib/creators/channel.ts). Both before scoring.
   let channels: Record<string, unknown>;
   try {
-    channels = { ...(await runChannelJob()) };
+    const resolver = await runResolverPass();
+    channels = { resolver, ...(await runChannelJob()) };
   } catch (err) {
     console.error('[creators] channel job failed:', err);
     channels = { error: (err as Error).message };

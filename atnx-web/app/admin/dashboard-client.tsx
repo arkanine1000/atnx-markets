@@ -15,7 +15,9 @@ import {
   approveCapture,
   setParentMarket,
   purgeMarket,
+  decideHandle,
 } from "./actions";
+import type { HandleRow } from "./page";
 
 interface MarketRow {
   id: string;
@@ -60,7 +62,7 @@ interface WaitlistRow {
   created_at: string;
 }
 
-type Tab = "markets" | "captures" | "log" | "waitlist" | "trading";
+type Tab = "markets" | "captures" | "handles" | "log" | "waitlist" | "trading";
 
 const usd = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -82,6 +84,7 @@ function promptReason(action: string): string | null {
 }
 
 export function AdminDashboard({
+  handles,
   markets,
   reviewCaptures,
   log,
@@ -89,6 +92,7 @@ export function AdminDashboard({
   traders,
   treasury,
 }: {
+  handles: HandleRow[];
   markets: MarketRow[];
   reviewCaptures: ReviewCaptureRow[];
   log: ModerationLogRow[];
@@ -118,7 +122,7 @@ export function AdminDashboard({
       </header>
 
       <div className="flex gap-1 text-xs mb-4 border-b border-surface">
-        {(["markets", "captures", "log", "waitlist", "trading"] as Tab[]).map((t) => (
+        {(["markets", "captures", "handles", "log", "waitlist", "trading"] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -132,6 +136,8 @@ export function AdminDashboard({
               ? `Markets (${markets.length})`
               : t === "captures"
                 ? `Review queue (${reviewCaptures.length})`
+                : t === "handles"
+                  ? `Handles (${handles.filter((h) => h.review && h.status === "candidate").length})`
                 : t === "log"
                   ? `Moderation log (${log.length})`
                   : t === "waitlist"
@@ -145,6 +151,7 @@ export function AdminDashboard({
       {tab === "captures" && (
         <CapturesTab captures={reviewCaptures} markets={markets} />
       )}
+      {tab === "handles" && <HandlesTab rows={handles} />}
       {tab === "log" && <LogTab log={log} />}
       {tab === "waitlist" && <WaitlistTab rows={waitlist} />}
       {tab === "trading" && <TradingTab rows={traders} treasury={treasury} />}
@@ -715,6 +722,119 @@ function TradingTab({ rows, treasury }: { rows: LeaderboardRow[]; treasury: Trea
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+// Creator channels. The review queue first: channels big enough to be the
+// market's own that the resolver could not prove; verify the right one or
+// reject. Then what is verified, with a way to undo a wrong one.
+function HandlesTab({ rows }: { rows: HandleRow[] }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const queue = rows.filter((r) => r.review && r.status === "candidate");
+  const verified = rows.filter((r) => r.status === "verified");
+
+  function run(id: string, fn: () => Promise<{ success: boolean; error?: string }>) {
+    setBusyId(id);
+    startTransition(async () => {
+      const res = await fn();
+      setBusyId(null);
+      if (!res.success) {
+        window.alert(`Failed: ${res.error}`);
+        return;
+      }
+      router.refresh();
+    });
+  }
+  const subs = (n: number | null) => (n === null ? "hidden" : n.toLocaleString());
+
+  return (
+    <div className="space-y-8 text-xs">
+      <section>
+        <h2 className="font-mono uppercase tracking-wider text-tertiary mb-2">Needs a decision ({queue.length})</h2>
+        {queue.length === 0 && <p className="text-secondary">Nothing to review.</p>}
+        {queue.map((r) => {
+          const busy = pending && busyId === r.market_id;
+          return (
+            <div key={r.market_id} className="border border-surface rounded p-3 mb-3">
+              <div className="flex items-baseline justify-between gap-4 mb-2">
+                <Link href={`/app/markets/${r.market_id}`} className="font-mono text-atnx-cyan hover:underline">
+                  {r.market?.entity_name ?? r.market_id}
+                </Link>
+                <span className="text-tertiary">{r.confidence}</span>
+              </div>
+              <table className="w-full">
+                <tbody>
+                  {(r.evidence?.candidates ?? []).map((c) => (
+                    <tr key={c.id} className="border-t border-surface">
+                      <td className="py-1.5 px-2 font-mono">
+                        <a href={`https://www.youtube.com/channel/${c.id}`} target="_blank" rel="noopener" className="text-atnx-cyan hover:underline">
+                          @{c.handle ?? c.id}
+                        </a>
+                      </td>
+                      <td className="py-1.5 px-2 text-secondary">{c.title}</td>
+                      <td className="py-1.5 px-2 text-right font-mono">{subs(c.subscribers)} subs</td>
+                      <td className="py-1.5 px-2 text-right font-mono">{c.videos} videos</td>
+                      <td className="py-1.5 px-2 text-tertiary">{c.evidence.join(", ")}</td>
+                      <td className="py-1.5 px-2 text-right whitespace-nowrap">
+                        <button
+                          disabled={busy}
+                          onClick={() => run(r.market_id, () => decideHandle(r.market_id, "verify", { id: c.id, handle: c.handle, subscribers: c.subscribers }))}
+                          className="text-atnx-cyan hover:text-atnx-cyan-dim cursor-pointer disabled:opacity-40"
+                        >
+                          Verify
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <button
+                disabled={busy}
+                onClick={() => run(r.market_id, () => decideHandle(r.market_id, "reject"))}
+                className="mt-2 text-atnx-magenta hover:underline cursor-pointer disabled:opacity-40"
+              >
+                None of these
+              </button>
+            </div>
+          );
+        })}
+      </section>
+
+      <section>
+        <h2 className="font-mono uppercase tracking-wider text-tertiary mb-2">Verified ({verified.length})</h2>
+        <table className="w-full">
+          <tbody>
+            {verified.map((r) => (
+              <tr key={r.market_id} className="border-t border-surface">
+                <td className="py-1.5 px-2 font-mono text-atnx-cyan">{r.market?.entity_name ?? r.market_id}</td>
+                <td className="py-1.5 px-2 font-mono">
+                  <a href={`https://www.youtube.com/channel/${r.platform_id}`} target="_blank" rel="noopener" className="hover:underline">
+                    @{r.handle ?? r.platform_id}
+                  </a>
+                </td>
+                <td className="py-1.5 px-2 text-right font-mono">{subs(r.audience)} subs</td>
+                <td className="py-1.5 px-2 text-tertiary">{r.confidence === "admin" ? "admin" : r.confidence}</td>
+                <td className="py-1.5 px-2 text-tertiary">{r.verified_at ? formatDate(r.verified_at) : "\u2014"}</td>
+                <td className="py-1.5 px-2 text-right">
+                  <button
+                    disabled={pending && busyId === r.market_id}
+                    onClick={() => {
+                      if (!window.confirm(`Stop scoring ${r.market?.entity_name} on @${r.handle}?`)) return;
+                      run(r.market_id, () => decideHandle(r.market_id, "reject"));
+                    }}
+                    className="text-atnx-magenta hover:underline cursor-pointer disabled:opacity-40"
+                  >
+                    Reject
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
     </div>
   );
 }

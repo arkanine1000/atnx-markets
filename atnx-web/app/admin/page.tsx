@@ -6,6 +6,30 @@ import { AdminDashboard } from "./dashboard-client";
 
 export const dynamic = "force-dynamic";
 
+export interface HandleCandidate {
+  id: string;
+  handle: string | null;
+  title: string;
+  subscribers: number | null;
+  videos: number;
+  evidence: string[];
+  name_match: boolean;
+}
+
+export interface HandleRow {
+  market_id: string;
+  handle: string | null;
+  platform_id: string | null;
+  status: "candidate" | "verified" | "rejected";
+  review: boolean;
+  confidence: string | null;
+  evidence: { candidates?: HandleCandidate[] } | null;
+  audience: number | null;
+  verified_at: string | null;
+  checked_at: string;
+  market: { entity_name: string } | null;
+}
+
 interface MarketRow {
   id: string;
   entity_name: string;
@@ -68,6 +92,7 @@ export default async function AdminPage() {
   }
 
   const [
+    { data: handles },
     { data: markets },
     { data: reviewCaptures },
     { data: log },
@@ -75,6 +100,16 @@ export default async function AdminPage() {
     traders,
     treasury,
   ] = await Promise.all([
+      // Creator channels: the resolver's review queue and what it verified
+      // (supabase/017; admin-readable under RLS).
+      supabase
+        .from("market_handles")
+        .select("market_id, handle, platform_id, status, review, confidence, evidence, audience, verified_at, checked_at, market:markets(entity_name)")
+        .eq("platform", "youtube")
+        .or("review.eq.true,status.eq.verified")
+        .order("checked_at", { ascending: false })
+        .limit(200)
+        .returns<HandleRow[]>(),
       supabase
         .from("markets")
         .select(
@@ -118,6 +153,7 @@ export default async function AdminPage() {
 
   return (
     <AdminDashboard
+      handles={handles ?? []}
       markets={markets ?? []}
       reviewCaptures={reviewCaptures ?? []}
       log={log ?? []}

@@ -206,6 +206,56 @@ export type Database = {
           },
         ];
       };
+      market_handles: {
+        Row: {
+          market_id: string;
+          platform: 'youtube' | 'tiktok' | 'x';
+          handle: string | null;
+          platform_id: string | null;
+          status: 'candidate' | 'verified' | 'rejected';
+          review: boolean;
+          confidence: string | null;
+          evidence: Json | null;
+          audience: number | null;
+          verified_at: string | null;
+          checked_at: string;
+        };
+        Insert: {
+          market_id: string;
+          platform: 'youtube' | 'tiktok' | 'x';
+          handle?: string | null;
+          platform_id?: string | null;
+          status: 'candidate' | 'verified' | 'rejected';
+          review?: boolean;
+          confidence?: string | null;
+          evidence?: Json | null;
+          audience?: number | null;
+          verified_at?: string | null;
+          checked_at?: string;
+        };
+        Update: {
+          market_id?: string;
+          platform?: 'youtube' | 'tiktok' | 'x';
+          handle?: string | null;
+          platform_id?: string | null;
+          status?: 'candidate' | 'verified' | 'rejected';
+          review?: boolean;
+          confidence?: string | null;
+          evidence?: Json | null;
+          audience?: number | null;
+          verified_at?: string | null;
+          checked_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'market_handles_market_id_fkey';
+            columns: ['market_id'];
+            isOneToOne: false;
+            referencedRelation: 'markets';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       vi_samples: {
         Row: {
           id: number;

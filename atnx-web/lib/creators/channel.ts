@@ -144,6 +144,7 @@ export async function runChannelJob(now = Date.now()): Promise<ChannelJobSummary
   if (!youtubeConfigured()) return { ...summary, skipped: 'YOUTUBE_API_KEY not set' };
   const handles = await verifiedYoutubeHandles();
   summary.channels = handles.length;
+  const videoCounts = new Map<string, number>();
   for (let i = 0; i < handles.length; i += 50) {
     const batch = handles.slice(i, i + 50);
     summary.units++;
@@ -155,6 +156,7 @@ export async function runChannelJob(now = Date.now()): Promise<ChannelJobSummary
     for (const h of batch) {
       const st = byId.get(h.platform_id);
       if (!st?.viewCount) continue;
+      videoCounts.set(h.platform_id, Number(st.videoCount ?? 0));
       await writeSample(h.market_id, SOURCE, Number(st.viewCount), { kind: 'total', channel_id: h.platform_id, subscribers: Number(st.subscriberCount ?? 0), videos: Number(st.videoCount ?? 0) });
       summary.totals++;
     }
@@ -164,6 +166,8 @@ export async function runChannelJob(now = Date.now()): Promise<ChannelJobSummary
     if (channelReading(samples, now).basis === 'growth') continue;
     const lastBoot = samples.find((s) => s.meta?.kind === 'recent_uploads');
     if (lastBoot && now - Date.parse(lastBoot.sampled_at) < BOOTSTRAP_EVERY) continue;
+    // A channel with no videos has no uploads playlist (404).
+    if (videoCounts.get(h.platform_id) === 0) continue;
     summary.units += 2;
     const views = await recentUploadViews(h.platform_id, now);
     if (views === null) continue;
