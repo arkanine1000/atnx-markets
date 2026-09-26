@@ -1,10 +1,14 @@
 // X through twitterapi.io as a VI source. A third-party API, paid per
 // tweet returned ($0.15 per 1k, floor $0.00015 per request), with X's
 // advanced search operators: one query per market for the name and its
-// aliases in the last hour, paged to a cap. The count of posts in the
-// hour is the reading; the momentum compares this hour's rate with the
-// hours before it, from vi_samples. Views and likes are recorded but
-// not scored: an hour-old tweet has barely been seen yet.
+// aliases in one hour, paged to a cap. The hour read is the one that
+// ended two hours ago (X_SHIFT_S): a tweet read minutes after posting
+// has 20 to 200 views, the same tweet two hours later has most of the
+// views it will ever get, so the fetched views are attention in the same
+// unit as video views (views_per_h, impressions_24h in the meta), and
+// spam that nobody reads counts for little. The rate of posts in the
+// hour is still the level's reading and the momentum compares it with
+// the hours before, from vi_samples.
 //
 // The slow path owns it (hourly), but each market is read only once its
 // stored reading is about three hours old: eight reads a day fit the
@@ -18,6 +22,8 @@ import { dailyLedger, pruneSamples, readSamples, writeSample } from './samples';
 
 const API = 'https://api.twitterapi.io/twitter/tweet/advanced_search';
 const WINDOW_S = 3600;
+// The window ends this long before the read.
+export const X_SHIFT_S = 2 * 3600;
 const PAGE_SIZE = 20;
 const MAX_PAGES = 3;
 export const TWEET_CAP = MAX_PAGES * PAGE_SIZE;
@@ -82,19 +88,27 @@ const MIN_SPAN_H = 1.2 / 60;
 // Posts per hour from the fetched tweets. Under the cap the window is
 // the hour and the count is the rate; at the cap the true count is
 // higher, and the rate is read off the span the fetched tweets cover
-// (they arrive newest first, so the oldest bounds it). The span floor
-// was a quarter hour at first, which read every busy market as exactly
-// 400 an hour: Google, Bitcoin, Trump and Musk all filled five pages in
-// well under fifteen minutes.
-export function xRate(tweets: { createdAt: string }[], capped: boolean, now = Date.now()): number {
+// (they arrive newest first, so the oldest bounds it; `until` is the
+// window's end). The span floor was a quarter hour at first, which read
+// every busy market as exactly 400 an hour: Google, Bitcoin, Trump and
+// Musk all filled five pages in well under fifteen minutes.
+export function xRate(tweets: { createdAt: string }[], capped: boolean, until = Date.now()): number {
   if (!capped) return tweets.length;
-  let oldest = now;
+  let oldest = until;
   for (const t of tweets) {
     const ms = Date.parse(t.createdAt);
     if (Number.isFinite(ms) && ms < oldest) oldest = ms;
   }
-  const spanH = Math.max(MIN_SPAN_H, (now - oldest) / 3600_000);
+  const spanH = Math.max(MIN_SPAN_H, (until - oldest) / 3600_000);
   return tweets.length / spanH;
+}
+
+// Views over the fetched tweets scaled to the hour the rate describes:
+// under the cap they are the hour's views; at the cap the fetched tweets
+// cover only a span of it. Pure.
+export function xImpressionsPerHour(views: number, tweets: number, ratePerHour: number): number {
+  if (tweets === 0 || ratePerHour <= 0) return 0;
+  return Math.round((views * ratePerHour) / tweets);
 }
 
 export interface XSample {
@@ -122,7 +136,7 @@ export function xQuery(term: string, aliases: string[], now = Date.now()): strin
     .filter((p, i, all) => p.length >= 2 && all.findIndex((q) => q.toLowerCase() === p.toLowerCase()) === i)
     .slice(0, MAX_PHRASES)
     .map((p) => `"${p}"`);
-  const until = Math.floor(now / 1000);
+  const until = Math.floor(now / 1000) - X_SHIFT_S;
   const or = phrases.length === 1 ? phrases[0] : `(${phrases.join(' OR ')})`;
   return `${or} since_time:${until - WINDOW_S} until_time:${until} -filter:retweets`;
 }
@@ -195,9 +209,10 @@ export async function fetchXSignal({ term, aliases = [], marketId, stored }: XRe
     }
     spentThisProcess += tweets.length;
 
-    const rate = xRate(tweets, capped, now);
+    const rate = xRate(tweets, capped, now - X_SHIFT_S * 1000);
     const views = tweets.reduce((s, t) => s + (t.viewCount ?? 0), 0);
     const likes = tweets.reduce((s, t) => s + (t.likeCount ?? 0), 0);
+    const viewsPerHour = xImpressionsPerHour(views, tweets.length, rate);
     let momentum: number | null = null;
     if (marketId) {
       await writeSample(marketId, 'x', rate, { tweets: tweets.length, requests, capped, views, likes });
@@ -218,6 +233,9 @@ export async function fetchXSignal({ term, aliases = [], marketId, stored }: XRe
         capped: capped ? 1 : 0,
         views,
         likes,
+        views_per_h: viewsPerHour,
+        impressions_24h: viewsPerHour * 24,
+        window_until: new Date(now - X_SHIFT_S * 1000).toISOString(),
         phrases: Math.min(MAX_PHRASES, 1 + aliases.length),
       },
     };

@@ -65,6 +65,7 @@ import {
   CALIBRATION,
   attention,
   compositeMomentum,
+  summarizeAttention,
   isVerifiableAlias,
   levelFromAttention,
   searchableAliases,
@@ -159,4 +160,23 @@ test('compositeMomentum matches the old combine: weighted over sources with a ba
   const both = compositeMomentum([steady, spike]);
   const c = combine({ x: steady, trends: spike })!;
   assert.equal(Math.round(both), c.momentum);
+});
+
+test('summarizeAttention: total, rounded shares, the top source, who answered and who saw', () => {
+  const sum = summarizeAttention({
+    youtube: cmp('youtube', 600, { views_7d: 1e7 }),
+    x: cmp('x', 500, { rate_per_h: 10 }),
+    bluesky: cmp('bluesky', 0, { posts_24h: 0 }),
+    trends: cmp('trends', null, {}),
+  })!;
+  const uy = CALIBRATION.units.youtube!;
+  const ux = CALIBRATION.units.x!;
+  assert.equal(sum.total, Math.round(uy.k * Math.pow(1e7, uy.q) + ux.k * 240));
+  assert.equal(sum.top, 'youtube');
+  assert.deepEqual(sum.answered.sort(), ['bluesky', 'x', 'youtube']);
+  assert.deepEqual(sum.seeing.sort(), ['x', 'youtube']);
+  assert.ok(Math.abs(sum.shares.youtube! + sum.shares.x! - 1) < 0.002);
+  assert.equal(sum.shares.bluesky, undefined, 'a zero has no share');
+  assert.equal(summarizeAttention(null), null);
+  assert.equal(summarizeAttention({ trends: cmp('trends', null, {}) }), null);
 });

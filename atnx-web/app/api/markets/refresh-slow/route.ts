@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { authorized, refreshScores } from '../refresh/route';
+import { pruneComponentHistory } from '@/lib/store';
 import { refreshThumbnails } from '@/lib/thumbnails';
 import { sweepExpiredDrafts } from '@/lib/review';
 import { runGdeltJob } from '@/lib/vi/gdelt';
@@ -75,6 +76,8 @@ export async function GET(request: Request) {
   }
 
   const [scores, thumbs] = await Promise.allSettled([refreshScores('slow', { limit }), refreshThumbnails()]);
+  // Component snapshots older than 60 days (supabase/020).
+  const componentHistory = await pruneComponentHistory();
 
   if (scores.status === 'rejected') {
     console.error('[markets/refresh:slow] failed:', scores.reason);
@@ -90,7 +93,7 @@ export async function GET(request: Request) {
   }
 
   if (scores.status === 'rejected') {
-    return NextResponse.json({ error: (scores.reason as Error).message, gdeltJob: gdelt, channelJob: channels, thumbnails, drafts }, { status: 500 });
+    return NextResponse.json({ error: (scores.reason as Error).message, gdeltJob: gdelt, channelJob: channels, thumbnails, drafts, componentHistory }, { status: 500 });
   }
-  return NextResponse.json({ ...scores.value, gdeltJob: gdelt, channelJob: channels, thumbnails, drafts });
+  return NextResponse.json({ ...scores.value, gdeltJob: gdelt, channelJob: channels, thumbnails, drafts, componentHistory });
 }
