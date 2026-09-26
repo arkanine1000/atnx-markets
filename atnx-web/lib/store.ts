@@ -1,7 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createAdminClient } from './supabase/admin';
 import { forget, forgetPrefix, memo } from './memo';
-import { PAGE_SIZE, type MarketsQuery, type SortMode } from './markets-query';
+import type { MarketsQuery, SortMode } from './markets-query';
+import { isCategory, type Category } from './categories';
 import type { TrendsResult } from './trends';
 import type { Database, Json } from './supabase/database';
 import { smooth, summarizeAttention, type AttentionSummary, type Components, mergeComponents } from './vi/score';
@@ -617,16 +618,19 @@ async function loadCaptures(limit: number): Promise<Capture[]> {
   });
 }
 
-// One page of markets for the dashboard, with the hero's featured set so
-// the client refreshes both in one request. Sorting and paging happen in
-// the database; each row carries its newest capture (the card's image,
-// title and analysis) and the market's own capture count.
+// The dashboard's listing (the top `limit` markets), with the hero's
+// featured set so the client refreshes both in one request. Sorting and
+// limiting happen in the database; each row carries its newest capture
+// (the card's image, title and analysis) and the market's own capture count.
 export interface MarketsPage {
   items: Capture[];
   featured: Capture[];
+  // Markets matching the search and category filter, listed or not.
   total: number;
-  page: number;
-  pageSize: number;
+  limit: number;
+  // Live markets per category under the current search, whatever the
+  // category filter, for the filter's menu. Categories with none are absent.
+  categoryCounts: Partial<Record<Category, number>>;
 }
 
 const MARKETS_PREFIX = 'markets:';
@@ -644,7 +648,7 @@ function likePattern(term: string): string {
   return `%${term.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 }
 
-function marketsQuery(sort: SortMode, search = '') {
+function marketsQuery(sort: SortMode, search = '', categories: readonly Category[] = []) {
   let q = createAdminClient()
     .from('markets')
     .select(
@@ -656,17 +660,13 @@ function marketsQuery(sort: SortMode, search = '') {
     .order('created_at', { referencedTable: 'captures', ascending: false })
     .limit(1, { referencedTable: 'captures' });
   if (search) q = q.ilike('entity_name', likePattern(search));
+  if (categories.length) q = q.in('category', categories);
   switch (sort) {
     case 'virality':
       q = q.order('current_vi', { ascending: false }).order('created_at', { ascending: false });
       break;
     case 'newest':
       q = q.order('created_at', { ascending: false });
-      break;
-    case 'category':
-      q = q
-        .order('category', { ascending: true, nullsFirst: false })
-        .order('current_vi', { ascending: false });
       break;
   }
   return q;
@@ -676,15 +676,16 @@ async function loadMarketRows(
   sort: SortMode,
   from: number,
   to: number,
-  search = ''
+  search = '',
+  categories: readonly Category[] = []
 ): Promise<{ items: Capture[]; total: number }> {
-  const { data, error, count } = await marketsQuery(sort, search)
+  const { data, error, count } = await marketsQuery(sort, search, categories)
     .range(from, to)
     .returns<MarketPageRow[]>();
   // A page past the end is an empty page, not an error; PostgREST answers
   // such a range with 416. The count is then re-read on its own.
   if (error?.code === 'PGRST103') {
-    const { count: total } = await marketsQuery(sort, search).limit(0);
+    const { count: total } = await marketsQuery(sort, search, categories).limit(0);
     return { items: [], total: total ?? 0 };
   }
   if (error) throw error;
@@ -707,15 +708,39 @@ async function loadMarketRows(
 }
 
 // A search narrows the listing to markets whose name contains the term
-// (case-insensitive); the hero's featured set is unaffected.
-export function getMarketsPage({ page, sort, q }: MarketsQuery): Promise<MarketsPage> {
-  return memo(`${MARKETS_PREFIX}${sort}:${page}:${q}`, FEED_TTL_MS, async () => {
-    const from = (page - 1) * PAGE_SIZE;
-    const [listing, featured] = await Promise.all([
-      loadMarketRows(sort, from, from + PAGE_SIZE - 1, q),
+// (case-insensitive), the category filter to markets filed under one of
+// the categories; the hero's featured set is unaffected by either.
+export function getMarketsPage({ limit, sort, q, categories }: MarketsQuery): Promise<MarketsPage> {
+  const key = `${MARKETS_PREFIX}${sort}:${limit}:${categories.join(',')}:${q}`;
+  return memo(key, FEED_TTL_MS, async () => {
+    const [listing, featured, categoryCounts] = await Promise.all([
+      loadMarketRows(sort, 0, limit - 1, q, categories),
       getFeaturedMarkets(),
+      getCategoryCounts(q),
     ]);
-    return { items: listing.items, featured, total: listing.total, page, pageSize: PAGE_SIZE };
+    return { items: listing.items, featured, total: listing.total, limit, categoryCounts };
+  });
+}
+
+// One small row per live market (same inner join as the listing, so the
+// numbers agree with its total). PostgREST caps a response at max-rows,
+// 1000 by default; past that many markets this wants a grouped RPC.
+function getCategoryCounts(search: string): Promise<Partial<Record<Category, number>>> {
+  return memo(`${MARKETS_PREFIX}counts:${search}`, FEED_TTL_MS, async () => {
+    let q = createAdminClient()
+      .from('markets')
+      .select('category, captures!inner(id)')
+      .is('deleted_at', null)
+      .is('captures.deleted_at', null)
+      .limit(1, { referencedTable: 'captures' });
+    if (search) q = q.ilike('entity_name', likePattern(search));
+    const { data, error } = await q.returns<{ category: string | null }[]>();
+    if (error) throw error;
+    const counts: Partial<Record<Category, number>> = {};
+    for (const { category } of data ?? []) {
+      if (category && isCategory(category)) counts[category] = (counts[category] ?? 0) + 1;
+    }
+    return counts;
   });
 }
 
