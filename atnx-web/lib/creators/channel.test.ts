@@ -63,17 +63,19 @@ test('the channel scores the slot only when its week beats the name search', () 
   assert.equal(effectiveYoutube({ ...base, meta: { views_7d: 100 } }).channel, false, 'no channel reading');
 });
 
-test('a Shorts-first channel is discounted before it competes with the name search', () => {
+test('a channel is discounted for its Shorts share before it competes with the name search', () => {
   const base = { source: 'youtube' as const, level: 0, momentum: null, fetchedAt: new Date(NOW).toISOString() };
   const shorts = effectiveYoutube({ ...base, meta: { views_7d: 0, channel_views_7d: 24e6, channel_shorts_share: 1, channel_momentum: 1.2 } });
   assert.equal(shorts.channel, true);
-  assert.equal(shorts.component?.meta?.views_7d, 6e6, 'x0.25');
+  assert.equal(shorts.component?.meta?.views_7d, 6e6, 'all Shorts: x0.25');
   assert.equal(shorts.component?.momentum, 1.2, 'the channel momentum is used when the channel wins');
-  const loses = effectiveYoutube({ ...base, meta: { views_7d: 7e6, channel_views_7d: 24e6, channel_shorts_share: 0.8 } });
+  const loses = effectiveYoutube({ ...base, meta: { views_7d: 7e6, channel_views_7d: 24e6, channel_shorts_share: 1 } });
   assert.equal(loses.channel, false, 'discounted 6M loses to 7M of name search');
-  const longForm = effectiveYoutube({ ...base, meta: { views_7d: 7e6, channel_views_7d: 24e6, channel_shorts_share: 0.5 } });
-  assert.equal(longForm.channel, true);
-  assert.equal(longForm.component?.meta?.views_7d, 24e6);
+  const mixed = effectiveYoutube({ ...base, meta: { views_7d: 7e6, channel_views_7d: 24e6, channel_shorts_share: 0.6 } });
+  assert.equal(mixed.channel, true);
+  assert.equal(mixed.component?.meta?.views_7d, 24e6 * (1 - 0.75 * 0.6), 'linear in the share');
+  const unknown = effectiveYoutube({ ...base, meta: { views_7d: 7e6, channel_views_7d: 24e6 } });
+  assert.equal(unknown.component?.meta?.views_7d, 24e6, 'no share known: no discount');
 });
 
 test('a switched channel never mixes the old one in', () => {

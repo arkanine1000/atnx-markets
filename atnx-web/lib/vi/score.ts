@@ -96,7 +96,7 @@ export function combine(components: Components, { calibration = CALIBRATION }: C
     return { score: 0, level: 0, momentum: 0, sourcesPresent: [], attention: 0, shares: {}, topSource: null };
   }
   const level = levelFromAttention(at.A, calibration);
-  const momentum = compositeMomentum(seeing);
+  const momentum = compositeMomentum(seeing, at.shares);
   // Momentum scales the level rather than adding to it: a steady 1x leaves
   // the level alone, 10x lifts it by a third, 0.1x cuts it by a third.
   const momentumFactor = LEVEL_SHARE + MOMENTUM_SHARE * (momentum / 500);
@@ -323,22 +323,28 @@ export interface Calibration {
   pointsPerDecade: number;
   // log10 of the total at which the level is 0.
   log10ZeroPoint: number;
-  // A channel whose recent uploads are mostly Shorts counts a swiped
-  // Short like a long-form view; its views are discounted.
-  shorts: { maxSeconds: number; firstShare: number; discount: number };
+  // A swiped Short counts as a view like a long-form one, so a channel's
+  // views are discounted in proportion to its share of Shorts among
+  // recent uploads: all Shorts x discount, none x1, linear in between.
+  shorts: { maxSeconds: number; discount: number };
+  // Posts a day x this stand in for X impressions on a reading written
+  // before views_per_h existed (lib/vi/x.ts); gone once every market has
+  // been re-read.
+  xImpressionsPerPostFallback: number;
   units: Record<SourceName, UnitScale | null>;
 }
 
-export const CALIBRATION: Calibration = {
+export const DEFAULT_CALIBRATION: Calibration = {
   version: 'sum-v1-2026-09-26',
   pointsPerDecade: 325,
   log10ZeroPoint: 5.64,
-  shorts: { maxSeconds: 180, firstShare: 2 / 3, discount: 0.25 },
+  shorts: { maxSeconds: 180, discount: 0.25 },
+  xImpressionsPerPostFallback: 300,
   units: {
     youtube: { k: 10 ** 3.14, q: 0.51 }, // views a week: name search or the discounted channel, whichever is larger
     tiktok: { k: 10 ** 5.89, q: 0.51 }, // videos a day under the hashtag
+    x: { k: 10 ** 3.2, q: 0.51 }, // impressions a day on posts about the name (matured two hours)
     trends: { k: 1.03e7, q: 1 }, // ratio to the benchmark query
-    x: { k: 2527, q: 1 }, // posts a day
     bluesky: { k: 717, q: 1 }, // posts a day
     wikipedia: { k: 78, q: 1 }, // pageviews a day (14-day median)
     gdelt: { k: 4.7e7, q: 1 }, // share (%) of the week's news articles
@@ -347,8 +353,47 @@ export const CALIBRATION: Calibration = {
   },
 };
 
-export function isShortsFirst(share: number | null | undefined, cal: Calibration = CALIBRATION): boolean {
-  return typeof share === 'number' && Number.isFinite(share) && share >= cal.shorts.firstShare;
+// VI_CALIBRATION_JSON overrides any of the fields above without a deploy
+// (a refit is an env change, a bad constant rolls back in a minute).
+// Top-level fields replace; `units` merges per source, so one source can
+// be given without repeating the rest. Malformed JSON is logged and
+// ignored. Pure.
+export function applyCalibrationOverride(base: Calibration, json: string | undefined | null): Calibration {
+  if (!json || !json.trim()) return base;
+  let o: Partial<Calibration> & { units?: Partial<Record<SourceName, UnitScale | null>> };
+  try {
+    o = JSON.parse(json);
+  } catch (err) {
+    console.error(`[vi] VI_CALIBRATION_JSON is not valid JSON: ${(err as Error).message}`);
+    return base;
+  }
+  if (!o || typeof o !== 'object') return base;
+  const num = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
+  const units = { ...base.units };
+  for (const [s, u] of Object.entries(o.units ?? {}) as [SourceName, UnitScale | null | undefined][]) {
+    if (!(s in base.units)) continue;
+    if (u === null) units[s] = null;
+    else if (u && typeof u === 'object') units[s] = { k: num(u.k, base.units[s]?.k ?? 1), q: num(u.q, base.units[s]?.q ?? 1) };
+  }
+  return {
+    version: typeof o.version === 'string' ? o.version : `${base.version}+env`,
+    pointsPerDecade: num(o.pointsPerDecade, base.pointsPerDecade),
+    log10ZeroPoint: num(o.log10ZeroPoint, base.log10ZeroPoint),
+    shorts: { maxSeconds: num(o.shorts?.maxSeconds, base.shorts.maxSeconds), discount: num(o.shorts?.discount, base.shorts.discount) },
+    xImpressionsPerPostFallback: num(o.xImpressionsPerPostFallback, base.xImpressionsPerPostFallback),
+    units,
+  };
+}
+
+export const CALIBRATION: Calibration = applyCalibrationOverride(DEFAULT_CALIBRATION, process.env.VI_CALIBRATION_JSON);
+
+// The factor a channel's views are multiplied by for its share of Shorts
+// among recent uploads: 1 at no Shorts, `discount` at all Shorts, linear
+// in between; 1 when the share is unknown.
+export function shortsFactor(share: number | null | undefined, cal: Calibration = CALIBRATION): number {
+  if (typeof share !== 'number' || !Number.isFinite(share)) return 1;
+  const s = Math.max(0, Math.min(1, share));
+  return 1 - (1 - cal.shorts.discount) * s;
 }
 
 export const metaNumber = (v: unknown): number | null => {
@@ -367,7 +412,7 @@ export function youtubeReading(meta: SourceComponent['meta'] | undefined, cal: C
   const search = metaNumber(meta?.views_7d);
   const channel = metaNumber(meta?.channel_views_7d);
   if (search === null && channel === null) return null;
-  const discounted = channel === null ? 0 : channel * (isShortsFirst(metaNumber(meta?.channel_shorts_share), cal) ? cal.shorts.discount : 1);
+  const discounted = channel === null ? 0 : channel * shortsFactor(metaNumber(meta?.channel_shorts_share), cal);
   return Math.max(search ?? 0, discounted);
 }
 
@@ -390,8 +435,14 @@ export function sourceReading(c: SourceComponent, cal: Calibration = CALIBRATION
       r = metaNumber(m?.ratio_to_benchmark);
       break;
     case 'x': {
-      const h = metaNumber(m?.rate_per_h);
-      r = h === null ? null : h * 24;
+      // Impressions a day on the hour's posts (lib/vi/x.ts); a reading
+      // from before views were kept stands in with posts x a typical count.
+      const v = metaNumber(m?.views_per_h);
+      if (v !== null) r = v * 24;
+      else {
+        const h = metaNumber(m?.rate_per_h);
+        r = h === null ? null : h * 24 * cal.xImpressionsPerPostFallback;
+      }
       break;
     }
     case 'bluesky':
@@ -481,18 +532,26 @@ export function summarizeAttention(components: Components | null | undefined, ca
 }
 
 // Total attention to the 0-1000 level: pointsPerDecade per tenfold,
-// zero at the zero point.
+// through log10(1 + A/A0). Far above the zero point that is the plain
+// log; around and below it the level bends to 0 instead of cutting off,
+// so a market with a little attention reads a little (A0/10 -> ~13,
+// A0 -> ~98) and only nothing at all reads 0.
 export function levelFromAttention(A: number, cal: Calibration = CALIBRATION): number {
   if (A <= 0) return 0;
-  return clamp(Math.round(cal.pointsPerDecade * (Math.log10(A) - cal.log10ZeroPoint)));
+  return clamp(Math.round(cal.pointsPerDecade * Math.log10(1 + A / 10 ** cal.log10ZeroPoint)));
 }
 
 // The momentum half of the composite, on the 0-1000 momentum axis:
-// WEIGHTS-weighted momentumScore over the sources that see something and
-// have a baseline; steady (500) when none has one.
-export function compositeMomentum(seeing: SourceComponent[]): number {
+// momentumScore over the sources that see something and have a
+// baseline, weighted by each one's share of the total (`shares`), so a
+// spike on a source that is 2% of a market's attention moves it 2% of
+// the way. WEIGHTS stand in when no shares are given. Steady (500) when
+// no source has a baseline.
+export function compositeMomentum(seeing: SourceComponent[], shares?: Partial<Record<SourceName, number>>): number {
   const withMomentum = seeing.filter((c) => c.momentum !== null);
   if (withMomentum.length === 0) return 500;
-  const mw = withMomentum.reduce((s, c) => s + WEIGHTS[c.source], 0);
-  return withMomentum.reduce((s, c) => s + (WEIGHTS[c.source] / mw) * momentumScore(c.momentum as number), 0);
+  const w = (c: SourceComponent) => (shares ? (shares[c.source] ?? 0) : WEIGHTS[c.source]);
+  const mw = withMomentum.reduce((s, c) => s + w(c), 0);
+  if (mw <= 0) return 500;
+  return withMomentum.reduce((s, c) => s + (w(c) / mw) * momentumScore(c.momentum as number), 0);
 }

@@ -27,7 +27,11 @@ import {
 
 import { ANCHORS, REPORTED } from './vi-anchors';
 
-const FIT_SOURCES: SourceName[] = ['youtube', 'tiktok', 'trends', 'x', 'bluesky', 'wikipedia', 'gdelt', 'hn'];
+const FIT_SOURCES: SourceName[] = ['youtube', 'tiktok', 'x', 'trends', 'bluesky', 'wikipedia', 'gdelt', 'hn'];
+// Passive-view sources share one exponent q: YouTube views, TikTok videos,
+// X impressions. Their prior centre for log k is pinned at a reference
+// reading (log10 of it) so a change of q keeps that reading's unit.
+const VIDEO_LIKE: Partial<Record<SourceName, number>> = { youtube: 7, tiktok: 3, x: 5 };
 // theta = [P, log10 A0, q_video, log10 k per FIT_SOURCES]
 const PRIOR_SIGMA_LINEAR = 0.3;
 const PRIOR_SIGMA_VIDEO = 0.5;
@@ -50,7 +54,7 @@ function toCalibration(theta: number[]): Calibration {
   const [P, z, q, ...lk] = theta;
   const units = { ...CALIBRATION.units } as Record<SourceName, { k: number; q: number } | null>;
   FIT_SOURCES.forEach((s, i) => {
-    units[s] = { k: 10 ** lk[i], q: s === 'youtube' || s === 'tiktok' ? q : 1 };
+    units[s] = { k: 10 ** lk[i], q: VIDEO_LIKE[s] !== undefined ? q : 1 };
   });
   return { ...CALIBRATION, pointsPerDecade: P, log10ZeroPoint: z, units };
 }
@@ -64,9 +68,8 @@ function fromCalibration(cal: Calibration): number[] {
 function priorCentre(s: SourceName, q: number): number {
   const base = Math.log10(CALIBRATION.units[s]!.k);
   const q0 = CALIBRATION.units[s]!.q;
-  if (s === 'youtube') return base + 7 * (q0 - q);
-  if (s === 'tiktok') return base + 3 * (q0 - q);
-  return base;
+  const ref = VIDEO_LIKE[s];
+  return ref === undefined ? base : base + ref * (q0 - q);
 }
 
 function level(row: Row, cal: Calibration): number {
@@ -86,7 +89,7 @@ function loss(theta: number[], rows: Row[], anchors: Record<string, number>): nu
   const q = theta[2];
   L += (((q - 0.5) / PRIOR_SIGMA_Q) * PEN) ** 2;
   FIT_SOURCES.forEach((s, i) => {
-    const sigma = s === 'youtube' || s === 'tiktok' ? PRIOR_SIGMA_VIDEO : PRIOR_SIGMA_LINEAR;
+    const sigma = VIDEO_LIKE[s] !== undefined ? PRIOR_SIGMA_VIDEO : PRIOR_SIGMA_LINEAR;
     L += (((theta[3 + i] - priorCentre(s, q)) / sigma) * PEN) ** 2;
   });
   if (q > 1) L += (((q - 1) / 0.05) * PEN) ** 2;
@@ -166,11 +169,12 @@ function fmtCalibration(cal: Calibration): string {
   const u = (s: SourceName) => cal.units[s]!;
   const k = (x: number) => (x >= 1e4 ? x.toExponential(3) : x.toFixed(x >= 100 ? 0 : 2));
   return [
-    `export const CALIBRATION: Calibration = {`,
+    `export const DEFAULT_CALIBRATION: Calibration = {`,
     `  version: 'sum-v1-${new Date().toISOString().slice(0, 10)}',`,
     `  pointsPerDecade: ${cal.pointsPerDecade.toFixed(1)},`,
     `  log10ZeroPoint: ${cal.log10ZeroPoint.toFixed(3)},`,
-    `  shorts: { maxSeconds: ${cal.shorts.maxSeconds}, firstShare: 2 / 3, discount: ${cal.shorts.discount} },`,
+    `  shorts: { maxSeconds: ${cal.shorts.maxSeconds}, discount: ${cal.shorts.discount} },`,
+    `  xImpressionsPerPostFallback: ${cal.xImpressionsPerPostFallback},`,
     `  units: {`,
     ...FIT_SOURCES.map((s) => `    ${s}: { k: ${k(u(s).k)}, q: ${u(s).q.toFixed(3)} },`),
     `    dex: null,`,
@@ -234,7 +238,7 @@ function fmtCalibration(cal: Calibration): string {
       const at = attention(r.components, cal);
       const lvl = levelFromAttention(at.A, cal);
       const seeing = (Object.values(r.components) as (SourceComponent | undefined)[]).filter((c): c is SourceComponent => !!c && (at.terms[c.source] ?? 0) > 0);
-      const m = compositeMomentum(seeing);
+      const m = compositeMomentum(seeing, at.shares);
       const score = clamp(Math.round(lvl * (0.65 + 0.35 * (m / 500))));
       return { r, at, lvl, score };
     })
