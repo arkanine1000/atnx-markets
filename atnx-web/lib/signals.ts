@@ -193,7 +193,10 @@ export async function scoreTerms(
       for (const name of Object.keys(components) as SourceName[]) {
         const c = components[name];
         if (!c) continue;
-        if (c.level === null && stored?.[name]?.level != null) components[name] = stored[name];
+        // A deliberate unknown (Trends below its resolution) replaces a
+        // stored reading instead of falling back to it: the stored one is
+        // the old known 0 this unknown exists to retire.
+        if (c.level === null && stored?.[name]?.level != null && !c.meta?.below_resolution) components[name] = stored[name];
         else if (c !== stored?.[name] && c.level !== null) fetched.push(name);
         const kept = components[name];
         if (kept && kept === stored?.[name]) {
