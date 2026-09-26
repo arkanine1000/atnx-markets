@@ -90,38 +90,52 @@ async function fetchBatch(terms: string[], depth = 0): Promise<Map<string, Trend
 
   terms.forEach((term, i) => {
     const values = timeline.map((p) => p.value?.[i] ?? 0);
-    const ratios = values.map((v) => v / benchMean);
-    const series = timeline.map((p, k) => ({
-      date: new Date(parseInt(p.time, 10) * 1000).toISOString(),
-      value: trendsLevel(ratios[k]),
-    }));
-    // The last point is today, partial. Level from the last two points
-    // smooths that; momentum compares the latest full day to the rest.
-    const lastTwo = ratios.slice(-2);
-    const current = lastTwo.reduce((a, b) => a + b, 0) / lastTwo.length;
-    const full = ratios.length >= 2 ? ratios.slice(0, -1) : ratios;
-    const latestFull = full[full.length - 1];
-    const prior = full.slice(0, -1);
-    // Trends reports integers. A series of 0s and 1s is quantisation
-    // noise, and a ratio of two such values means nothing.
-    const quantised = Math.max(...values) < MOMENTUM_MIN_RAW;
-
-    out.set(term, {
-      source: 'trends',
-      level: trendsLevel(current),
-      momentum: quantised ? null : ratioToBaseline(latestFull, prior),
-      fetchedAt: new Date().toISOString(),
-      // A quantised series (raw 0s, 1s and 2s) is noise on the VI axis
-      // too: it would seed a sparkline that swings between 0 and ~180.
-      series: quantised ? [] : series,
-      meta: {
-        ratio_to_benchmark: Number(current.toFixed(3)),
-        benchmark: BENCHMARK,
-        keyword: term,
-      },
-    });
+    const times = timeline.map((p) => new Date(parseInt(p.time, 10) * 1000).toISOString());
+    out.set(term, termSignal(term, values, benchMean, times));
   });
   return out;
+}
+
+// One term's reading from its raw Trends values beside the benchmark's
+// mean. Pure.
+//
+// Trends reports integers relative to the largest series in the query,
+// so a term under ~1% of the benchmark reads 0 whether nobody searches it
+// or a few thousand people do: "below resolution", not "no interest". It
+// reads as unknown (flagged `below_resolution`) rather than a known 0,
+// which at the heaviest weight dragged active markets down (Big Chungus,
+// Loki Edits, Lessons in Meme Culture read 500+ on YouTube). Other sources
+// still carry a real decline.
+export function termSignal(term: string, values: number[], benchMean: number, times: string[], now = Date.now()): TrendsSignal {
+  const ratios = values.map((v) => v / benchMean);
+  const series = times.map((date, k) => ({ date, value: trendsLevel(ratios[k]) }));
+  // The last point is today, partial. Level from the last two points
+  // smooths that; momentum compares the latest full day to the rest.
+  const lastTwo = ratios.slice(-2);
+  const current = lastTwo.length ? lastTwo.reduce((a, b) => a + b, 0) / lastTwo.length : 0;
+  const full = ratios.length >= 2 ? ratios.slice(0, -1) : ratios;
+  const latestFull = full[full.length - 1];
+  const prior = full.slice(0, -1);
+  // Trends reports integers. A series of 0s and 1s is quantisation
+  // noise, and a ratio of two such values means nothing.
+  const quantised = Math.max(0, ...values) < MOMENTUM_MIN_RAW;
+  const belowResolution = current <= 0;
+
+  return {
+    source: 'trends',
+    level: belowResolution ? null : trendsLevel(current),
+    momentum: quantised || belowResolution ? null : ratioToBaseline(latestFull, prior),
+    fetchedAt: new Date(now).toISOString(),
+    // A quantised series (raw 0s, 1s and 2s) is noise on the VI axis
+    // too: it would seed a sparkline that swings between 0 and ~180.
+    series: quantised ? [] : series,
+    meta: {
+      ratio_to_benchmark: Number(current.toFixed(3)),
+      benchmark: BENCHMARK,
+      keyword: term,
+      ...(belowResolution ? { below_resolution: 1 } : {}),
+    },
+  };
 }
 
 export interface TrendsQuery {
@@ -166,7 +180,9 @@ export async function fetchTrendsSignals(queries: TrendsQuery[]): Promise<Map<st
       const got = await fetchBatch(batch.map((b) => b.keyword));
       for (const { term, keyword } of batch) {
         const sig = got.get(keyword) ?? empty();
-        if (sig.level !== null) cache.set(keyword.toLowerCase(), { data: sig, expiry: Date.now() + CACHE_TTL });
+        // A below-resolution answer is an answer: cached like a level, so
+        // those markets do not re-query the scraper every five minutes.
+        if (sig.level !== null || sig.meta?.below_resolution) cache.set(keyword.toLowerCase(), { data: sig, expiry: Date.now() + CACHE_TTL });
         out.set(term, sig);
       }
     } catch (err) {
