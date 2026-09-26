@@ -21,7 +21,7 @@ export const MIN_SUBSCRIBERS = 10_000;
 // The verified channel must be this many times bigger than the next one.
 export const DWARF_RATIO = 5;
 
-export type Evidence = 'wikidata' | 'capture_url' | 'screen_handle' | 'handle_guess' | 'name_search';
+export type Evidence = 'wikidata' | 'capture_url' | 'screen_handle' | 'handle_guess' | 'name_search' | 'exact_name';
 
 export interface Channel {
   id: string;
@@ -118,6 +118,14 @@ export function guessHandles(name: string, aliases: string[] = []): string[] {
     push(`${c}official`);
   }
   return out.slice(0, 8);
+}
+
+// Whether the channel's handle or title is exactly the market's name or an
+// alias ("@limc" for the alias "LIMC"), not a prefix or an "official"
+// variant. Pure.
+export function exactNameMatch(ch: Channel, name: string, aliases: string[] = []): boolean {
+  const names = new Set([name, ...aliases].map(compact).filter((s) => s.length >= 3));
+  return [compact(ch.title), ch.handle ? compact(ch.handle) : ''].some((o) => o && names.has(o));
 }
 
 // Whether a channel's name or handle is the market's name or an alias. Pure.
@@ -270,6 +278,12 @@ export async function resolveYoutube(input: ResolveInput): Promise<Resolution & 
     const fragmentMatch = !!channel.handle && fragments.some((f) => f.test(channel.handle!));
     const ev = [...evidence];
     if (fragmentMatch) ev.push('screen_handle');
+    // The capture was this channel's own upload and the channel carries the
+    // market's exact name: a second, independent piece of evidence
+    // (Lessons in Meme Culture: its capture linked @limc, alias "LIMC", and
+    // waited in review on one piece alone). The audience and dwarf checks in
+    // decide() still apply, which keeps fan channels out.
+    if (evidence.has('capture_url') && exactNameMatch(channel, input.name, input.aliases)) ev.push('exact_name');
     return { channel, evidence: ev, nameMatch: nameMatches(channel, input.name, input.aliases), fragmentMatch };
   });
   return { ...decide(candidates), cost };
