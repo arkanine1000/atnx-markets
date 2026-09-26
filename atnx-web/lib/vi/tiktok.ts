@@ -57,9 +57,20 @@ const MAX_GAP_H = 9;
 const TREND_WINDOW_H = 12;
 // ...and needs this many earlier reads in it; until then the newest pair.
 const MIN_TREND_READS = 3;
-// Momentum compares with the trend of the prior day, from this many reads.
-const BASELINE_WINDOW_H = 30;
-const MIN_BASELINE_READS = 5;
+// Momentum compares the last MOMENTUM_WINDOW_H with the same hours a day
+// earlier: posting has a daily rhythm, so a whole-day baseline read every
+// morning as a collapse and every evening as a spike. The run is kept this
+// far back to reach yesterday's window.
+const BASELINE_WINDOW_H = 40;
+const MOMENTUM_WINDOW_H = 12;
+const MIN_MOMENTUM_READS = 4;
+// Momentum is reported when the two rates differ by more than this many
+// standard errors of the difference...
+const MOMENTUM_Z = 2;
+// ...and yesterday's rate is at least this many videos an hour: on a
+// tag growing by one video an hour, 0.5 against 2.8 is a count, not a
+// fivefold rise.
+const MIN_MOMENTUM_BASE_PER_H = 2;
 // A newest pair this many noise-widths above the trend is a real spike
 // and is taken as it is; anything less is read off the trend.
 const SPIKE_K = 3;
@@ -142,6 +153,13 @@ export interface TiktokReading {
   videosPerHour: number | null;
 }
 
+// sqrt of the summed squared distances from the mean hour: what a
+// slope's standard error divides the noise by. Pure.
+function spreadH(points: { h: number }[]): number {
+  const mean = points.reduce((a, p) => a + p.h, 0) / points.length;
+  return Math.max(1e-9, Math.sqrt(points.reduce((a, p) => a + (p.h - mean) ** 2, 0)));
+}
+
 export interface TrendFit {
   slope: number; // videos per hour
   noise: number; // robust spread of the counts around the line, in videos
@@ -173,8 +191,10 @@ export function trendFit(points: { h: number; v: number }[]): TrendFit {
 //     more than SPIKE_K times their noise: a real spike shows on its first
 //     read, as with plain pairs. Drops only come through the trend.
 //   - until enough reads exist, the newest pair.
-// Momentum is the rate against the trend of the prior day, and only when
-// the gap clears the same noise band; within it the source says nothing.
+// Momentum is the rate against the same twelve hours yesterday, and only
+// when the gap clears both windows' own noise (each measured over twelve
+// hours, where the daily curve is small; a 30 h straight line counted the
+// curve as noise and let no market through) and yesterday had volume.
 // Samples newest first, the current one included. Pure.
 export function tiktokReading(samples: Sample[], now = Date.now()): TiktokReading {
   const none = { level: null, momentum: null, videosPerHour: null };
@@ -214,11 +234,16 @@ export function tiktokReading(samples: Sample[], now = Date.now()): TiktokReadin
   }
 
   let momentum: number | null = null;
-  if (earlier.length >= MIN_BASELINE_READS) {
-    const day = trendFit(earlier);
-    const dayBand = (SPIKE_K * Math.SQRT2 * Math.max(day.noise, 1)) / (last.h - prev.h);
-    const baseline = Math.max(0, day.slope);
-    if (Math.abs(rate - baseline) > dayBand) momentum = ratioToBaseline(rate, [baseline]);
+  const nowWin = run.filter((p) => last.h - p.h <= MOMENTUM_WINDOW_H + 0.5);
+  const yday = run.filter((p) => last.h - p.h >= 24 - 0.5 && last.h - p.h <= 24 + MOMENTUM_WINDOW_H + 0.5);
+  if (nowWin.length >= MIN_MOMENTUM_READS && yday.length >= MIN_MOMENTUM_READS) {
+    const a = trendFit(nowWin);
+    const b = trendFit(yday);
+    const baseline = Math.max(0, b.slope);
+    const se = Math.hypot(Math.max(a.noise, 1) / spreadH(nowWin), Math.max(b.noise, 1) / spreadH(yday));
+    if (baseline >= MIN_MOMENTUM_BASE_PER_H && Math.abs(rate - baseline) > MOMENTUM_Z * se) {
+      momentum = ratioToBaseline(rate, [baseline]);
+    }
   }
 
   return { level: tiktokLevel(rate * 24), momentum, videosPerHour: Number(rate.toFixed(2)) };

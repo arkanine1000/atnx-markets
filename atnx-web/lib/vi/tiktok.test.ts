@@ -54,7 +54,37 @@ test('a real spike shows on its first read', () => {
   const r = tiktokReading(samples, now);
   assert.equal(r.videosPerHour, 150);
   assert.equal(r.level, tiktokLevel(150 * 24));
+});
+
+// Cumulative counts every 3 h for `hours`, growing at rateAt(hour of day).
+function daily(hours: number, rateAt: (hourOfDay: number) => number, start = 1_000_000): number[] {
+  const out = [start];
+  for (let h = 3; h <= hours; h += 3) out.push(out[out.length - 1] + 3 * rateAt(h % 24));
+  return out;
+}
+
+test('a daily posting rhythm is not momentum: same hours yesterday', () => {
+  // 40/h by day, 10/h by night, every day alike.
+  const counts = daily(39, (hod) => (hod >= 8 && hod < 20 ? 40 : 10));
+  const { samples, now } = series(counts);
+  assert.equal(tiktokReading(samples, now).momentum, null);
+});
+
+test('a rise against the same hours yesterday is momentum', () => {
+  // Steady 30/h, then the last 12 h at 90/h.
+  const counts = daily(39, () => 30);
+  for (let i = counts.length - 4; i < counts.length; i++) counts[i] = counts[i - 1] + 3 * 90;
+  const { samples, now } = series(counts);
+  const r = tiktokReading(samples, now);
   assert.ok(r.momentum !== null && r.momentum > 2, `momentum ${r.momentum}`);
+});
+
+test('no momentum on a tiny baseline', () => {
+  // Yesterday under 2 videos an hour: 0.5/h, now 3/h.
+  const counts = daily(39, () => 0.5);
+  for (let i = counts.length - 4; i < counts.length; i++) counts[i] = counts[i - 1] + 3 * 3;
+  const { samples, now } = series(counts);
+  assert.equal(tiktokReading(samples, now).momentum, null);
 });
 
 test('steady growth within the noise has no momentum', () => {
