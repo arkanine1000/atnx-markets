@@ -5,7 +5,10 @@
 // Daily data with a ~1-2 day lag, so the slow refresh path owns this.
 // Level comes from the latest available day, not the 30-day peak, so a
 // market can fall again once its moment passes.
-import { clamp, median, ratioToBaseline, type SourceComponent } from './score';
+import { clamp, median, type SourceComponent } from './score';
+
+// Momentum needs this many pageviews a day (14-day median) to mean anything.
+const MIN_MOMENTUM_VIEWS = 10;
 
 const USER_AGENT = 'ATNX/1.0 (attention-exchange; contact@atnx.app)';
 const OPENSEARCH_URL = 'https://en.wikipedia.org/w/api.php';
@@ -102,7 +105,9 @@ export async function fetchWikipediaSignal(
     const prior = views.slice(0, -1).slice(-14);
     // Median baseline so one earlier spike does not hide a new one.
     const median14 = median(prior);
-    const momentum = prior.length === 0 ? null : median14 > 0 ? latest / median14 : ratioToBaseline(latest, prior);
+    // Under MIN_MOMENTUM_VIEWS a day the ratio is a count, not a trend:
+    // a namesake page at 2 views against a median of 0.5 read 4.0x.
+    const momentum = prior.length === 0 || median14 < MIN_MOMENTUM_VIEWS ? null : latest / median14;
 
     const result: WikipediaSignal = {
       source: 'wikipedia',

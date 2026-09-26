@@ -1,7 +1,7 @@
 // Run with: npm run test:vi
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { decide, guessHandles, nameMatches, parseYoutubeUrl, screenHandles, type Candidate, type Channel } from './resolve';
+import { decide, exactNameMatch, guessHandles, nameMatches, parseYoutubeUrl, screenHandles, type Candidate, type Channel } from './resolve';
 
 const ch = (o: Partial<Channel> & { id: string }): Channel => ({ title: '', handle: null, subscribers: 0, views: 0, videos: 0, description: '', ...o });
 
@@ -67,4 +67,20 @@ test('small channels stay candidates and are not queued for review', () => {
   assert.equal(r.status, 'candidate');
   assert.equal(r.review, false);
   assert.equal(decide([cand(ch({ id: 'x', handle: 'cobratate', subscribers: 18_500 }), ['handle_guess'])]).review, true);
+});
+
+test('exactNameMatch: the exact name or alias, not a variant', () => {
+  assert.ok(exactNameMatch(ch({ id: 'l', title: 'Lessons in Meme Culture', handle: 'limc' }), 'Lessons in Meme Culture', ['LIMC']));
+  assert.ok(exactNameMatch(ch({ id: 'l2', title: 'LIMC', handle: 'limc' }), 'Lessons in Meme Culture', ['LIMC']));
+  assert.ok(!exactNameMatch(ch({ id: 'f', title: 'Elon Musk Fans', handle: 'elonmuskfans' }), 'Elon Musk'));
+  assert.ok(!exactNameMatch(ch({ id: 'o', title: 'Forrest Auto', handle: 'forrestsautoreviewsofficial' }), 'Forrest Jones', ["Forrest's Auto Reviews"]), 'an "official" variant is not exact');
+});
+
+test('a captured channel with the exact name verifies on its own', () => {
+  const r = decide([
+    cand(ch({ id: 'limc', handle: 'limc', title: 'Lessons in Meme Culture', subscribers: 2_250_000 }), ['capture_url', 'exact_name']),
+    cand(ch({ id: 'x', handle: 'limcofficial', subscribers: 136 }), ['handle_guess']),
+  ]);
+  assert.equal(r.status, 'verified');
+  assert.equal(r.best?.channel.id, 'limc');
 });
