@@ -1,7 +1,7 @@
 // Run with: npm run test:vi
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { channelReading, effectiveYoutube } from './channel';
+import { channelReading, effectiveYoutube, ofChannel } from './channel';
 import { youtubeLevel } from '../vi/youtube';
 import type { Sample } from '../vi/samples';
 
@@ -57,4 +57,11 @@ test('the channel scores the slot only when it beats the name search', () => {
   assert.equal(trump.channel, false);
   assert.equal(trump.component?.level, 634);
   assert.equal(effectiveYoutube(undefined).channel, false);
+});
+
+test('a switched channel never mixes the old one in', () => {
+  const old = { sampled_at: new Date(NOW - 20 * H).toISOString(), value: 100, meta: { kind: 'total', channel_id: 'UCold' } };
+  const cur = { sampled_at: new Date(NOW).toISOString(), value: 500_000_000, meta: { kind: 'total', channel_id: 'UCnew' } };
+  assert.deepEqual(ofChannel([old, cur], 'UCnew'), [cur]);
+  assert.equal(channelReading(ofChannel([old, cur], 'UCnew'), NOW).basis, null, 'one total is not growth');
 });

@@ -162,7 +162,7 @@ export async function runChannelJob(now = Date.now(), marketIds?: string[]): Pro
     }
   }
   for (const h of handles) {
-    const samples = await readSamples(h.market_id, SOURCE, SAMPLE_LIMIT);
+    const samples = ofChannel(await readSamples(h.market_id, SOURCE, SAMPLE_LIMIT), h.platform_id);
     if (channelReading(samples, now).basis === 'growth') continue;
     const lastBoot = samples.find((s) => s.meta?.kind === 'recent_uploads');
     if (lastBoot && now - Date.parse(lastBoot.sampled_at) < BOOTSTRAP_EVERY) continue;
@@ -177,7 +177,15 @@ export async function runChannelJob(now = Date.now(), marketIds?: string[]): Pro
   return summary;
 }
 
+// Only the given channel's samples: when a market's verified channel
+// changes (Dolan Dark, 2026-09-26: @dolandark was abandoned for
+// @dolandarkest), the old channel's totals would read as a jump of the
+// difference between two channels. Pure.
+export function ofChannel(samples: Sample[], channelId: string): Sample[] {
+  return samples.filter((s) => s.meta?.channel_id === channelId);
+}
+
 // The slow path's channel reading for one market, as component meta.
 export async function readChannelMeta(marketId: string, channelId: string, now = Date.now()) {
-  return channelMeta(channelId, channelReading(await readSamples(marketId, SOURCE, SAMPLE_LIMIT), now));
+  return channelMeta(channelId, channelReading(ofChannel(await readSamples(marketId, SOURCE, SAMPLE_LIMIT), channelId), now));
 }
