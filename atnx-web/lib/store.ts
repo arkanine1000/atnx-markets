@@ -4,7 +4,7 @@ import { forget, forgetPrefix, memo } from './memo';
 import { PAGE_SIZE, type MarketsQuery, type SortMode } from './markets-query';
 import type { TrendsResult } from './trends';
 import type { Database, Json } from './supabase/database';
-import { smooth, type Components, mergeComponents } from './vi/score';
+import { smooth, summarizeAttention, type AttentionSummary, type Components, mergeComponents } from './vi/score';
 
 type DbClient = SupabaseClient<Database>;
 
@@ -48,6 +48,9 @@ export interface Capture {
   viScoring?: boolean;
   // markets.total_captures, for the "N captures" chip on a card.
   captureCount?: number;
+  // Where the market's attention is (lib/vi/score.ts summarizeAttention):
+  // the total in YouTube-view-equivalents a week and each source's share.
+  attention?: AttentionSummary | null;
   // Write-side only: the per-source breakdown behind viralityScore and a
   // Trends series on the VI axis to seed a new market's history. Null
   // score means no source knew the term; nothing is recorded then.
@@ -264,7 +267,31 @@ export async function recordVi(
     .eq('id', marketId);
   if (updateErr) throw updateErr;
 
+  // One snapshot of the breakdown per slow pass (supabase/020), for refits
+  // and replays. Never fails the write: the table may not be applied yet.
+  if (fullPass) {
+    const { error: histErr } = await supabase
+      .from('vi_component_history')
+      .insert({ market_id: marketId, components: merged as unknown as Json, raw_vi: rawVi, vi, attention: summarizeAttention(merged)?.total ?? null });
+    if (histErr) console.error(`[vi] component history write failed (${marketId}): ${histErr.message}`);
+  }
+
   return vi;
+}
+
+// Snapshots older than this are dropped by the slow refresh.
+export const COMPONENT_HISTORY_KEEP_MS = 60 * 24 * 3600 * 1000;
+
+export async function pruneComponentHistory(keepMs = COMPONENT_HISTORY_KEEP_MS): Promise<{ error?: string }> {
+  const { error } = await createAdminClient()
+    .from('vi_component_history')
+    .delete()
+    .lt('recorded_at', new Date(Date.now() - keepMs).toISOString());
+  if (error) {
+    console.error(`[vi] component history prune failed: ${error.message}`);
+    return { error: error.message };
+  }
+  return {};
 }
 
 type SeriesPoint = { date: string; value: number };
@@ -607,6 +634,7 @@ const FEATURED = 5;
 
 type MarketPageRow = MarketRow & {
   created_at: string;
+  vi_components: Components | null;
   captures: Omit<CaptureRowWithMarket, 'market'>[];
 };
 
@@ -620,7 +648,7 @@ function marketsQuery(sort: SortMode, search = '') {
   let q = createAdminClient()
     .from('markets')
     .select(
-      `${MARKET_COLUMNS}, created_at, captures!inner(id, created_at, image_url, source_url, ocr_text, raw_ai_response, market_id)`,
+      `${MARKET_COLUMNS}, created_at, vi_components, captures!inner(id, created_at, image_url, source_url, ocr_text, raw_ai_response, market_id)`,
       { count: 'exact' }
     )
     .is('deleted_at', null)
@@ -668,11 +696,12 @@ async function loadMarketRows(
     FEED_SERIES
   );
   const items = rows.map((row) => {
-    const { captures, created_at, ...market } = row;
+    // The breakdown stays on the server; the card gets its summary.
+    const { captures, created_at, vi_components, ...market } = row;
     void created_at;
     const latest = captures[0];
     const trends = trendsFromPoints(market.entity_name, series.get(market.id) ?? []);
-    return rowToCapture({ ...latest, market }, trends);
+    return { ...rowToCapture({ ...latest, market }, trends), attention: summarizeAttention(vi_components) };
   });
   return { items, total: count ?? items.length };
 }
@@ -715,6 +744,9 @@ export interface MarketDetail {
   latest: Capture;
   captures: Capture[];
   trends: TrendsResult | null;
+  // Where the attention is (lib/vi/score.ts summarizeAttention); null
+  // while nothing has answered.
+  attention: AttentionSummary | null;
   // Simulated USDC traded on this market: every open and every close
   // counts once, at its size (leverage not multiplied in).
   volumeUsd: number;
@@ -746,14 +778,17 @@ export async function getMarketDetail(
 ): Promise<MarketDetail | null> {
   const supabase = createAdminClient();
 
-  const { data: market, error: marketErr } = await supabase
+  const { data: marketWithComponents, error: marketErr } = await supabase
     .from('markets')
-    .select(MARKET_COLUMNS)
+    .select(`${MARKET_COLUMNS}, vi_components`)
     .eq('id', marketId)
     .is('deleted_at', null)
     .maybeSingle();
   if (marketErr) throw marketErr;
-  if (!market) return null;
+  if (!marketWithComponents) return null;
+  // The breakdown stays on the server; the page gets its summary.
+  const { vi_components, ...market } = marketWithComponents;
+  const attention = summarizeAttention(vi_components as Components | null);
 
   const { data: captureRows, error: captureErr } = await supabase
     .from('captures')
@@ -826,6 +861,7 @@ export async function getMarketDetail(
     latest: captures[0],
     captures,
     trends,
+    attention,
     ...tradeVolume(traded.data ?? []),
   };
 }

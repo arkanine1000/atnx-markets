@@ -454,6 +454,32 @@ export function attention(components: Components, cal: Calibration = CALIBRATION
   return { A, terms, shares, answered, topSource, topShare };
 }
 
+// The breakdown a page can show: the total in YouTube-view-equivalents a
+// week, each answering source's share (3 decimals), the largest, and
+// which sources answered and saw something. Null when nothing answered.
+export interface AttentionSummary {
+  total: number;
+  shares: Partial<Record<SourceName, number>>;
+  top: SourceName | null;
+  answered: SourceName[];
+  seeing: SourceName[];
+}
+
+export function summarizeAttention(components: Components | null | undefined, cal: Calibration = CALIBRATION): AttentionSummary | null {
+  if (!components) return null;
+  const at = attention(components, cal);
+  if (at.answered.length === 0) return null;
+  const shares: Partial<Record<SourceName, number>> = {};
+  for (const [s, v] of Object.entries(at.shares) as [SourceName, number][]) if (v > 0) shares[s] = Math.round(v * 1000) / 1000;
+  return {
+    total: Math.round(at.A),
+    shares,
+    top: at.topSource,
+    answered: at.answered,
+    seeing: (Object.entries(at.terms) as [SourceName, number][]).filter(([, t]) => t > 0).map(([s]) => s),
+  };
+}
+
 // Total attention to the 0-1000 level: pointsPerDecade per tenfold,
 // zero at the zero point.
 export function levelFromAttention(A: number, cal: Calibration = CALIBRATION): number {
