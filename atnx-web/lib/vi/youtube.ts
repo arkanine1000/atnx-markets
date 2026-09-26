@@ -12,6 +12,7 @@
 // The slow path owns it. Without a key the source is unknown.
 import { clamp, ratioToBaseline, type SourceComponent } from './score';
 import { dailyLedger, pruneSamples, readSamples, writeSample } from './samples';
+import { filterRelevantTitles } from './relevance';
 
 const API = 'https://www.googleapis.com/youtube/v3';
 const CACHE_TTL = 50 * 60 * 1000;
@@ -155,9 +156,9 @@ async function discover(term: string, aliases: string[]): Promise<string[] | nul
   return (res.body.items ?? []).map((i) => i.id?.videoId).filter((id): id is string => !!id);
 }
 
-async function viewCounts(ids: string[]): Promise<{ id: string; views: number; publishedAt: string }[] | null> {
+async function viewCounts(ids: string[]): Promise<{ id: string; views: number; publishedAt: string; title: string; channel: string }[] | null> {
   if (ids.length === 0) return [];
-  const res = await api<{ items?: { id: string; statistics?: { viewCount?: string }; snippet?: { publishedAt?: string } }[] }>('videos', {
+  const res = await api<{ items?: { id: string; statistics?: { viewCount?: string }; snippet?: { publishedAt?: string; title?: string; channelTitle?: string } }[] }>('videos', {
     part: 'statistics,snippet',
     id: ids.slice(0, 50).join(','),
   });
@@ -166,6 +167,8 @@ async function viewCounts(ids: string[]): Promise<{ id: string; views: number; p
     id: v.id,
     views: Number(v.statistics?.viewCount ?? 0),
     publishedAt: v.snippet?.publishedAt ?? '',
+    title: v.snippet?.title ?? '',
+    channel: v.snippet?.channelTitle ?? '',
   }));
 }
 
@@ -177,9 +180,12 @@ export interface YoutubeRequest {
   marketId?: string | null;
   // The stored reading, whose meta carries yesterday's video set.
   stored?: SourceComponent | null;
+  // For the title relevance check (lib/vi/relevance.ts).
+  entityType?: string | null;
+  category?: string | null;
 }
 
-export async function fetchYoutubeSignal({ term, aliases = [], marketId, stored }: YoutubeRequest): Promise<SourceComponent> {
+export async function fetchYoutubeSignal({ term, aliases = [], marketId, stored, entityType, category }: YoutubeRequest): Promise<SourceComponent> {
   const key = `${marketId ?? ''}|${term.toLowerCase()}`;
   const hit = cache.get(key);
   if (hit && Date.now() < hit.expiry) return hit.data;
@@ -195,6 +201,9 @@ export async function fetchYoutubeSignal({ term, aliases = [], marketId, stored 
     let ids = storedIds;
     let discovered = discoveredAt ? new Date(discoveredAt).toISOString() : null;
     let searched = 0;
+    // A new set is checked for relevance; so is a stored set that never
+    // was (once, at the market's next hourly read: no search quota).
+    let checkTitles = stored?.meta?.title_filter === undefined && ids.length > 0;
     if (discoveryDue(stored)) {
       const neverSearched = !discoveredAt;
       const found = (await searchesLeft(neverSearched)) > 0 ? await discover(term, aliases) : null;
@@ -203,13 +212,27 @@ export async function fetchYoutubeSignal({ term, aliases = [], marketId, stored 
         discovered = new Date().toISOString();
         searched = 1;
         searchedThisProcess++;
+        checkTitles = true;
       } else if (neverSearched) {
         return empty;
       }
     }
 
-    const videos = await viewCounts(ids);
+    let videos = await viewCounts(ids);
     if (!videos) return empty;
+    let titleFilter: string | null = typeof stored?.meta?.title_filter === 'string' ? stored.meta.title_filter : null;
+    let filteredOut: number | null = typeof stored?.meta?.filtered_out === 'number' ? stored.meta.filtered_out : null;
+    if (checkTitles && videos.length > 0) {
+      const verdict = await filterRelevantTitles({ name: term, aliases, entityType, category }, videos);
+      titleFilter = verdict.status;
+      filteredOut = verdict.filteredOut;
+      if (verdict.status === 'ok') {
+        const kept = new Set(verdict.keep);
+        ids = ids.filter((id) => kept.has(id));
+        videos = videos.filter((v) => kept.has(v.id));
+        if (verdict.dropped.length) console.log(`[youtube] title filter "${term}" dropped ${verdict.dropped.length}: ${verdict.dropped.map((t) => JSON.stringify(t)).join(' | ')}`);
+      }
+    }
     const cutoff = Date.now() - WINDOW_DAYS * 24 * 3600 * 1000;
     const recent = videos.filter((v) => !v.publishedAt || Date.parse(v.publishedAt) >= cutoff);
     const views7d = recent.reduce((s, v) => s + v.views, 0);
@@ -237,6 +260,8 @@ export async function fetchYoutubeSignal({ term, aliases = [], marketId, stored 
         top_video: top?.id ?? null,
         top_views: top?.views ?? null,
         discovered_at: discovered,
+        title_filter: titleFilter,
+        filtered_out: filteredOut,
       },
     };
     cache.set(key, { data: result, expiry: Date.now() + CACHE_TTL });

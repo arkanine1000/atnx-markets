@@ -271,6 +271,29 @@ export function isSearchableAlias(alias: string): boolean {
   return (/[^a-z]/i.test(t) || /[a-z][A-Z]/.test(t)) && !FUNCTION_WORDS.has(t.toLowerCase());
 }
 
+// A plain one-word alias that Wikipedia could vouch for ("Trump"): not a
+// search phrase by itself, not a function word.
+export function isVerifiableAlias(alias: string): boolean {
+  const tokens = alias.trim().split(/\s+/).filter(Boolean);
+  return tokens.length === 1 && !alias.includes(',') && !FUNCTION_WORDS.has(tokens[0].toLowerCase()) && !isSearchableAlias(alias);
+}
+
+// The aliases a source may search for. Multi-word aliases and handles
+// pass (isSearchableAlias). A one-word alias passes only when the stored
+// Wikipedia reading vouches for it: meta.alias_ok lists the aliases that
+// redirect to the market's own article ("Trump" -> Donald Trump), so the
+// word means the subject and nothing else. People are otherwise read by
+// their full name only, while one-word brands (Google, Meta) get their
+// whole volume. Order is kept: X, Bluesky and YouTube search the first few.
+export function searchableAliases(aliases: string[], wiki?: SourceComponent['meta'] | null): string[] {
+  const ok = new Set(
+    typeof wiki?.alias_ok === 'string' && Number(wiki.own) === 1
+      ? wiki.alias_ok.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean)
+      : []
+  );
+  return aliases.filter((a) => isSearchableAlias(a) || (isVerifiableAlias(a) && ok.has(a.trim().toLowerCase())));
+}
+
 const FUNCTION_WORDS = new Set([
   'problem', 'trend', 'reaction', 'edit', 'edits', 'moment', 'face',
   'the', 'a', 'an', 'and', 'or', 'but', 'of', 'in', 'on', 'at', 'to', 'for',
@@ -282,3 +305,172 @@ const FUNCTION_WORDS = new Set([
   'which', 'who', 'when', 'where', 'why', 'how', 'up', 'down', 'out', 'over',
   'meme', 'memes', 'trend', 'trending', 'viral', 'video', 'image', 'photo',
 ]);
+
+// ---------------------------------------------------------------------------
+// Total-attention model, calibrated 2026-09-26 against eyeballed anchors
+// (see scripts/vi-calibrate.ts). Each source's raw reading is converted to
+// YouTube-view-equivalents a week, the terms are summed over the sources
+// that answered, and one log maps the total to 0-1000. Unknown sources are
+// absent; a known zero adds nothing. Video volume (YouTube views, TikTok
+// videos) enters sub-linearly: a passive view is cheaper attention than a
+// search or a post. `combine` does not use it yet.
+
+export interface UnitScale {
+  // term = k * reading^q, in YouTube-view-equivalents per week
+  k: number;
+  q: number;
+}
+
+export interface Calibration {
+  version: string;
+  // VI points per tenfold increase of total attention.
+  pointsPerDecade: number;
+  // log10 of the total at which the level is 0.
+  log10ZeroPoint: number;
+  // A channel whose recent uploads are mostly Shorts counts a swiped
+  // Short like a long-form view; its views are discounted.
+  shorts: { maxSeconds: number; firstShare: number; discount: number };
+  units: Record<SourceName, UnitScale | null>;
+}
+
+export const CALIBRATION: Calibration = {
+  version: 'sum-v1-2026-09-26',
+  pointsPerDecade: 325,
+  log10ZeroPoint: 5.64,
+  shorts: { maxSeconds: 180, firstShare: 2 / 3, discount: 0.25 },
+  units: {
+    youtube: { k: 10 ** 3.14, q: 0.51 }, // views a week: name search or the discounted channel, whichever is larger
+    tiktok: { k: 10 ** 5.89, q: 0.51 }, // videos a day under the hashtag
+    trends: { k: 1.03e7, q: 1 }, // ratio to the benchmark query
+    x: { k: 2527, q: 1 }, // posts a day
+    bluesky: { k: 717, q: 1 }, // posts a day
+    wikipedia: { k: 78, q: 1 }, // pageviews a day (14-day median)
+    gdelt: { k: 4.7e7, q: 1 }, // share (%) of the week's news articles
+    hn: { k: 3275, q: 1 }, // hits a day
+    dex: null, // uncalibrated (one market has it); not scored
+  },
+};
+
+export function isShortsFirst(share: number | null | undefined, cal: Calibration = CALIBRATION): boolean {
+  return typeof share === 'number' && Number.isFinite(share) && share >= cal.shorts.firstShare;
+}
+
+const num = (v: unknown): number | null => {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+  if (typeof v === 'string') {
+    const n = parseFloat(v);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+};
+
+// The week's views a creator market's YouTube slot stands for: the name
+// search or the own channel, whichever is larger (they overlap). A Shorts-
+// first channel is discounted before the power.
+export function youtubeReading(meta: SourceComponent['meta'] | undefined, cal: Calibration = CALIBRATION): number | null {
+  const search = num(meta?.views_7d);
+  const channel = num(meta?.channel_views_7d);
+  if (search === null && channel === null) return null;
+  const discounted = channel === null ? 0 : channel * (isShortsFirst(num(meta?.channel_shorts_share), cal) ? cal.shorts.discount : 1);
+  return Math.max(search ?? 0, discounted);
+}
+
+// A source's raw reading in its own unit (see CALIBRATION.units), or null
+// when the source is unknown, not scored, or has a level but no raw meta.
+export function sourceReading(c: SourceComponent, cal: Calibration = CALIBRATION): number | null {
+  if (c.level === null || !cal.units[c.source]) return null;
+  const m = c.meta;
+  let r: number | null;
+  switch (c.source) {
+    case 'youtube':
+      r = youtubeReading(m, cal);
+      break;
+    case 'tiktok': {
+      const h = num(m?.videos_per_h);
+      r = h === null ? null : h * 24;
+      break;
+    }
+    case 'trends':
+      r = num(m?.ratio_to_benchmark);
+      break;
+    case 'x': {
+      const h = num(m?.rate_per_h);
+      r = h === null ? null : h * 24;
+      break;
+    }
+    case 'bluesky':
+      r = num(m?.posts_24h);
+      break;
+    case 'wikipedia': {
+      const med = num(m?.views_median_14d);
+      r = med !== null && med > 0 ? med : num(m?.views_latest);
+      break;
+    }
+    case 'gdelt':
+      r = num(m?.articles_pct_7d);
+      break;
+    case 'hn':
+      r = num(m?.hits_24h);
+      break;
+    default:
+      r = null;
+  }
+  // A known zero without raw fields (no article, an empty search) is a zero.
+  if (r === null) return c.level === 0 ? 0 : null;
+  return Math.max(0, r);
+}
+
+export interface Attention {
+  // Total, in YouTube-view-equivalents a week.
+  A: number;
+  terms: Partial<Record<SourceName, number>>;
+  shares: Partial<Record<SourceName, number>>;
+  answered: SourceName[];
+  topSource: SourceName | null;
+  topShare: number;
+}
+
+export function attention(components: Components, cal: Calibration = CALIBRATION): Attention {
+  const terms: Partial<Record<SourceName, number>> = {};
+  const answered: SourceName[] = [];
+  let A = 0;
+  for (const c of Object.values(components) as (SourceComponent | undefined)[]) {
+    if (!c) continue;
+    const r = sourceReading(c, cal);
+    const u = cal.units[c.source];
+    if (r === null || !u) continue;
+    answered.push(c.source);
+    const t = r > 0 ? u.k * Math.pow(r, u.q) : 0;
+    terms[c.source] = t;
+    A += t;
+  }
+  const shares: Partial<Record<SourceName, number>> = {};
+  let topSource: SourceName | null = null;
+  let topShare = 0;
+  for (const [s, t] of Object.entries(terms) as [SourceName, number][]) {
+    const share = A > 0 ? t / A : 0;
+    shares[s] = share;
+    if (share > topShare) {
+      topShare = share;
+      topSource = s;
+    }
+  }
+  return { A, terms, shares, answered, topSource, topShare };
+}
+
+// Total attention to the 0-1000 level: pointsPerDecade per tenfold,
+// zero at the zero point.
+export function levelFromAttention(A: number, cal: Calibration = CALIBRATION): number {
+  if (A <= 0) return 0;
+  return clamp(Math.round(cal.pointsPerDecade * (Math.log10(A) - cal.log10ZeroPoint)));
+}
+
+// The momentum half of the composite, on the 0-1000 momentum axis:
+// WEIGHTS-weighted momentumScore over the sources that see something and
+// have a baseline; steady (500) when none has one.
+export function compositeMomentum(seeing: SourceComponent[]): number {
+  const withMomentum = seeing.filter((c) => c.momentum !== null);
+  if (withMomentum.length === 0) return 500;
+  const mw = withMomentum.reduce((s, c) => s + WEIGHTS[c.source], 0);
+  return withMomentum.reduce((s, c) => s + (WEIGHTS[c.source] / mw) * momentumScore(c.momentum as number), 0);
+}

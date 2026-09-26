@@ -11,7 +11,8 @@ import {
   FAST_SOURCES,
   RAMP_MS,
   isGenericTerm,
-  isSearchableAlias,
+  isVerifiableAlias,
+  searchableAliases,
   SLOW_SOURCES,
   type CombineOptions,
   type Components,
@@ -144,13 +145,17 @@ export async function scoreTerms(
 
   const trendsRequests = requests.filter((r) => fresh.has('trends') || neverScored(r));
   const trendsMap: Map<string, TrendsSignal> = trendsRequests.length
-    ? await fetchTrendsSignals(trendsRequests.map((r) => ({ term: r.term, aliases: (r.aliases ?? []).filter(isSearchableAlias) }))).catch(() => new Map())
+    ? await fetchTrendsSignals(trendsRequests.map((r) => ({ term: r.term, aliases: searchableAliases(r.aliases ?? [], r.stored?.wikipedia?.meta) }))).catch(() => new Map())
     : new Map();
 
   return Promise.all(
     requests.map(async ({ term, stored, ...req }) => {
       const want = neverScored({ term, stored, ...req }) ? all : fresh;
-      const aliases = (req.aliases ?? []).filter(isSearchableAlias);
+      // Search phrases: multi-word aliases, plus the one-word aliases the
+      // stored Wikipedia reading vouches for (they land one slow read after
+      // Wikipedia verifies them, since it runs alongside X and Trends).
+      const aliases = searchableAliases(req.aliases ?? [], stored?.wikipedia?.meta);
+      const aliasCandidates = (req.aliases ?? []).filter(isVerifiableAlias);
       const components: Components = { ...(stored ?? {}) };
       const trends = trendsMap.get(term);
       if (trends) components.trends = trends;
@@ -160,9 +165,9 @@ export async function scoreTerms(
       const [bluesky, gdelt, wikipedia, youtube, hn, dex, x, tiktok] = await Promise.all([
         want.has('bluesky') ? fetchBlueskySignal(term, aliases).catch(() => null) : null,
         want.has('gdelt') && applies('gdelt', request) ? readGdeltSignal(req.marketId).catch(() => null) : null,
-        want.has('wikipedia') ? fetchWikipediaSignal(term, aliases, { corporate }).catch(() => null) : null,
+        want.has('wikipedia') ? fetchWikipediaSignal(term, aliases, { corporate, aliasCandidates }).catch(() => null) : null,
         want.has('youtube')
-          ? fetchYoutubeSignal({ term, aliases, marketId: req.marketId, stored: stored?.youtube ?? null }).catch(() => null)
+          ? fetchYoutubeSignal({ term, aliases, marketId: req.marketId, stored: stored?.youtube ?? null, entityType: req.entityType, category: req.category }).catch(() => null)
           : null,
         want.has('hn') && applies('hn', request) ? fetchHnSignal(term).catch(() => null) : null,
         want.has('dex') && applies('dex', request) ? fetchDexSignal(term, req.aliases ?? []).catch(() => null) : null,

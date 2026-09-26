@@ -65,3 +65,37 @@ test('a switched channel never mixes the old one in', () => {
   assert.deepEqual(ofChannel([old, cur], 'UCnew'), [cur]);
   assert.equal(channelReading(ofChannel([old, cur], 'UCnew'), NOW).basis, null, 'one total is not growth');
 });
+
+import { parseIsoDuration, shortsShare } from './channel';
+
+test('parseIsoDuration reads YouTube durations', () => {
+  assert.equal(parseIsoDuration('PT1M5S'), 65);
+  assert.equal(parseIsoDuration('PT3M'), 180);
+  assert.equal(parseIsoDuration('PT1H'), 3600);
+  assert.equal(parseIsoDuration('PT1H2M3S'), 3723);
+  assert.equal(parseIsoDuration('P0D'), 0);
+  assert.equal(parseIsoDuration('P1DT1S'), 86401);
+  assert.equal(parseIsoDuration(''), null);
+  assert.equal(parseIsoDuration(undefined), null);
+  assert.equal(parseIsoDuration('3:05'), null);
+});
+
+test('shortsShare at the 180 s line, and unknown under five uploads', () => {
+  assert.equal(shortsShare([55, 103, 180, 181, 600]), 0.6);
+  assert.equal(shortsShare([55, 60, 70, 90, 100, 120]), 1);
+  assert.equal(shortsShare([55, 60, 70, null]), null, 'four known durations');
+  assert.equal(shortsShare([55, 60, 70, 80, null, null]), null, 'nulls do not count');
+  assert.equal(shortsShare([]), null);
+});
+
+test('channelReading carries the newest Shorts share within a week', () => {
+  const share = (hoursAgo: number, v: number, kind = 'shorts_share'): Sample => ({ sampled_at: new Date(NOW - hoursAgo * H).toISOString(), value: 1, meta: { kind, shorts_share: v } });
+  const r = channelReading([...stepped(26, 600_000), share(30, 0.4), share(5, 0.9)], NOW);
+  assert.equal(r.basis, 'growth');
+  assert.equal(r.shortsShare, 0.9);
+  const bootWithShare = channelReading([...stepped(10, 600_000), { ...boot(2, 4_114_970), meta: { kind: 'recent_uploads', shorts_share: 1 } }], NOW);
+  assert.equal(bootWithShare.basis, 'recent_uploads');
+  assert.equal(bootWithShare.shortsShare, 1);
+  assert.equal(channelReading([...stepped(26, 600_000), share(24 * 8, 1)], NOW).shortsShare, null, 'older than a week');
+  assert.equal(channelReading(stepped(26, 600_000), NOW).shortsShare, null);
+});
