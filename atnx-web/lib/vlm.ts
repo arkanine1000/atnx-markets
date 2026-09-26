@@ -1,5 +1,6 @@
 import { generateText, NoObjectGeneratedError, Output, type LanguageModel } from 'ai';
 import { z } from 'zod';
+import { CATEGORIES } from './categories';
 
 // Provider-neutral analysis of one submission (image, text, or both) through
 // the Vercel AI Gateway. Replaces lib/claude-vision.ts. The output is
@@ -14,19 +15,7 @@ import { z } from 'zod';
 const IMAGE_MODEL = process.env.VLM_MODEL_IMAGE ?? 'google/gemini-3.8-flash';
 const TEXT_MODEL = process.env.VLM_MODEL_TEXT ?? 'google/gemini-3.5-flash-lite';
 
-export const CATEGORIES = [
-  'memes',
-  'crypto',
-  'politics',
-  'sports',
-  'music',
-  'film_tv',
-  'gaming',
-  'tech',
-  'people',
-  'other',
-] as const;
-export type Category = (typeof CATEGORIES)[number];
+export { CATEGORIES, type Category } from './categories';
 
 export const ENTITY_TYPES = ['meme', 'trend', 'person', 'brand', 'event', 'other'] as const;
 export type EntityType = (typeof ENTITY_TYPES)[number];

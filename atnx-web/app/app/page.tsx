@@ -1,10 +1,10 @@
 import { getMarketsPage, type MarketsPage } from "@/lib/store";
-import { PAGE_SIZE, parseMarketsQuery } from "@/lib/markets-query";
+import { parseMarketsQuery } from "@/lib/markets-query";
 import { MarketsView } from "./MarketsView";
 
-// Rendered on the server with the page already in it, so the first paint
+// Rendered on the server with the listing already in it, so the first paint
 // has the hero and the grid instead of "0 live markets" and a fetch.
-// The client view then keeps polling the same page.
+// The client view then keeps polling the same listing.
 export const dynamic = "force-dynamic";
 
 export default async function MarketsPage({
@@ -17,24 +17,17 @@ export default async function MarketsPage({
     items: [],
     featured: [],
     total: 0,
-    page: query.page,
-    pageSize: PAGE_SIZE,
+    limit: query.limit,
+    categoryCounts: {},
   };
   try {
     data = await getMarketsPage(query);
   } catch (err) {
-    // The client poll will pick the page up; an empty first paint is
+    // The client poll will pick the listing up; an empty first paint is
     // better than an error page.
     console.error("[markets] initial page failed", err);
   }
-  // Keyed on the query so a navigation starts the client state afresh.
-  return (
-    <MarketsView
-      key={`${query.sort}:${query.page}:${query.q}`}
-      initial={data}
-      sort={query.sort}
-      page={query.page}
-      q={query.q}
-    />
-  );
+  // Not keyed on the query: a remount would close the category filter's
+  // menu on every tick. The view starts afresh from each new listing itself.
+  return <MarketsView initial={data} query={query} />;
 }
