@@ -3,12 +3,17 @@
 //
 // Every source reports two things about a term, each with an absolute
 // meaning that does not depend on the term's own history:
-//   level     0-1000  how much attention it has right now
+//   level     0-1000  how much attention it has right now, on the
+//                     source's own log scale (display and diagnostics)
 //   momentum  ratio   current window vs the term's own 7-14 day baseline
 //                     (the Hype Ratio: 1 = normal, 3 = 3x baseline, cap 10)
-// The composite weights the sources that actually returned data, scales
-// the level by momentum (0.65x at a collapse, 1x steady, 1.35x at a 10x
-// spike), then by how many independent sources see the term at all.
+// plus the raw reading in its meta (views, posts a day, pageviews...).
+// The composite converts each raw reading to YouTube-view-equivalents a
+// week (CALIBRATION), sums them over the sources that answered, maps the
+// total to 0-1000 with one log (pointsPerDecade per tenfold), and scales
+// that level by momentum (0.65x at a collapse, 1x steady, 1.35x at a 10x
+// spike). Total attention: a market seen on many platforms adds up, one
+// seen only on its own channel gets that channel's full credit.
 
 export type SourceName = 'trends' | 'bluesky' | 'gdelt' | 'wikipedia' | 'youtube' | 'hn' | 'dex' | 'x' | 'tiktok';
 
@@ -25,13 +30,11 @@ export interface SourceComponent {
 
 export type Components = Partial<Record<SourceName, SourceComponent>>;
 
-// Relative weights; the composite renormalises over the sources that
-// answered, so only the ratios matter. Search and video reach are the
-// broadest views of attention; social, news and the encyclopedia each
-// see a narrower world. HN and DexScreener only answer for the
-// categories they cover (tech, crypto) and count as unknown elsewhere.
-// GDELT (news coverage) is back at its original weight since it moved
-// from the throttled DOC API to BigQuery on 2026-09-25.
+// Relative weights for the momentum half of the composite (the level
+// half sums raw attention, see CALIBRATION). Renormalised over the sources
+// that report a momentum, so only the ratios matter. Search and video
+// reach are the broadest views of attention; social, news and the
+// encyclopedia each see a narrower world.
 export const WEIGHTS: Record<SourceName, number> = {
   trends: 0.3,
   x: 0.25,
@@ -54,15 +57,6 @@ const LEVEL_SHARE = 0.65;
 const MOMENTUM_SHARE = 0.35;
 export const MOMENTUM_CAP = 10;
 
-// Presence multiplier: the doc's cross-platform confirmation. One source
-// seeing a term is weak evidence; four or more independent ones is strong.
-// Capped there so adding sources widens what the index can see without
-// inflating every score.
-const PRESENCE: Record<number, number> = { 0: 0, 1: 0.8, 2: 0.95, 3: 1.05, 4: 1.2 };
-export function presence(seeing: number): number {
-  return PRESENCE[Math.min(4, seeing)];
-}
-
 export const clamp = (x: number, lo = 0, hi = 1000) => Math.max(lo, Math.min(hi, x));
 
 // Maps a hype ratio to 0-1000: 0.1x -> 0, 1x -> 500, 10x -> 1000. Log
@@ -77,63 +71,65 @@ export interface Composite {
   level: number;
   momentum: number;
   sourcesPresent: SourceName[];
-  multiplier: number;
+  // Total attention behind the level, in YouTube-view-equivalents a week,
+  // and each answering source's share of it.
+  attention: number;
+  shares: Partial<Record<SourceName, number>>;
+  topSource: SourceName | null;
 }
 
 export interface CombineOptions {
-  // Sources whose known zero is treated as unknown instead of pulling the
-  // level down. For a creator whose audience is on their own channels, the
-  // sources that count talk about them read zero because nobody writes
-  // their name, not because nothing is happening.
-  ignoreZeros?: readonly SourceName[];
+  calibration?: Calibration;
 }
 
-// Null when no source has data. Callers must keep the last known score in
-// that case rather than writing a zero.
-export function combine(components: Components, { ignoreZeros = [] }: CombineOptions = {}): Composite | null {
-  // "Known" sources answered; "seeing" sources found any attention at all.
-  // A known zero counts against the level but earns no momentum credit and
-  // no presence credit: nothing is happening there.
-  const known = (Object.values(components) as SourceComponent[]).filter(
-    (c): c is SourceComponent => !!c && c.level !== null && !(c.level === 0 && ignoreZeros.includes(c.source))
+// Null when no source answered (a reading in its own unit, or a known
+// zero). Callers must keep the last known score in that case rather than
+// writing a zero. A known zero adds nothing to the total but counts as an
+// answer, so a market that is zero everywhere scores 0.
+export function combine(components: Components, { calibration = CALIBRATION }: CombineOptions = {}): Composite | null {
+  const at = attention(components, calibration);
+  if (at.answered.length === 0) return null;
+  const seeing = (Object.values(components) as (SourceComponent | undefined)[]).filter(
+    (c): c is SourceComponent => !!c && (at.terms[c.source] ?? 0) > 0
   );
-  if (known.length === 0) return null;
-  const seeing = known.filter((c) => (c.level as number) > 0);
-
-  const wsum = known.reduce((s, c) => s + WEIGHTS[c.source], 0);
-  const level = known.reduce((s, c) => s + (WEIGHTS[c.source] / wsum) * (c.level as number), 0);
-
   if (seeing.length === 0) {
-    return { score: 0, level: 0, momentum: 0, sourcesPresent: [], multiplier: 0 };
+    return { score: 0, level: 0, momentum: 0, sourcesPresent: [], attention: 0, shares: {}, topSource: null };
   }
-
-  const withMomentum = seeing.filter((c) => c.momentum !== null);
-  let momentum: number;
-  if (withMomentum.length === 0) {
-    momentum = 500; // seen, but no baseline anywhere: assume steady
-  } else {
-    const mw = withMomentum.reduce((s, c) => s + WEIGHTS[c.source], 0);
-    momentum = withMomentum.reduce(
-      (s, c) => s + (WEIGHTS[c.source] / mw) * momentumScore(c.momentum as number),
-      0
-    );
-  }
-
+  const level = levelFromAttention(at.A, calibration);
+  const momentum = compositeMomentum(seeing);
   // Momentum scales the level rather than adding to it: a steady 1x leaves
-  // the level alone, 10x lifts it by a third, 0.1x cuts it by a third. An
-  // additive term gave every market seen by one source a floor of ~140
-  // (0.35 x 500 x 0.8) whatever its size.
-  const multiplier = presence(seeing.length);
+  // the level alone, 10x lifts it by a third, 0.1x cuts it by a third.
   const momentumFactor = LEVEL_SHARE + MOMENTUM_SHARE * (momentum / 500);
-  const score = clamp(Math.round(level * momentumFactor * multiplier));
-
   return {
-    score,
-    level: Math.round(level),
+    score: clamp(Math.round(level * momentumFactor)),
+    level,
     momentum: Math.round(momentum),
     sourcesPresent: seeing.map((c) => c.source),
-    multiplier,
+    attention: at.A,
+    shares: at.shares,
+    topSource: at.topSource,
   };
+}
+
+// A new market's sparkline is seeded from the Trends series, which is on
+// Trends' own axis (500 + 200 * log10 of the ratio to the benchmark).
+// Rescaled onto the score: each day's ratio relative to today's moves the
+// Trends term alone, the rest of the total stays. Nothing to seed when
+// Trends carries no share of the total or reads nothing today. Pure.
+export function rescaleSeed(
+  series: { date: string; value: number }[],
+  score: number,
+  trendsShare: number,
+  cal: Calibration = CALIBRATION
+): { date: string; value: number }[] {
+  if (series.length === 0 || !(trendsShare > 0)) return [];
+  const last = series[series.length - 1].value;
+  if (last <= 0) return [];
+  return series.map((p) => {
+    const f = p.value <= 0 ? 0 : Math.pow(10, (p.value - last) / 200);
+    const delta = cal.pointsPerDecade * Math.log10(Math.max(1e-9, 1 + trendsShare * (f - 1)));
+    return { date: p.date, value: clamp(Math.round(score + delta)) };
+  });
 }
 
 // Exponential smoothing with a fixed half-life, applied on the stored
@@ -313,7 +309,7 @@ const FUNCTION_WORDS = new Set([
 // that answered, and one log maps the total to 0-1000. Unknown sources are
 // absent; a known zero adds nothing. Video volume (YouTube views, TikTok
 // videos) enters sub-linearly: a passive view is cheaper attention than a
-// search or a post. `combine` does not use it yet.
+// search or a post. `combine` sums these terms.
 
 export interface UnitScale {
   // term = k * reading^q, in YouTube-view-equivalents per week
@@ -355,7 +351,7 @@ export function isShortsFirst(share: number | null | undefined, cal: Calibration
   return typeof share === 'number' && Number.isFinite(share) && share >= cal.shorts.firstShare;
 }
 
-const num = (v: unknown): number | null => {
+export const metaNumber = (v: unknown): number | null => {
   if (typeof v === 'number') return Number.isFinite(v) ? v : null;
   if (typeof v === 'string') {
     const n = parseFloat(v);
@@ -368,10 +364,10 @@ const num = (v: unknown): number | null => {
 // search or the own channel, whichever is larger (they overlap). A Shorts-
 // first channel is discounted before the power.
 export function youtubeReading(meta: SourceComponent['meta'] | undefined, cal: Calibration = CALIBRATION): number | null {
-  const search = num(meta?.views_7d);
-  const channel = num(meta?.channel_views_7d);
+  const search = metaNumber(meta?.views_7d);
+  const channel = metaNumber(meta?.channel_views_7d);
   if (search === null && channel === null) return null;
-  const discounted = channel === null ? 0 : channel * (isShortsFirst(num(meta?.channel_shorts_share), cal) ? cal.shorts.discount : 1);
+  const discounted = channel === null ? 0 : channel * (isShortsFirst(metaNumber(meta?.channel_shorts_share), cal) ? cal.shorts.discount : 1);
   return Math.max(search ?? 0, discounted);
 }
 
@@ -386,31 +382,31 @@ export function sourceReading(c: SourceComponent, cal: Calibration = CALIBRATION
       r = youtubeReading(m, cal);
       break;
     case 'tiktok': {
-      const h = num(m?.videos_per_h);
+      const h = metaNumber(m?.videos_per_h);
       r = h === null ? null : h * 24;
       break;
     }
     case 'trends':
-      r = num(m?.ratio_to_benchmark);
+      r = metaNumber(m?.ratio_to_benchmark);
       break;
     case 'x': {
-      const h = num(m?.rate_per_h);
+      const h = metaNumber(m?.rate_per_h);
       r = h === null ? null : h * 24;
       break;
     }
     case 'bluesky':
-      r = num(m?.posts_24h);
+      r = metaNumber(m?.posts_24h);
       break;
     case 'wikipedia': {
-      const med = num(m?.views_median_14d);
-      r = med !== null && med > 0 ? med : num(m?.views_latest);
+      const med = metaNumber(m?.views_median_14d);
+      r = med !== null && med > 0 ? med : metaNumber(m?.views_latest);
       break;
     }
     case 'gdelt':
-      r = num(m?.articles_pct_7d);
+      r = metaNumber(m?.articles_pct_7d);
       break;
     case 'hn':
-      r = num(m?.hits_24h);
+      r = metaNumber(m?.hits_24h);
       break;
     default:
       r = null;

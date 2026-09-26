@@ -1,7 +1,7 @@
 // Run with: npm run test:vi
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { blendScores, combine, RAMP_MS, type Components } from './score';
+import { blendScores, combine, rescaleSeed, RAMP_MS } from './score';
 
 // The ramp maths, over the 48 h span it had (RAMP_MS is 0 pre-launch).
 const SPAN = 48 * 3600 * 1000;
@@ -29,35 +29,88 @@ test('ramps are off pre-launch: a change lands at once', () => {
 });
 
 const at = new Date(T0).toISOString();
-const creator: Components = {
-  youtube: { source: 'youtube', level: 560, momentum: null, fetchedAt: at },
-  x: { source: 'x', level: 0, momentum: null, fetchedAt: at },
-  bluesky: { source: 'bluesky', level: 0, momentum: null, fetchedAt: at },
-  trends: { source: 'trends', level: 0, momentum: null, fetchedAt: at },
-  wikipedia: { source: 'wikipedia', level: 0, momentum: null, fetchedAt: at },
-};
+const P = CALIBRATION.pointsPerDecade;
+const A0 = 10 ** CALIBRATION.log10ZeroPoint;
+const src = (source: SourceComponent['source'], level: number | null, meta: SourceComponent['meta'], momentum: number | null = null): SourceComponent => ({ source, level, momentum, fetchedAt: at, meta });
+const yt = (views: number, momentum: number | null = null) => src('youtube', 560, { views_7d: views }, momentum);
+const xPosts = (perHour: number, momentum: number | null = null) => src('x', 500, { rate_per_h: perHour }, momentum);
+const term = (s: SourceComponent['source'], r: number) => CALIBRATION.units[s]!.k * Math.pow(r, CALIBRATION.units[s]!.q);
 
-test('known zeros pull the level down by default', () => {
-  const c = combine(creator)!;
-  assert.equal(c.level, Math.round((0.2 * 560) / (0.2 + 0.25 + 0.2 + 0.3 + 0.15)));
+test('known zeros add nothing: a creator-only market keeps full credit', () => {
+  const alone = combine({ youtube: yt(5e6) })!;
+  const withZeros = combine({
+    youtube: yt(5e6),
+    x: src('x', 0, { rate_per_h: 0 }),
+    bluesky: src('bluesky', 0, { posts_24h: 0 }),
+    trends: src('trends', 0, { ratio_to_benchmark: 0 }),
+    wikipedia: src('wikipedia', 0, { title: null }),
+  })!;
+  assert.equal(withZeros.score, alone.score);
+  assert.equal(withZeros.level, alone.level);
+  assert.deepEqual(withZeros.sourcesPresent, ['youtube']);
+  assert.equal(alone.level, Math.round(P * Math.log10(term('youtube', 5e6) / A0)), 'P per decade above the zero point');
 });
 
-test('ignoreZeros drops the listed zeros only', () => {
-  const all = combine(creator, { ignoreZeros: ['x', 'bluesky', 'trends', 'wikipedia'] })!;
-  assert.equal(all.level, 560);
-  assert.deepEqual(all.sourcesPresent, ['youtube']);
-  const some = combine(creator, { ignoreZeros: ['x'] })!;
-  assert.equal(some.level, Math.round((0.2 * 560) / (0.2 + 0.2 + 0.3 + 0.15)));
+test('adding a source raises the level by P * log10 of the ratio of totals, with no presence step', () => {
+  const one = combine({ youtube: yt(5e6) })!;
+  const two = combine({ youtube: yt(5e6), x: xPosts(10) })!;
+  const A1 = term('youtube', 5e6);
+  const A2 = A1 + term('x', 240);
+  assert.equal(two.level - one.level, Math.round(P * Math.log10(A2 / A0)) - Math.round(P * Math.log10(A1 / A0)));
+  assert.ok(Math.abs(two.attention - A2) < 1e-6 * A2);
+  assert.equal(two.topSource, 'youtube');
 });
 
-test('ignoreZeros never hides a non-zero reading', () => {
-  const c = combine({ ...creator, x: { source: 'x', level: 300, momentum: null, fetchedAt: at } }, { ignoreZeros: ['x', 'bluesky', 'trends', 'wikipedia'] })!;
-  assert.equal(c.level, Math.round((0.2 * 560 + 0.25 * 300) / 0.45));
+test('under the zero point is 0, far above it is 1000, all zeros is 0, nothing answered is null', () => {
+  assert.equal(combine({ youtube: yt(1000) })!.level, 0);
+  assert.equal(combine({ trends: src('trends', 900, { ratio_to_benchmark: 1e9 }) })!.score, 1000);
+  const zeros = combine({ x: src('x', 0, { rate_per_h: 0 }), trends: src('trends', 0, { ratio_to_benchmark: 0 }) })!;
+  assert.equal(zeros.score, 0);
+  assert.deepEqual(zeros.sourcesPresent, []);
+  assert.equal(combine({ x: src('x', null, {}) }), null);
+  assert.equal(combine({}), null);
 });
 
-test('all ignored zeros and nothing else is still no data', () => {
-  const only = { x: creator.x, trends: creator.trends } as Components;
-  assert.equal(combine(only, { ignoreZeros: ['x', 'trends'] }), null);
+test('momentum scales the level: x0.65 at a collapse, x1 steady, x1.35 at a 10x spike', () => {
+  const level = combine({ youtube: yt(5e6) })!.level;
+  assert.equal(combine({ youtube: yt(5e6, 1) })!.score, Math.round(level * 1));
+  assert.equal(combine({ youtube: yt(5e6, 10) })!.score, Math.round(level * 1.35));
+  assert.equal(combine({ youtube: yt(5e6, 0.1) })!.score, Math.round(level * 0.65));
+  assert.equal(combine({ youtube: yt(5e6) })!.momentum, 500, 'no baseline anywhere: steady');
+});
+
+test('momentum counts only sources that see something', () => {
+  const steady = combine({ youtube: yt(5e6, 1), x: src('x', 0, { rate_per_h: 0 }, 10) })!;
+  assert.equal(steady.momentum, 500, 'a zero source with a spike momentum does not count');
+});
+
+test('dex is not scored: dex-only is null and dex changes nothing', () => {
+  assert.equal(combine({ dex: src('dex', 600, { volume_24h_usd: 1e9 }, 2) }), null);
+  const without = combine({ youtube: yt(5e6) })!;
+  const withDex = combine({ youtube: yt(5e6), dex: src('dex', 600, { volume_24h_usd: 1e9 }, 2) })!;
+  assert.equal(withDex.score, without.score);
+  assert.deepEqual(withDex.sourcesPresent, ['youtube']);
+});
+
+test('a calibration override is honoured', () => {
+  const cal = { ...CALIBRATION, pointsPerDecade: 100, log10ZeroPoint: 6 };
+  const c = combine({ youtube: yt(5e6) }, { calibration: cal })!;
+  assert.equal(c.level, Math.round(100 * (Math.log10(term('youtube', 5e6)) - 6)));
+});
+
+test('rescaleSeed moves the Trends share only and clamps', () => {
+  const series = [
+    { date: '2026-09-20', value: 300 }, // 0.1x of today's ratio
+    { date: '2026-09-21', value: 0 },
+    { date: '2026-09-22', value: 500 }, // today
+  ];
+  const out = rescaleSeed(series, 600, 0.5);
+  assert.equal(out[2].value, 600, 'today is the score');
+  assert.equal(out[0].value, Math.round(600 + P * Math.log10(1 + 0.5 * (0.1 - 1))));
+  assert.equal(out[1].value, Math.round(600 + P * Math.log10(1 - 0.5)));
+  assert.deepEqual(rescaleSeed(series, 600, 0), [], 'no Trends share: nothing to seed');
+  assert.deepEqual(rescaleSeed([{ date: 'd', value: 0 }], 600, 0.5), [], 'Trends reads nothing today');
+  assert.equal(rescaleSeed(series, 20, 1)[1].value, 0, 'clamped at 0');
 });
 
 // --- alias rule and the total-attention model (pre-switch) ---
@@ -151,9 +204,9 @@ test('levelFromAttention: pointsPerDecade per tenfold from the zero point, clamp
 });
 
 test('compositeMomentum matches the old combine: weighted over sources with a baseline, 500 without', () => {
-  const steady = cmp('x', 500, {}, 1);
-  const spike = cmp('trends', 500, {}, 10);
-  assert.equal(compositeMomentum([cmp('x', 500, {})]), 500);
+  const steady = cmp('x', 500, { rate_per_h: 10 }, 1);
+  const spike = cmp('trends', 500, { ratio_to_benchmark: 1 }, 10);
+  assert.equal(compositeMomentum([cmp('x', 500, { rate_per_h: 10 })]), 500);
   assert.equal(compositeMomentum([steady]), 500);
   assert.equal(compositeMomentum([spike]), 1000);
   const both = compositeMomentum([steady, spike]);

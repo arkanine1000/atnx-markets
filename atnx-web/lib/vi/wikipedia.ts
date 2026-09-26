@@ -3,8 +3,9 @@
 //   1. OpenSearch to resolve free text to a canonical article title.
 //   2. Per-article daily pageviews for the last ~30 days.
 // Daily data with a ~1-2 day lag, so the slow refresh path owns this.
-// Level comes from the latest available day, not the 30-day peak, so a
-// market can fall again once its moment passes.
+// Level comes from the 14-day median of daily views (the latest day when
+// there is no history yet): a steady standing, while the latest day
+// against that median is the momentum.
 import { clamp, median, type SourceComponent } from './score';
 
 // Momentum needs this many pageviews a day (14-day median) to mean anything.
@@ -118,7 +119,7 @@ export async function fetchWikipediaSignal(
     const result: WikipediaSignal = {
       source: 'wikipedia',
       title,
-      level: wikipediaLevel(latest),
+      level: wikipediaLevel(median14 > 0 ? median14 : latest),
       momentum,
       fetchedAt: new Date().toISOString(),
       meta: {

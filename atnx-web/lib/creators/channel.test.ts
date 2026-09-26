@@ -48,15 +48,32 @@ test('stale totals and stale bootstraps read nothing', () => {
   assert.equal(channelReading([boot(30, 5_000_000)], NOW).level, null);
 });
 
-test('the channel scores the slot only when it beats the name search', () => {
+test('the channel scores the slot only when its week beats the name search', () => {
   const base = { source: 'youtube' as const, level: 0, momentum: null, fetchedAt: new Date(NOW).toISOString() };
-  const forrest = effectiveYoutube({ ...base, meta: { channel_level: 561, channel_momentum: null } });
+  const forrest = effectiveYoutube({ ...base, meta: { views_7d: 0, channel_views_7d: 23_755_300, channel_momentum: null } });
   assert.equal(forrest.channel, true);
-  assert.equal(forrest.component?.level, 561);
-  const trump = effectiveYoutube({ ...base, level: 634, meta: { channel_level: 520, channel_momentum: 1.1 } });
+  assert.equal(forrest.component?.meta?.views_7d, 23_755_300);
+  assert.equal(forrest.component?.meta?.views_basis, 'channel');
+  assert.equal(forrest.component?.level, youtubeLevel(23_755_300));
+  const trump = effectiveYoutube({ ...base, level: 650, momentum: 0.45, meta: { views_7d: 31_689_610, channel_views_7d: 175_889, channel_momentum: 1.1 } });
   assert.equal(trump.channel, false);
-  assert.equal(trump.component?.level, 634);
+  assert.equal(trump.component?.level, 650);
+  assert.equal(trump.component?.momentum, 0.45, 'the name search keeps its own momentum');
   assert.equal(effectiveYoutube(undefined).channel, false);
+  assert.equal(effectiveYoutube({ ...base, meta: { views_7d: 100 } }).channel, false, 'no channel reading');
+});
+
+test('a Shorts-first channel is discounted before it competes with the name search', () => {
+  const base = { source: 'youtube' as const, level: 0, momentum: null, fetchedAt: new Date(NOW).toISOString() };
+  const shorts = effectiveYoutube({ ...base, meta: { views_7d: 0, channel_views_7d: 24e6, channel_shorts_share: 1, channel_momentum: 1.2 } });
+  assert.equal(shorts.channel, true);
+  assert.equal(shorts.component?.meta?.views_7d, 6e6, 'x0.25');
+  assert.equal(shorts.component?.momentum, 1.2, 'the channel momentum is used when the channel wins');
+  const loses = effectiveYoutube({ ...base, meta: { views_7d: 7e6, channel_views_7d: 24e6, channel_shorts_share: 0.8 } });
+  assert.equal(loses.channel, false, 'discounted 6M loses to 7M of name search');
+  const longForm = effectiveYoutube({ ...base, meta: { views_7d: 7e6, channel_views_7d: 24e6, channel_shorts_share: 0.5 } });
+  assert.equal(longForm.channel, true);
+  assert.equal(longForm.component?.meta?.views_7d, 24e6);
 });
 
 test('a switched channel never mixes the old one in', () => {
