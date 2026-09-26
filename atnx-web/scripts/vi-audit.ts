@@ -10,7 +10,7 @@
 // Writes nothing. Compare runs across the regimes listed in the VI
 // calculation changelog before reading a score change as a signal.
 import { createClient } from '@supabase/supabase-js';
-import { viTier, isGenericTerm, isSearchableAlias, type Components, type SourceComponent } from '../lib/vi/score';
+import { viTier, isGenericTerm, searchableAliases, type Components, type SourceComponent } from '../lib/vi/score';
 import { normalizeSearchTerm } from '../lib/vi/trends';
 
 (async () => {
@@ -134,7 +134,7 @@ const rows = markets.map((m) => {
     createdBy: evalId && m.created_by === evalId ? 'EVAL' : m.created_by ? m.created_by.slice(0, 8) : null,
     parent: m.parent_market_id, captures: capsBy[m.id] ?? { total: 0, eval: 0 },
     vi, tier: viTier(vi).label, viUpdatedAgeMin: ageMin(m.vi_last_updated),
-    src, aliases, searchable: aliases.filter(isSearchableAlias), wikiTitle: (wiki?.title as string | null | undefined) ?? null,
+    src, aliases, searchable: searchableAliases(aliases, wiki), wikiTitle: (wiki?.title as string | null | undefined) ?? null,
     genericDropped: single && isGenericTerm(term, wiki), single,
     total: totalCount[m.id], n24: p24.length, r24: rng(p24), raw24: rng(p24, 'raw'), n7: p7.length, r7: rng(p7), raw7: rng(p7, 'raw'),
     lastChangeAgeH: lastChange ? Number(((NOW - lastChange) / H).toFixed(1)) : null,

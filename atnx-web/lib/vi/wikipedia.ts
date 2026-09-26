@@ -34,14 +34,18 @@ export interface WikipediaOptions {
   // for brand markets only: for anything else the plain name is the
   // subject or nothing is.
   corporate?: boolean;
+  // One-word aliases to vouch for: those that redirect to the market's
+  // own article are written to meta.alias_ok, and the other sources may
+  // then search for them (lib/vi/score.ts searchableAliases).
+  aliasCandidates?: string[];
 }
 
 export async function fetchWikipediaSignal(
   term: string,
   aliases: string[] = [],
-  { corporate = false }: WikipediaOptions = {}
+  { corporate = false, aliasCandidates = [] }: WikipediaOptions = {}
 ): Promise<WikipediaSignal> {
-  const key = [corporate ? 'c' : 'p', term, ...aliases].join('|').toLowerCase().trim();
+  const key = [corporate ? 'c' : 'p', term, ...aliases, '#', ...aliasCandidates].join('|').toLowerCase().trim();
   const hit = cache.get(key);
   if (hit && Date.now() < hit.expiry) return hit.data;
 
@@ -83,9 +87,11 @@ export async function fetchWikipediaSignal(
     // No article of its own, but the name redirects into a section of one:
     // score the redirect title's own pageviews (see redirectTitle).
     const sectionRedirect = !resolved.title && from === 'term' && resolved.namedRedirect && !!resolved.redirectTitle;
-    const base = { match: sectionRedirect ? ('section_redirect' as const) : resolved.match, from, own };
-
     const title = resolved.title ?? (sectionRedirect ? resolved.redirectTitle : null);
+    // One-word aliases that are this article under another name.
+    const alias_ok = title && own === 1 ? (await verifiedAliases(title, aliasCandidates)).join(',') : '';
+    const base = { match: sectionRedirect ? ('section_redirect' as const) : resolved.match, from, own, alias_ok };
+
     if (!title) {
       // No article is a real observation: Wikipedia has nothing on it.
       const none: WikipediaSignal = { ...empty, level: 0, meta: { title: null, ...base } };
@@ -128,6 +134,32 @@ export async function fetchWikipediaSignal(
   } catch (err) {
     console.error(`[wikipedia] query failed for "${term}":`, err);
     return empty;
+  }
+}
+
+// The candidates that are the article itself under another name: they
+// resolve, without a fragment, to the very title, and are not a
+// disambiguation page or the title spelled differently. "Trump" passes for
+// Donald Trump; "Musk" (the substance) and "Elon" (a disambiguation page)
+// do not. Pure.
+export function verifyAliases(title: string, candidates: string[], pages: Map<string, PageInfo>): string[] {
+  const own = title.trim().toLowerCase();
+  return candidates.filter((c) => {
+    const info = pages.get(c);
+    if (!info || info.missing || info.disambiguation || info.fragment) return false;
+    if (info.title !== title) return false;
+    return c.trim().toLowerCase() !== own;
+  });
+}
+
+async function verifiedAliases(title: string, candidates: string[]): Promise<string[]> {
+  const wanted = [...new Set(candidates.map((c) => c.trim()).filter((c) => c.length >= 2))];
+  if (wanted.length === 0) return [];
+  try {
+    return verifyAliases(title, wanted, await lookupPages(wanted));
+  } catch (err) {
+    console.error(`[wikipedia] alias lookup failed for "${title}": ${(err as Error).message}`);
+    return [];
   }
 }
 

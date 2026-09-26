@@ -36,3 +36,21 @@ test('a whole-article redirect keeps its target, as before', () => {
   assert.equal(v.match, 'redirect');
   assert.equal(v.redirectTitle, null);
 });
+
+import { verifyAliases } from './wikipedia';
+
+test('verifyAliases: a one-word alias counts when it is the article under another name', () => {
+  const pages = new Map<string, PageInfo>([
+    ['Trump', page({ requested: 'Trump', title: 'Donald Trump', redirected: true })],
+    ['DJT', page({ requested: 'DJT', title: 'Donald Trump', redirected: true })],
+    ['Musk', page({ requested: 'Musk', title: 'Musk' })],
+    ['Elon', page({ requested: 'Elon', title: 'Elon', disambiguation: true })],
+    ['Chungus', page({ requested: 'Chungus', title: 'Wabbit Twouble', redirected: true, fragment: 'Big Chungus meme' })],
+    ['Zorblax', page({ requested: 'Zorblax', title: 'Zorblax', missing: true })],
+    ['mrbeast', page({ requested: 'mrbeast', source: 'Mrbeast', title: 'MrBeast', redirected: true })],
+  ]);
+  assert.deepEqual(verifyAliases('Donald Trump', ['Trump', 'DJT', 'Musk', 'Elon', 'Zorblax', 'Unlooked'], pages), ['Trump', 'DJT']);
+  assert.deepEqual(verifyAliases('Elon Musk', ['Musk', 'Elon'], pages), [], 'the substance and a disambiguation page');
+  assert.deepEqual(verifyAliases('Wabbit Twouble', ['Chungus'], pages), [], 'a section redirect is not the article');
+  assert.deepEqual(verifyAliases('MrBeast', ['mrbeast'], pages), [], 'the title spelled differently adds nothing');
+});
