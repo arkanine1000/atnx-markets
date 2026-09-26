@@ -39,7 +39,9 @@ const SEARCH_BUDGET = 90;
 const SEARCH_CAP = 100;
 const LEDGER_TTL = 5 * 60 * 1000;
 const WINDOW_DAYS = 7;
-const MAX_VIDEOS = 25;
+// search.list costs the same quota unit at any page size, and videos.list
+// reads 50 ids in one call, so the week's top 50 cost what 25 did.
+const MAX_VIDEOS = 50;
 // Samples kept per market; three days at the hourly cadence.
 const SAMPLE_KEEP_MS = 3 * 24 * 3600 * 1000;
 const MAX_SAMPLES = 80;
