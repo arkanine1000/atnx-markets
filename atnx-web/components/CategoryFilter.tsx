@@ -55,7 +55,7 @@ const Tick = (
 );
 
 function summary(selected: readonly Category[]): string {
-  if (selected.length === 0) return "All categories";
+  if (selected.length === 0) return "All";
   if (selected.length === 1) return CATEGORY_LABELS[selected[0]];
   return `${selected.length} categories`;
 }
@@ -129,7 +129,7 @@ export function CategoryFilter({
           id={menuId}
           role="group"
           aria-label="Filter by category"
-          className="absolute left-0 sm:left-auto sm:right-0 top-full mt-2 w-60 z-40 rounded-2xl bg-surface border border-surface shadow-2xl p-1.5"
+          className="absolute left-0 sm:left-auto sm:right-0 top-full mt-2 w-45 z-40 rounded-2xl bg-surface border border-surface shadow-2xl p-1.5"
         >
           <div className="flex items-center justify-between px-2.5 pt-1.5 pb-2">
             <span className="text-[10px] font-mono uppercase tracking-[0.15em] text-tertiary">
