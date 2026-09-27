@@ -12,6 +12,7 @@ import {
   RAMP_MS,
   isGenericTerm,
   isVerifiableAlias,
+  rescaleSeed,
   searchableAliases,
   SLOW_SOURCES,
   type CombineOptions,
@@ -50,12 +51,6 @@ export interface ScoreRequest {
   // A verified own YouTube channel (market_handles), for creator reach.
   creator?: { youtubeChannelId: string; verifiedAt: string | null } | null;
 }
-
-// Sources that count other people talking about a name (TikTok here is
-// others' videos under the name's hashtag, not the creator's own). For a
-// creator scored on their own channel, these reading zero means nobody
-// writes the name, not that nothing is happening: their zeros are left out.
-const TALK_SOURCES: SourceName[] = ['x', 'bluesky', 'trends', 'wikipedia', 'gdelt', 'hn', 'tiktok'];
 
 // The composite, with the GDELT switch-over ramp: GDELT moved to BigQuery
 // (and back to its full weight) at GDELT_BQ_SINCE, and the score walks
@@ -242,13 +237,14 @@ export async function scoreTerms(
       }
 
       let { composite, score } = rampedScore(scoring, {}, now);
-      // Creator reach: the channel scores the YouTube slot when it reads
-      // higher than the name search, the talk sources' zeros drop out, and
-      // the score walks there over the ramp from the handle's verification.
+      // Creator reach: the channel scores the YouTube slot when its (Shorts-
+      // discounted) week beats the name search, and the score walks there
+      // over the ramp from the handle's verification. The talk sources'
+      // zeros need no special case: a zero adds nothing to the total.
       if (req.creator) {
         const yt = effectiveYoutube(components.youtube);
         if (yt.channel) {
-          const creator = rampedScore({ ...scoring, youtube: yt.component }, { ignoreZeros: TALK_SOURCES }, now);
+          const creator = rampedScore({ ...scoring, youtube: yt.component }, {}, now);
           if (creator.composite && creator.score !== null) {
             const since = Date.parse(req.creator.verifiedAt ?? '');
             score = score === null ? creator.score : blendScores(score, creator.score, since, now);
@@ -257,9 +253,11 @@ export async function scoreTerms(
         }
       }
       // Seed the sparkline only from a Trends reading that counts toward
-      // the score. A series dropped by the generic-term guard would draw
-      // a week of history the score itself refuses to use.
-      const seedSeries = components.trends ? (trends?.series ?? []) : [];
+      // the score, rescaled from Trends' own axis onto the score. A series
+      // dropped by the generic-term guard would draw a week of history the
+      // score itself refuses to use.
+      const seedSeries =
+        components.trends && composite && score !== null ? rescaleSeed(trends?.series ?? [], score, composite.shares.trends ?? 0) : [];
       // Persist only the breakdown; the series is for seeding and would
       // bloat the row.
       const persisted: Components = {};

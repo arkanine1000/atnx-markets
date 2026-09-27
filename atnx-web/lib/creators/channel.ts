@@ -11,7 +11,7 @@
 // complete day's growth against the days before it.
 import { createAdminClient } from '@/lib/supabase/admin';
 import { readSamples, writeSample, type Sample } from '@/lib/vi/samples';
-import { CALIBRATION, ratioToBaseline, type Calibration, type SourceComponent } from '@/lib/vi/score';
+import { CALIBRATION, channelViewsAsAttention, metaNumber, ratioToBaseline, type Calibration, type SourceComponent } from '@/lib/vi/score';
 import { youtubeConfigured, youtubeLevel } from '@/lib/vi/youtube';
 
 const API = 'https://www.googleapis.com/youtube/v3';
@@ -111,12 +111,24 @@ export function channelMeta(channelId: string, r: ChannelReading): Record<string
 }
 
 // The component that scores a creator market's YouTube slot: the channel
-// when it reads higher than the name search, else the name search.
-export function effectiveYoutube(youtube: SourceComponent | undefined): { component: SourceComponent | undefined; channel: boolean } {
-  const lvl = youtube?.meta?.channel_level;
-  if (!youtube || typeof lvl !== 'number' || lvl <= (youtube.level ?? 0)) return { component: youtube, channel: false };
-  const mom = youtube.meta?.channel_momentum;
-  return { component: { ...youtube, level: lvl, momentum: typeof mom === 'number' ? mom : null }, channel: true };
+// when its week of views (Shorts-discounted) beats the name search, else
+// the name search. The scoring copy carries the channel's views as
+// views_7d and its momentum; the stored reading is not changed.
+export function effectiveYoutube(youtube: SourceComponent | undefined, cal: Calibration = CALIBRATION): { component: SourceComponent | undefined; channel: boolean } {
+  const meta = youtube?.meta;
+  const discounted = youtube ? channelViewsAsAttention(meta, cal) : null;
+  if (!youtube || discounted === null) return { component: youtube, channel: false };
+  if (discounted <= (metaNumber(meta?.views_7d) ?? 0)) return { component: youtube, channel: false };
+  const mom = meta?.channel_momentum;
+  return {
+    component: {
+      ...youtube,
+      level: youtubeLevel(discounted),
+      momentum: typeof mom === 'number' ? mom : null,
+      meta: { ...(meta ?? {}), views_7d: discounted, views_basis: 'channel' },
+    },
+    channel: true,
+  };
 }
 
 async function api<T>(path: string, params: Record<string, string>): Promise<T | null> {

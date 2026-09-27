@@ -3,12 +3,17 @@
 //
 // Every source reports two things about a term, each with an absolute
 // meaning that does not depend on the term's own history:
-//   level     0-1000  how much attention it has right now
+//   level     0-1000  how much attention it has right now, on the
+//                     source's own log scale (display and diagnostics)
 //   momentum  ratio   current window vs the term's own 7-14 day baseline
 //                     (the Hype Ratio: 1 = normal, 3 = 3x baseline, cap 10)
-// The composite weights the sources that actually returned data, scales
-// the level by momentum (0.65x at a collapse, 1x steady, 1.35x at a 10x
-// spike), then by how many independent sources see the term at all.
+// plus the raw reading in its meta (views, posts a day, pageviews...).
+// The composite converts each raw reading to YouTube-view-equivalents a
+// week (CALIBRATION), sums them over the sources that answered, maps the
+// total to 0-1000 with one log (pointsPerDecade per tenfold), and scales
+// that level by momentum (0.65x at a collapse, 1x steady, 1.35x at a 10x
+// spike). Total attention: a market seen on many platforms adds up, one
+// seen only on its own channel gets that channel's full credit.
 
 export type SourceName = 'trends' | 'bluesky' | 'gdelt' | 'wikipedia' | 'youtube' | 'hn' | 'dex' | 'x' | 'tiktok';
 
@@ -25,13 +30,11 @@ export interface SourceComponent {
 
 export type Components = Partial<Record<SourceName, SourceComponent>>;
 
-// Relative weights; the composite renormalises over the sources that
-// answered, so only the ratios matter. Search and video reach are the
-// broadest views of attention; social, news and the encyclopedia each
-// see a narrower world. HN and DexScreener only answer for the
-// categories they cover (tech, crypto) and count as unknown elsewhere.
-// GDELT (news coverage) is back at its original weight since it moved
-// from the throttled DOC API to BigQuery on 2026-09-25.
+// Relative weights for the momentum half of the composite (the level
+// half sums raw attention, see CALIBRATION). Renormalised over the sources
+// that report a momentum, so only the ratios matter. Search and video
+// reach are the broadest views of attention; social, news and the
+// encyclopedia each see a narrower world.
 export const WEIGHTS: Record<SourceName, number> = {
   trends: 0.3,
   x: 0.25,
@@ -54,15 +57,6 @@ const LEVEL_SHARE = 0.65;
 const MOMENTUM_SHARE = 0.35;
 export const MOMENTUM_CAP = 10;
 
-// Presence multiplier: the doc's cross-platform confirmation. One source
-// seeing a term is weak evidence; four or more independent ones is strong.
-// Capped there so adding sources widens what the index can see without
-// inflating every score.
-const PRESENCE: Record<number, number> = { 0: 0, 1: 0.8, 2: 0.95, 3: 1.05, 4: 1.2 };
-export function presence(seeing: number): number {
-  return PRESENCE[Math.min(4, seeing)];
-}
-
 export const clamp = (x: number, lo = 0, hi = 1000) => Math.max(lo, Math.min(hi, x));
 
 // Maps a hype ratio to 0-1000: 0.1x -> 0, 1x -> 500, 10x -> 1000. Log
@@ -77,63 +71,65 @@ export interface Composite {
   level: number;
   momentum: number;
   sourcesPresent: SourceName[];
-  multiplier: number;
+  // Total attention behind the level, in YouTube-view-equivalents a week,
+  // and each answering source's share of it.
+  attention: number;
+  shares: Partial<Record<SourceName, number>>;
+  topSource: SourceName | null;
 }
 
 export interface CombineOptions {
-  // Sources whose known zero is treated as unknown instead of pulling the
-  // level down. For a creator whose audience is on their own channels, the
-  // sources that count talk about them read zero because nobody writes
-  // their name, not because nothing is happening.
-  ignoreZeros?: readonly SourceName[];
+  calibration?: Calibration;
 }
 
-// Null when no source has data. Callers must keep the last known score in
-// that case rather than writing a zero.
-export function combine(components: Components, { ignoreZeros = [] }: CombineOptions = {}): Composite | null {
-  // "Known" sources answered; "seeing" sources found any attention at all.
-  // A known zero counts against the level but earns no momentum credit and
-  // no presence credit: nothing is happening there.
-  const known = (Object.values(components) as SourceComponent[]).filter(
-    (c): c is SourceComponent => !!c && c.level !== null && !(c.level === 0 && ignoreZeros.includes(c.source))
+// Null when no source answered (a reading in its own unit, or a known
+// zero). Callers must keep the last known score in that case rather than
+// writing a zero. A known zero adds nothing to the total but counts as an
+// answer, so a market that is zero everywhere scores 0.
+export function combine(components: Components, { calibration = CALIBRATION }: CombineOptions = {}): Composite | null {
+  const at = attention(components, calibration);
+  if (at.answered.length === 0) return null;
+  const seeing = (Object.values(components) as (SourceComponent | undefined)[]).filter(
+    (c): c is SourceComponent => !!c && (at.terms[c.source] ?? 0) > 0
   );
-  if (known.length === 0) return null;
-  const seeing = known.filter((c) => (c.level as number) > 0);
-
-  const wsum = known.reduce((s, c) => s + WEIGHTS[c.source], 0);
-  const level = known.reduce((s, c) => s + (WEIGHTS[c.source] / wsum) * (c.level as number), 0);
-
   if (seeing.length === 0) {
-    return { score: 0, level: 0, momentum: 0, sourcesPresent: [], multiplier: 0 };
+    return { score: 0, level: 0, momentum: 0, sourcesPresent: [], attention: 0, shares: {}, topSource: null };
   }
-
-  const withMomentum = seeing.filter((c) => c.momentum !== null);
-  let momentum: number;
-  if (withMomentum.length === 0) {
-    momentum = 500; // seen, but no baseline anywhere: assume steady
-  } else {
-    const mw = withMomentum.reduce((s, c) => s + WEIGHTS[c.source], 0);
-    momentum = withMomentum.reduce(
-      (s, c) => s + (WEIGHTS[c.source] / mw) * momentumScore(c.momentum as number),
-      0
-    );
-  }
-
+  const level = levelFromAttention(at.A, calibration);
+  const momentum = compositeMomentum(seeing, at.shares);
   // Momentum scales the level rather than adding to it: a steady 1x leaves
-  // the level alone, 10x lifts it by a third, 0.1x cuts it by a third. An
-  // additive term gave every market seen by one source a floor of ~140
-  // (0.35 x 500 x 0.8) whatever its size.
-  const multiplier = presence(seeing.length);
+  // the level alone, 10x lifts it by a third, 0.1x cuts it by a third.
   const momentumFactor = LEVEL_SHARE + MOMENTUM_SHARE * (momentum / 500);
-  const score = clamp(Math.round(level * momentumFactor * multiplier));
-
   return {
-    score,
-    level: Math.round(level),
+    score: clamp(Math.round(level * momentumFactor)),
+    level,
     momentum: Math.round(momentum),
     sourcesPresent: seeing.map((c) => c.source),
-    multiplier,
+    attention: at.A,
+    shares: at.shares,
+    topSource: at.topSource,
   };
+}
+
+// A new market's sparkline is seeded from the Trends series, which is on
+// Trends' own axis (500 + 200 * log10 of the ratio to the benchmark).
+// Rescaled onto the score: each day's ratio relative to today's moves the
+// Trends term alone, the rest of the total stays. Nothing to seed when
+// Trends carries no share of the total or reads nothing today. Pure.
+export function rescaleSeed(
+  series: { date: string; value: number }[],
+  score: number,
+  trendsShare: number,
+  cal: Calibration = CALIBRATION
+): { date: string; value: number }[] {
+  if (series.length === 0 || !(trendsShare > 0)) return [];
+  const last = series[series.length - 1].value;
+  if (last <= 0) return [];
+  return series.map((p) => {
+    const f = p.value <= 0 ? 0 : Math.pow(10, (p.value - last) / 200);
+    const delta = cal.pointsPerDecade * Math.log10(Math.max(1e-9, 1 + trendsShare * (f - 1)));
+    return { date: p.date, value: clamp(Math.round(score + delta)) };
+  });
 }
 
 // Exponential smoothing with a fixed half-life, applied on the stored
@@ -313,7 +309,7 @@ const FUNCTION_WORDS = new Set([
 // that answered, and one log maps the total to 0-1000. Unknown sources are
 // absent; a known zero adds nothing. Video volume (YouTube views, TikTok
 // videos) enters sub-linearly: a passive view is cheaper attention than a
-// search or a post. `combine` does not use it yet.
+// search or a post. `combine` sums these terms.
 
 export interface UnitScale {
   // term = k * reading^q, in YouTube-view-equivalents per week
@@ -327,35 +323,89 @@ export interface Calibration {
   pointsPerDecade: number;
   // log10 of the total at which the level is 0.
   log10ZeroPoint: number;
-  // A channel whose recent uploads are mostly Shorts counts a swiped
-  // Short like a long-form view; its views are discounted.
-  shorts: { maxSeconds: number; firstShare: number; discount: number };
+  // A swiped Short counts as a view like a long-form one, so a channel's
+  // views are discounted in proportion to its share of Shorts among
+  // recent uploads: all Shorts x discount, none x1, linear in between.
+  shorts: { maxSeconds: number; discount: number };
+  // Posts a day x this stand in for X impressions on a reading written
+  // before views_per_h existed (lib/vi/x.ts); gone once every market has
+  // been re-read.
+  xImpressionsPerPostFallback: number;
+  // A creator's own-channel views count this much of a view of talk about
+  // them: consumption of the content is a weaker signal of attention on
+  // the person than a mention or a search. Fitted against the anchors.
+  ownChannelFactor: number;
   units: Record<SourceName, UnitScale | null>;
 }
 
-export const CALIBRATION: Calibration = {
-  version: 'sum-v1-2026-09-26',
-  pointsPerDecade: 325,
-  log10ZeroPoint: 5.64,
-  shorts: { maxSeconds: 180, firstShare: 2 / 3, discount: 0.25 },
+export const DEFAULT_CALIBRATION: Calibration = {
+  // Refit 2026-09-27 16:05 UTC on a day of readings under #48 and #50,
+  // TikTok in views a day and the own-channel factor free
+  // (npm run vi:calibrate): 16 anchors, leave-one-out RMSE 93, in-sample 67.
+  version: 'sum-v1-2026-09-27b',
+  pointsPerDecade: 391.3,
+  log10ZeroPoint: 5.828,
+  shorts: { maxSeconds: 180, discount: 0.25 },
+  xImpressionsPerPostFallback: 300,
+  ownChannelFactor: 0.694,
   units: {
-    youtube: { k: 10 ** 3.14, q: 0.51 }, // views a week: name search or the discounted channel, whichever is larger
-    tiktok: { k: 10 ** 5.89, q: 0.51 }, // videos a day under the hashtag
-    trends: { k: 1.03e7, q: 1 }, // ratio to the benchmark query
-    x: { k: 2527, q: 1 }, // posts a day
-    bluesky: { k: 717, q: 1 }, // posts a day
-    wikipedia: { k: 78, q: 1 }, // pageviews a day (14-day median)
-    gdelt: { k: 4.7e7, q: 1 }, // share (%) of the week's news articles
-    hn: { k: 3275, q: 1 }, // hits a day
+    youtube: { k: 454, q: 0.568 }, // views a week: name search or the discounted channel, whichever is larger
+    tiktok: { k: 977, q: 0.568 }, // views a day gained under the hashtag
+    x: { k: 871, q: 0.568 }, // impressions a day on posts about the name (matured two hours)
+    trends: { k: 1.445e7, q: 1 }, // ratio to the benchmark query
+    bluesky: { k: 703, q: 1 }, // posts a day
+    wikipedia: { k: 75.89, q: 1 }, // pageviews a day (14-day median)
+    gdelt: { k: 3.822e7, q: 1 }, // share (%) of the week's news articles
+    hn: { k: 3254, q: 1 }, // hits a day
     dex: null, // uncalibrated (one market has it); not scored
   },
 };
 
-export function isShortsFirst(share: number | null | undefined, cal: Calibration = CALIBRATION): boolean {
-  return typeof share === 'number' && Number.isFinite(share) && share >= cal.shorts.firstShare;
+// VI_CALIBRATION_JSON overrides any of the fields above without a deploy
+// (a refit is an env change, a bad constant rolls back in a minute).
+// Top-level fields replace; `units` merges per source, so one source can
+// be given without repeating the rest. Malformed JSON is logged and
+// ignored. Pure.
+export function applyCalibrationOverride(base: Calibration, json: string | undefined | null): Calibration {
+  if (!json || !json.trim()) return base;
+  let o: Partial<Calibration> & { units?: Partial<Record<SourceName, UnitScale | null>> };
+  try {
+    o = JSON.parse(json);
+  } catch (err) {
+    console.error(`[vi] VI_CALIBRATION_JSON is not valid JSON: ${(err as Error).message}`);
+    return base;
+  }
+  if (!o || typeof o !== 'object') return base;
+  const num = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
+  const units = { ...base.units };
+  for (const [s, u] of Object.entries(o.units ?? {}) as [SourceName, UnitScale | null | undefined][]) {
+    if (!(s in base.units)) continue;
+    if (u === null) units[s] = null;
+    else if (u && typeof u === 'object') units[s] = { k: num(u.k, base.units[s]?.k ?? 1), q: num(u.q, base.units[s]?.q ?? 1) };
+  }
+  return {
+    version: typeof o.version === 'string' ? o.version : `${base.version}+env`,
+    pointsPerDecade: num(o.pointsPerDecade, base.pointsPerDecade),
+    log10ZeroPoint: num(o.log10ZeroPoint, base.log10ZeroPoint),
+    shorts: { maxSeconds: num(o.shorts?.maxSeconds, base.shorts.maxSeconds), discount: num(o.shorts?.discount, base.shorts.discount) },
+    xImpressionsPerPostFallback: num(o.xImpressionsPerPostFallback, base.xImpressionsPerPostFallback),
+    ownChannelFactor: num(o.ownChannelFactor, base.ownChannelFactor),
+    units,
+  };
 }
 
-const num = (v: unknown): number | null => {
+export const CALIBRATION: Calibration = applyCalibrationOverride(DEFAULT_CALIBRATION, process.env.VI_CALIBRATION_JSON);
+
+// The factor a channel's views are multiplied by for its share of Shorts
+// among recent uploads: 1 at no Shorts, `discount` at all Shorts, linear
+// in between; 1 when the share is unknown.
+export function shortsFactor(share: number | null | undefined, cal: Calibration = CALIBRATION): number {
+  if (typeof share !== 'number' || !Number.isFinite(share)) return 1;
+  const s = Math.max(0, Math.min(1, share));
+  return 1 - (1 - cal.shorts.discount) * s;
+}
+
+export const metaNumber = (v: unknown): number | null => {
   if (typeof v === 'number') return Number.isFinite(v) ? v : null;
   if (typeof v === 'string') {
     const n = parseFloat(v);
@@ -364,15 +414,22 @@ const num = (v: unknown): number | null => {
   return null;
 };
 
+// A creator's own channel views as attention on the creator: the Shorts
+// discount, then the own-channel factor. Pure.
+export function channelViewsAsAttention(meta: SourceComponent['meta'] | undefined, cal: Calibration = CALIBRATION): number | null {
+  const channel = metaNumber(meta?.channel_views_7d);
+  if (channel === null) return null;
+  return channel * shortsFactor(metaNumber(meta?.channel_shorts_share), cal) * cal.ownChannelFactor;
+}
+
 // The week's views a creator market's YouTube slot stands for: the name
-// search or the own channel, whichever is larger (they overlap). A Shorts-
-// first channel is discounted before the power.
+// search or the own channel (Shorts-discounted, own-channel factor),
+// whichever is larger (they overlap). Before the power.
 export function youtubeReading(meta: SourceComponent['meta'] | undefined, cal: Calibration = CALIBRATION): number | null {
-  const search = num(meta?.views_7d);
-  const channel = num(meta?.channel_views_7d);
+  const search = metaNumber(meta?.views_7d);
+  const channel = channelViewsAsAttention(meta, cal);
   if (search === null && channel === null) return null;
-  const discounted = channel === null ? 0 : channel * (isShortsFirst(num(meta?.channel_shorts_share), cal) ? cal.shorts.discount : 1);
-  return Math.max(search ?? 0, discounted);
+  return Math.max(search ?? 0, channel ?? 0);
 }
 
 // A source's raw reading in its own unit (see CALIBRATION.units), or null
@@ -386,31 +443,46 @@ export function sourceReading(c: SourceComponent, cal: Calibration = CALIBRATION
       r = youtubeReading(m, cal);
       break;
     case 'tiktok': {
-      const h = num(m?.videos_per_h);
-      r = h === null ? null : h * 24;
+      // Views a day gained under the tag (lib/vi/tiktok.ts); a reading
+      // from before the view trend existed stands in with videos a day
+      // times the tag's lifetime views per video.
+      const v = metaNumber(m?.views_per_h);
+      if (v !== null) r = v * 24;
+      else {
+        const h = metaNumber(m?.videos_per_h);
+        const vt = metaNumber(m?.views_total);
+        const nt = metaNumber(m?.videos_total);
+        r = h === null ? null : vt !== null && nt !== null && nt > 0 ? h * 24 * (vt / nt) : null;
+      }
       break;
     }
     case 'trends':
-      r = num(m?.ratio_to_benchmark);
+      r = metaNumber(m?.ratio_to_benchmark);
       break;
     case 'x': {
-      const h = num(m?.rate_per_h);
-      r = h === null ? null : h * 24;
+      // Impressions a day on the hour's posts (lib/vi/x.ts); a reading
+      // from before views were kept stands in with posts x a typical count.
+      const v = metaNumber(m?.views_per_h);
+      if (v !== null) r = v * 24;
+      else {
+        const h = metaNumber(m?.rate_per_h);
+        r = h === null ? null : h * 24 * cal.xImpressionsPerPostFallback;
+      }
       break;
     }
     case 'bluesky':
-      r = num(m?.posts_24h);
+      r = metaNumber(m?.posts_24h);
       break;
     case 'wikipedia': {
-      const med = num(m?.views_median_14d);
-      r = med !== null && med > 0 ? med : num(m?.views_latest);
+      const med = metaNumber(m?.views_median_14d);
+      r = med !== null && med > 0 ? med : metaNumber(m?.views_latest);
       break;
     }
     case 'gdelt':
-      r = num(m?.articles_pct_7d);
+      r = metaNumber(m?.articles_pct_7d);
       break;
     case 'hn':
-      r = num(m?.hits_24h);
+      r = metaNumber(m?.hits_24h);
       break;
     default:
       r = null;
@@ -485,18 +557,26 @@ export function summarizeAttention(components: Components | null | undefined, ca
 }
 
 // Total attention to the 0-1000 level: pointsPerDecade per tenfold,
-// zero at the zero point.
+// through log10(1 + A/A0). Far above the zero point that is the plain
+// log; around and below it the level bends to 0 instead of cutting off,
+// so a market with a little attention reads a little (A0/10 -> ~13,
+// A0 -> ~98) and only nothing at all reads 0.
 export function levelFromAttention(A: number, cal: Calibration = CALIBRATION): number {
   if (A <= 0) return 0;
-  return clamp(Math.round(cal.pointsPerDecade * (Math.log10(A) - cal.log10ZeroPoint)));
+  return clamp(Math.round(cal.pointsPerDecade * Math.log10(1 + A / 10 ** cal.log10ZeroPoint)));
 }
 
 // The momentum half of the composite, on the 0-1000 momentum axis:
-// WEIGHTS-weighted momentumScore over the sources that see something and
-// have a baseline; steady (500) when none has one.
-export function compositeMomentum(seeing: SourceComponent[]): number {
+// momentumScore over the sources that see something and have a
+// baseline, weighted by each one's share of the total (`shares`), so a
+// spike on a source that is 2% of a market's attention moves it 2% of
+// the way. WEIGHTS stand in when no shares are given. Steady (500) when
+// no source has a baseline.
+export function compositeMomentum(seeing: SourceComponent[], shares?: Partial<Record<SourceName, number>>): number {
   const withMomentum = seeing.filter((c) => c.momentum !== null);
   if (withMomentum.length === 0) return 500;
-  const mw = withMomentum.reduce((s, c) => s + WEIGHTS[c.source], 0);
-  return withMomentum.reduce((s, c) => s + (WEIGHTS[c.source] / mw) * momentumScore(c.momentum as number), 0);
+  const w = (c: SourceComponent) => (shares ? (shares[c.source] ?? 0) : WEIGHTS[c.source]);
+  const mw = withMomentum.reduce((s, c) => s + w(c), 0);
+  if (mw <= 0) return 500;
+  return withMomentum.reduce((s, c) => s + (w(c) / mw) * momentumScore(c.momentum as number), 0);
 }

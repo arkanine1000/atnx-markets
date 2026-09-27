@@ -17,7 +17,7 @@ if (queries.length === 0) {
   const results = await scoreTerms(queries, 'all');
   results.forEach((r, i) => {
     const c = r.composite;
-    console.log(`\n${terms[i]}  →  VI ${r.score ?? 'n/a'}${c ? `  (${viTier(c.score).label}; level ${c.level}, momentum ${c.momentum}, ×${c.multiplier} from ${c.sourcesPresent.join('+') || 'nothing'})` : ''}`);
+    console.log(`\n${terms[i]}  →  VI ${r.score ?? 'n/a'}${c ? `  (${viTier(c.score).label}; level ${c.level}, momentum ${c.momentum}, A ${c.attention.toExponential(2)}, top ${c.topSource ?? '-'} ${Math.round((c.topSource ? c.shares[c.topSource] ?? 0 : 0) * 100)}% of ${c.sourcesPresent.join('+') || 'nothing'})` : ''}`);
     for (const comp of Object.values(r.components)) {
       if (!comp) continue;
       const mom = comp.momentum === null ? '—' : `${comp.momentum.toFixed(2)}x`;

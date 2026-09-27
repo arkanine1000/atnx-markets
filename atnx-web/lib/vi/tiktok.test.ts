@@ -143,3 +143,18 @@ test('a mapped market asks for its hashtag every three hours', () => {
   assert.deepEqual(hashtagsWanted(mapped, t0 + 1 * H), []);
   assert.deepEqual(hashtagsWanted(mapped, t0 + 3 * H), ['skibiditoilet']);
 });
+
+test('the view totals give a views-per-hour trend beside the video counts', () => {
+  // 15 videos/h and 400k views/h, both jittered, over 7 reads.
+  const counts = jittered(234_600, 15, [0, 20, -15, 10, -20, 15, 0]);
+  const views = jittered(9_000_000_000, 400_000, [0, 50_000, -30_000, 20_000, -40_000, 30_000, 0]);
+  const { samples, now } = series(counts);
+  const withViews = samples.map((smp, i) => ({ ...smp, meta: { ...smp.meta, view_count: views[views.length - 1 - i] } }));
+  const r = tiktokReading(withViews, now);
+  assert.ok(r.videosPerHour! > 8 && r.videosPerHour! < 22, `videos ${r.videosPerHour}`);
+  assert.ok(r.viewsPerHour! > 350_000 && r.viewsPerHour! < 450_000, `views ${r.viewsPerHour}`);
+  assert.equal(tiktokReading(samples, now).viewsPerHour, null, 'no view totals: no views trend');
+  // A view total missing on the newest read leaves the views trend stale: null.
+  const staleNewest = withViews.map((smp, i) => (i === 0 ? { ...smp, meta: { ...smp.meta, view_count: null } } : smp));
+  assert.equal(tiktokReading(staleNewest, now).viewsPerHour, null);
+});

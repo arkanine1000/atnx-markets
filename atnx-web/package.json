@@ -17,6 +17,7 @@
     "vi:report": "npx --yes tsx --env-file=.env.local scripts/vi-run-report.ts",
     "vi:calibrate": "npx --yes tsx --env-file=.env.local scripts/vi-calibrate.ts",
     "vi:titles": "npx --yes tsx --env-file=.env.local scripts/vi-title-probe.ts",
+    "vi:compare": "npx --yes tsx --env-file=.env.local scripts/vi-compare.ts",
     "test:vi": "npx --yes tsx --test lib/vi/*.test.ts lib/creators/*.test.ts",
     "creators:resolve": "npx --yes tsx --env-file=.env.local scripts/creators-resolve.ts",
     "aliases:backfill": "npx --yes tsx --env-file=.env.local scripts/backfill-aliases.ts",

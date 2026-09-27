@@ -1,7 +1,7 @@
 // Run with: npm run test:vi
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { blendScores, combine, RAMP_MS, type Components } from './score';
+import { blendScores, combine, rescaleSeed, RAMP_MS } from './score';
 
 // The ramp maths, over the 48 h span it had (RAMP_MS is 0 pre-launch).
 const SPAN = 48 * 3600 * 1000;
@@ -29,42 +29,100 @@ test('ramps are off pre-launch: a change lands at once', () => {
 });
 
 const at = new Date(T0).toISOString();
-const creator: Components = {
-  youtube: { source: 'youtube', level: 560, momentum: null, fetchedAt: at },
-  x: { source: 'x', level: 0, momentum: null, fetchedAt: at },
-  bluesky: { source: 'bluesky', level: 0, momentum: null, fetchedAt: at },
-  trends: { source: 'trends', level: 0, momentum: null, fetchedAt: at },
-  wikipedia: { source: 'wikipedia', level: 0, momentum: null, fetchedAt: at },
-};
+const P = CALIBRATION.pointsPerDecade;
+const A0 = 10 ** CALIBRATION.log10ZeroPoint;
+const src = (source: SourceComponent['source'], level: number | null, meta: SourceComponent['meta'], momentum: number | null = null): SourceComponent => ({ source, level, momentum, fetchedAt: at, meta });
+const yt = (views: number, momentum: number | null = null) => src('youtube', 560, { views_7d: views }, momentum);
+const xPosts = (viewsPerHour: number, momentum: number | null = null) => src('x', 500, { views_per_h: viewsPerHour }, momentum);
+const term = (s: SourceComponent['source'], r: number) => CALIBRATION.units[s]!.k * Math.pow(r, CALIBRATION.units[s]!.q);
 
-test('known zeros pull the level down by default', () => {
-  const c = combine(creator)!;
-  assert.equal(c.level, Math.round((0.2 * 560) / (0.2 + 0.25 + 0.2 + 0.3 + 0.15)));
+test('known zeros add nothing: a creator-only market keeps full credit', () => {
+  const alone = combine({ youtube: yt(5e6) })!;
+  const withZeros = combine({
+    youtube: yt(5e6),
+    x: src('x', 0, { views_per_h: 0 }),
+    bluesky: src('bluesky', 0, { posts_24h: 0 }),
+    trends: src('trends', 0, { ratio_to_benchmark: 0 }),
+    wikipedia: src('wikipedia', 0, { title: null }),
+  })!;
+  assert.equal(withZeros.score, alone.score);
+  assert.equal(withZeros.level, alone.level);
+  assert.deepEqual(withZeros.sourcesPresent, ['youtube']);
+  assert.equal(alone.level, Math.round(P * Math.log10(1 + term('youtube', 5e6) / A0)), 'P per decade above the zero point');
 });
 
-test('ignoreZeros drops the listed zeros only', () => {
-  const all = combine(creator, { ignoreZeros: ['x', 'bluesky', 'trends', 'wikipedia'] })!;
-  assert.equal(all.level, 560);
-  assert.deepEqual(all.sourcesPresent, ['youtube']);
-  const some = combine(creator, { ignoreZeros: ['x'] })!;
-  assert.equal(some.level, Math.round((0.2 * 560) / (0.2 + 0.2 + 0.3 + 0.15)));
+test('adding a source raises the level by P * log10 of the ratio of totals, with no presence step', () => {
+  const one = combine({ youtube: yt(5e6) })!;
+  const two = combine({ youtube: yt(5e6), x: xPosts(10) })!;
+  const A1 = term('youtube', 5e6);
+  const A2 = A1 + term('x', 240);
+  void xPosts;
+  assert.equal(two.level - one.level, Math.round(P * Math.log10(1 + A2 / A0)) - Math.round(P * Math.log10(1 + A1 / A0)));
+  assert.ok(Math.abs(two.attention - A2) < 1e-6 * A2);
+  assert.equal(two.topSource, 'youtube');
 });
 
-test('ignoreZeros never hides a non-zero reading', () => {
-  const c = combine({ ...creator, x: { source: 'x', level: 300, momentum: null, fetchedAt: at } }, { ignoreZeros: ['x', 'bluesky', 'trends', 'wikipedia'] })!;
-  assert.equal(c.level, Math.round((0.2 * 560 + 0.25 * 300) / 0.45));
+test('under the zero point is 0, far above it is 1000, all zeros is 0, nothing answered is null', () => {
+  assert.equal(combine({ youtube: yt(1) })!.level, 0, 'a single view rounds to 0');
+  assert.ok(combine({ youtube: yt(1000) })!.level > 0 && combine({ youtube: yt(1000) })!.level < 20, 'a little attention reads a little');
+  assert.equal(combine({ trends: src('trends', 900, { ratio_to_benchmark: 1e9 }) })!.score, 1000);
+  const zeros = combine({ x: src('x', 0, { views_per_h: 0 }), trends: src('trends', 0, { ratio_to_benchmark: 0 }) })!;
+  assert.equal(zeros.score, 0);
+  assert.deepEqual(zeros.sourcesPresent, []);
+  assert.equal(combine({ x: src('x', null, {}) }), null);
+  assert.equal(combine({}), null);
 });
 
-test('all ignored zeros and nothing else is still no data', () => {
-  const only = { x: creator.x, trends: creator.trends } as Components;
-  assert.equal(combine(only, { ignoreZeros: ['x', 'trends'] }), null);
+test('momentum scales the level: x0.65 at a collapse, x1 steady, x1.35 at a 10x spike', () => {
+  const level = combine({ youtube: yt(5e6) })!.level;
+  assert.equal(combine({ youtube: yt(5e6, 1) })!.score, Math.round(level * 1));
+  assert.equal(combine({ youtube: yt(5e6, 10) })!.score, Math.round(level * 1.35));
+  assert.equal(combine({ youtube: yt(5e6, 0.1) })!.score, Math.round(level * 0.65));
+  assert.equal(combine({ youtube: yt(5e6) })!.momentum, 500, 'no baseline anywhere: steady');
+});
+
+test('momentum counts only sources that see something', () => {
+  const steady = combine({ youtube: yt(5e6, 1), x: src('x', 0, { views_per_h: 0 }, 10) })!;
+  assert.equal(steady.momentum, 500, 'a zero source with a spike momentum does not count');
+});
+
+test('dex is not scored: dex-only is null and dex changes nothing', () => {
+  assert.equal(combine({ dex: src('dex', 600, { volume_24h_usd: 1e9 }, 2) }), null);
+  const without = combine({ youtube: yt(5e6) })!;
+  const withDex = combine({ youtube: yt(5e6), dex: src('dex', 600, { volume_24h_usd: 1e9 }, 2) })!;
+  assert.equal(withDex.score, without.score);
+  assert.deepEqual(withDex.sourcesPresent, ['youtube']);
+});
+
+test('a calibration override is honoured', () => {
+  const cal = { ...CALIBRATION, pointsPerDecade: 100, log10ZeroPoint: 6 };
+  const c = combine({ youtube: yt(5e6) }, { calibration: cal })!;
+  assert.equal(c.level, Math.round(100 * Math.log10(1 + term('youtube', 5e6) / 1e6)));
+});
+
+test('rescaleSeed moves the Trends share only and clamps', () => {
+  const series = [
+    { date: '2026-09-20', value: 300 }, // 0.1x of today's ratio
+    { date: '2026-09-21', value: 0 },
+    { date: '2026-09-22', value: 500 }, // today
+  ];
+  const out = rescaleSeed(series, 600, 0.5);
+  assert.equal(out[2].value, 600, 'today is the score');
+  assert.equal(out[0].value, Math.round(600 + P * Math.log10(1 + 0.5 * (0.1 - 1))));
+  assert.equal(out[1].value, Math.round(600 + P * Math.log10(1 - 0.5)));
+  assert.deepEqual(rescaleSeed(series, 600, 0), [], 'no Trends share: nothing to seed');
+  assert.deepEqual(rescaleSeed([{ date: 'd', value: 0 }], 600, 0.5), [], 'Trends reads nothing today');
+  assert.equal(rescaleSeed(series, 20, 1)[1].value, 0, 'clamped at 0');
 });
 
 // --- alias rule and the total-attention model (pre-switch) ---
 import {
   CALIBRATION,
+  DEFAULT_CALIBRATION,
+  applyCalibrationOverride,
   attention,
   compositeMomentum,
+  shortsFactor,
   summarizeAttention,
   isVerifiableAlias,
   levelFromAttention,
@@ -96,8 +154,11 @@ test('isVerifiableAlias: plain single words only', () => {
 });
 
 test('sourceReading reads each source in its own unit', () => {
-  assert.equal(sourceReading(cmp('x', 500, { rate_per_h: 10 })), 240);
-  assert.equal(sourceReading(cmp('tiktok', 400, { videos_per_h: 2.5 })), 60);
+  assert.equal(sourceReading(cmp('x', 500, { views_per_h: 1000, rate_per_h: 10 })), 24_000, 'impressions a day');
+  assert.equal(sourceReading(cmp('x', 500, { rate_per_h: 10 })), 240 * CALIBRATION.xImpressionsPerPostFallback, 'an old reading stands in with posts x fallback');
+  assert.equal(sourceReading(cmp('tiktok', 400, { views_per_h: 1000, videos_per_h: 2.5 })), 24_000, 'views a day');
+  assert.equal(sourceReading(cmp('tiktok', 400, { videos_per_h: 2.5, views_total: 1e6, videos_total: 1000 })), 60 * 1000, 'old reading: videos x lifetime views per video');
+  assert.equal(sourceReading(cmp('tiktok', 400, { videos_per_h: 2.5 })), null, 'old reading without totals: unknown');
   assert.equal(sourceReading(cmp('bluesky', 500, { posts_24h: '123+' })), 123);
   assert.equal(sourceReading(cmp('trends', 500, { ratio_to_benchmark: 1.5 })), 1.5);
   assert.equal(sourceReading(cmp('wikipedia', 600, { views_median_14d: 8000, views_latest: 20000 })), 8000, 'median for the level');
@@ -112,23 +173,30 @@ test('sourceReading reads each source in its own unit', () => {
 });
 
 test('youtubeReading takes the larger of name search and channel, and discounts a Shorts-first channel', () => {
-  assert.equal(youtubeReading({ views_7d: 1e6, channel_views_7d: 4e6 }), 4e6);
-  assert.equal(youtubeReading({ views_7d: 5e6, channel_views_7d: 4e6 }), 5e6);
-  assert.equal(youtubeReading({ views_7d: 0, channel_views_7d: 24e6, channel_shorts_share: 1 }), 6e6, 'x0.25');
-  assert.equal(youtubeReading({ views_7d: 0, channel_views_7d: 24e6, channel_shorts_share: 0.5 }), 24e6, 'under two thirds is long-form');
-  assert.equal(youtubeReading({ views_7d: 0, channel_views_7d: 24e6, channel_shorts_share: null }), 24e6);
+  // Own-channel factor 1 here; the fitted default is tested below.
+  const one = { ...CALIBRATION, ownChannelFactor: 1 };
+  assert.equal(youtubeReading({ views_7d: 1e6, channel_views_7d: 4e6 }, one), 4e6);
+  assert.equal(youtubeReading({ views_7d: 5e6, channel_views_7d: 4e6 }, one), 5e6);
+  assert.equal(youtubeReading({ views_7d: 0, channel_views_7d: 24e6, channel_shorts_share: 1 }, one), 6e6, 'all Shorts: x0.25');
+  assert.equal(youtubeReading({ views_7d: 0, channel_views_7d: 24e6, channel_shorts_share: 0.6 }, one), 24e6 * (1 - 0.75 * 0.6), 'linear in the share');
+  assert.equal(youtubeReading({ views_7d: 0, channel_views_7d: 24e6, channel_shorts_share: 0 }, one), 24e6);
+  assert.equal(youtubeReading({ views_7d: 0, channel_views_7d: 1e6 }), 1e6 * CALIBRATION.ownChannelFactor, 'the fitted factor by default');
+  const half = { ...CALIBRATION, ownChannelFactor: 0.5 };
+  assert.equal(youtubeReading({ views_7d: 0, channel_views_7d: 24e6, channel_shorts_share: 1 }, half), 3e6, 'own-channel factor after the Shorts discount');
+  assert.equal(youtubeReading({ views_7d: 4e6, channel_views_7d: 6e6 }, half), 4e6, 'a halved channel can lose to the name search');
+  assert.equal(youtubeReading({ views_7d: 0, channel_views_7d: 24e6, channel_shorts_share: null }, one), 24e6);
   assert.equal(youtubeReading({}), null);
 });
 
 test('attention sums k * r^q over the sources that answered; zeros add nothing', () => {
   const yt = cmp('youtube', 600, { views_7d: 1e7 });
-  const x = cmp('x', 500, { rate_per_h: 10 });
+  const x = cmp('x', 500, { views_per_h: 10 });
   const zero = cmp('bluesky', 0, { posts_24h: 0 });
   const unknown = cmp('trends', null, {});
   const a = attention({ youtube: yt, x, bluesky: zero, trends: unknown });
   const uy = CALIBRATION.units.youtube!;
   const ux = CALIBRATION.units.x!;
-  const expected = uy.k * Math.pow(1e7, uy.q) + ux.k * 240;
+  const expected = uy.k * Math.pow(1e7, uy.q) + ux.k * Math.pow(240, ux.q);
   assert.ok(Math.abs(a.A - expected) < 1e-6 * expected, `A ${a.A} vs ${expected}`);
   assert.deepEqual(a.answered.sort(), ['bluesky', 'x', 'youtube']);
   assert.equal(a.terms.bluesky, 0);
@@ -141,37 +209,39 @@ test('attention sums k * r^q over the sources that answered; zeros add nothing',
 test('levelFromAttention: pointsPerDecade per tenfold from the zero point, clamped', () => {
   const P = CALIBRATION.pointsPerDecade;
   const A0 = 10 ** CALIBRATION.log10ZeroPoint;
-  assert.equal(levelFromAttention(A0), 0);
-  assert.equal(levelFromAttention(A0 * 10), Math.round(P));
-  assert.equal(levelFromAttention(A0 * 100), Math.round(2 * P));
-  assert.equal(levelFromAttention(A0 / 10), 0, 'under the zero point');
+  assert.equal(levelFromAttention(A0 * 10), Math.round(P * Math.log10(11)));
+  assert.equal(levelFromAttention(A0 * 100), Math.round(P * Math.log10(101)));
   assert.equal(levelFromAttention(0), 0);
   assert.equal(levelFromAttention(A0 * 1e9), 1000);
   const custom = { ...CALIBRATION, pointsPerDecade: 200, log10ZeroPoint: 5 };
-  assert.equal(levelFromAttention(1e7, custom), 400);
+  assert.equal(levelFromAttention(1e7, custom), Math.round(200 * Math.log10(101)));
 });
 
 test('compositeMomentum matches the old combine: weighted over sources with a baseline, 500 without', () => {
-  const steady = cmp('x', 500, {}, 1);
-  const spike = cmp('trends', 500, {}, 10);
-  assert.equal(compositeMomentum([cmp('x', 500, {})]), 500);
+  const steady = cmp('x', 500, { views_per_h: 10 }, 1);
+  const spike = cmp('trends', 500, { ratio_to_benchmark: 1 }, 10);
+  assert.equal(compositeMomentum([cmp('x', 500, { views_per_h: 10 })]), 500);
   assert.equal(compositeMomentum([steady]), 500);
   assert.equal(compositeMomentum([spike]), 1000);
-  const both = compositeMomentum([steady, spike]);
+  // Weighted by share: a spike on a source that is nearly all of the total
+  // moves the momentum nearly all the way; on a tiny source, hardly.
+  assert.ok(compositeMomentum([steady, spike], { x: 0.02, trends: 0.98 }) > 980);
+  assert.ok(compositeMomentum([steady, spike], { x: 0.98, trends: 0.02 }) < 520);
   const c = combine({ x: steady, trends: spike })!;
-  assert.equal(Math.round(both), c.momentum);
+  assert.equal(c.momentum, Math.round(compositeMomentum([steady, spike], c.shares)));
+  assert.equal(Math.round(compositeMomentum([steady, spike])), Math.round(compositeMomentum([steady, spike], undefined)), 'WEIGHTS fallback');
 });
 
 test('summarizeAttention: total, rounded shares, the top source, who answered and who saw', () => {
   const sum = summarizeAttention({
     youtube: cmp('youtube', 600, { views_7d: 1e7 }),
-    x: cmp('x', 500, { rate_per_h: 10 }),
+    x: cmp('x', 500, { views_per_h: 10 }),
     bluesky: cmp('bluesky', 0, { posts_24h: 0 }),
     trends: cmp('trends', null, {}),
   })!;
   const uy = CALIBRATION.units.youtube!;
   const ux = CALIBRATION.units.x!;
-  assert.equal(sum.total, Math.round(uy.k * Math.pow(1e7, uy.q) + ux.k * 240));
+  assert.equal(sum.total, Math.round(uy.k * Math.pow(1e7, uy.q) + ux.k * Math.pow(240, ux.q)));
   assert.equal(sum.top, 'youtube');
   assert.deepEqual(sum.answered.sort(), ['bluesky', 'x', 'youtube']);
   assert.deepEqual(sum.seeing.sort(), ['x', 'youtube']);
@@ -179,4 +249,40 @@ test('summarizeAttention: total, rounded shares, the top source, who answered an
   assert.equal(sum.shares.bluesky, undefined, 'a zero has no share');
   assert.equal(summarizeAttention(null), null);
   assert.equal(summarizeAttention({ trends: cmp('trends', null, {}) }), null);
+});
+
+test('shortsFactor is linear in the Shorts share and 1 when unknown', () => {
+  assert.equal(shortsFactor(1), 0.25);
+  assert.equal(shortsFactor(0), 1);
+  assert.equal(shortsFactor(0.6), 1 - 0.75 * 0.6);
+  assert.equal(shortsFactor(null), 1);
+  assert.equal(shortsFactor(undefined), 1);
+  assert.equal(shortsFactor(2), 0.25, 'clamped');
+});
+
+test('applyCalibrationOverride merges an env JSON over the defaults', () => {
+  const base = DEFAULT_CALIBRATION;
+  assert.equal(applyCalibrationOverride(base, undefined), base);
+  assert.equal(applyCalibrationOverride(base, '  '), base);
+  assert.equal(applyCalibrationOverride(base, '{not json'), base, 'malformed JSON is ignored');
+  const o = applyCalibrationOverride(base, JSON.stringify({ pointsPerDecade: 300, units: { x: { k: 1000 }, dex: { k: 1, q: 1 } } }));
+  assert.equal(o.pointsPerDecade, 300);
+  assert.equal(o.log10ZeroPoint, base.log10ZeroPoint, 'untouched fields keep their defaults');
+  assert.equal(o.units.x!.k, 1000);
+  assert.equal(o.units.x!.q, base.units.x!.q, 'a unit override keeps the other field');
+  assert.deepEqual(o.units.dex, { k: 1, q: 1 }, 'a null unit can be switched on');
+  assert.equal(o.units.youtube, base.units.youtube);
+  assert.equal(o.ownChannelFactor, base.ownChannelFactor);
+  assert.equal(applyCalibrationOverride(base, JSON.stringify({ ownChannelFactor: 0.4 })).ownChannelFactor, 0.4);
+  assert.match(o.version, /\+env$/);
+  const named = applyCalibrationOverride(base, JSON.stringify({ version: 'sum-v2' }));
+  assert.equal(named.version, 'sum-v2');
+});
+
+test('levelFromAttention bends to 0 below the zero point instead of cutting off', () => {
+  const P = CALIBRATION.pointsPerDecade;
+  const A0 = 10 ** CALIBRATION.log10ZeroPoint;
+  assert.equal(levelFromAttention(A0 / 10), Math.round(P * Math.log10(1.1)));
+  assert.equal(levelFromAttention(A0), Math.round(P * Math.log10(2)));
+  assert.ok(Math.abs(levelFromAttention(A0 * 100) - 2 * P) <= 1.5, 'far above, the plain log');
 });
