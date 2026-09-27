@@ -335,20 +335,22 @@ export interface Calibration {
 }
 
 export const DEFAULT_CALIBRATION: Calibration = {
-  version: 'sum-v1-2026-09-26',
-  pointsPerDecade: 325,
-  log10ZeroPoint: 5.64,
+  // Refit 2026-09-27 15:25 UTC on a day of readings under #48 and #50
+  // (npm run vi:calibrate): 16 anchors, leave-one-out RMSE 88, in-sample 68.
+  version: 'sum-v1-2026-09-27',
+  pointsPerDecade: 361.8,
+  log10ZeroPoint: 5.631,
   shorts: { maxSeconds: 180, discount: 0.25 },
   xImpressionsPerPostFallback: 300,
   units: {
-    youtube: { k: 10 ** 3.14, q: 0.51 }, // views a week: name search or the discounted channel, whichever is larger
-    tiktok: { k: 10 ** 5.89, q: 0.51 }, // videos a day under the hashtag
-    x: { k: 10 ** 3.2, q: 0.51 }, // impressions a day on posts about the name (matured two hours)
-    trends: { k: 1.03e7, q: 1 }, // ratio to the benchmark query
-    bluesky: { k: 717, q: 1 }, // posts a day
-    wikipedia: { k: 78, q: 1 }, // pageviews a day (14-day median)
-    gdelt: { k: 4.7e7, q: 1 }, // share (%) of the week's news articles
-    hn: { k: 3275, q: 1 }, // hits a day
+    youtube: { k: 988, q: 0.509 }, // views a week: name search or the discounted channel, whichever is larger
+    tiktok: { k: 5.381e5, q: 0.509 }, // videos a day under the hashtag
+    x: { k: 1586, q: 0.509 }, // impressions a day on posts about the name (matured two hours)
+    trends: { k: 1.288e7, q: 1 }, // ratio to the benchmark query
+    bluesky: { k: 746, q: 1 }, // posts a day
+    wikipedia: { k: 76.67, q: 1 }, // pageviews a day (14-day median)
+    gdelt: { k: 4.34e7, q: 1 }, // share (%) of the week's news articles
+    hn: { k: 3355, q: 1 }, // hits a day
     dex: null, // uncalibrated (one market has it); not scored
   },
 };
