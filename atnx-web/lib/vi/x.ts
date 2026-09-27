@@ -145,7 +145,10 @@ async function budgetLeft(): Promise<number> {
   const budget = xDailyBudget();
   if (budget === 0) return 0;
   if (!ledger || Date.now() - ledger.at > LEDGER_TTL) {
-    ledger = { spent: await dailyLedger('x', 'tweets'), at: Date.now() };
+    // Own-account reads (lib/creators/x-account.ts) come out of the same
+    // daily tweet budget.
+    const [talk, own] = await Promise.all([dailyLedger('x', 'tweets'), dailyLedger('x_account', 'tweets')]);
+    ledger = { spent: talk + own, at: Date.now() };
     spentThisProcess = 0;
   }
   return budget - ledger.spent - spentThisProcess;

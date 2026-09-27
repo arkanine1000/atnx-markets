@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { prefetchSlowSources, scoreTerms, type ScoreRequest, type SignalResult } from '@/lib/signals';
+import { prefetchSlowSources, scoreTerms, type ScoreRequest, type SignalResult, creatorOf } from '@/lib/signals';
 import { recordVi } from '@/lib/store';
 import { xSpendUsd } from '@/lib/vi/x';
 import { usdPerHashtag } from '@/lib/vi/tiktok';
 import type { Components } from '@/lib/vi/score';
 import { normalizeSearchTerm } from '@/lib/vi/trends';
 import { verifiedYoutubeHandles, type CreatorHandle } from '@/lib/creators/channel';
+import { verifiedXHandles, type XHandle } from '@/lib/creators/x-account';
 
 // Fast refresh, every 5 minutes (vercel.json). Re-reads the fast sources
 // (Google Trends, Bluesky) for every live market, combines them with the
@@ -82,7 +83,7 @@ interface MarketRow {
   current_vi: number | null;
 }
 
-function toRequest(m: MarketRow, handle?: CreatorHandle): ScoreRequest {
+function toRequest(m: MarketRow, handle?: CreatorHandle, x?: XHandle): ScoreRequest {
   return {
     term: normalizeSearchTerm({ name: m.entity_name }),
     aliases: m.aliases ?? [],
@@ -90,7 +91,7 @@ function toRequest(m: MarketRow, handle?: CreatorHandle): ScoreRequest {
     entityType: m.entity_type,
     category: m.category,
     marketId: m.id,
-    creator: handle ? { youtubeChannelId: handle.platform_id, verifiedAt: handle.verified_at } : null,
+    creator: creatorOf(handle, x),
   };
 }
 
@@ -113,8 +114,11 @@ export async function refreshScores(cadence: 'fast' | 'slow', { dryRun = false, 
     summary.tiktok = { hashtags: 0, markets: 0, estUsd: 0 };
   }
   if (markets.length === 0) return summary;
-  const handles = new Map((await verifiedYoutubeHandles(markets.map((m) => m.id))).map((h) => [h.market_id, h]));
-  const request = (m: MarketRow) => toRequest(m, handles.get(m.id));
+  const ids = markets.map((m) => m.id);
+  const [yt, xs] = await Promise.all([verifiedYoutubeHandles(ids), verifiedXHandles(ids)]);
+  const handles = new Map(yt.map((h) => [h.market_id, h]));
+  const xHandles = new Map(xs.map((h) => [h.market_id, h]));
+  const request = (m: MarketRow) => toRequest(m, handles.get(m.id), xHandles.get(m.id));
 
   if (cadence === 'slow' && summary.tiktok) {
     const started = prefetchSlowSources(markets.map(request));

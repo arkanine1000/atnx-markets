@@ -124,6 +124,7 @@ import {
   compositeMomentum,
   shortsFactor,
   summarizeAttention,
+  xReading,
   isVerifiableAlias,
   levelFromAttention,
   searchableAliases,
@@ -285,4 +286,19 @@ test('levelFromAttention bends to 0 below the zero point instead of cutting off'
   assert.equal(levelFromAttention(A0 / 10), Math.round(P * Math.log10(1.1)));
   assert.equal(levelFromAttention(A0), Math.round(P * Math.log10(2)));
   assert.ok(Math.abs(levelFromAttention(A0 * 100) - 2 * P) <= 1.5, 'far above, the plain log');
+});
+
+test('xReading takes the larger of talk impressions and the own account reach, factored', () => {
+  const one = { ...CALIBRATION, ownChannelFactor: 0.5 };
+  assert.equal(xReading({ views_per_h: 1000 }, one), 24_000, 'talk only');
+  assert.equal(xReading({ views_per_h: 1000, own_views_per_h: 100_000 }, one), 100_000 * 24 * 0.5, 'own reach wins, factored');
+  assert.equal(xReading({ views_per_h: 1000, own_views_per_h: 1500 }, one), 24_000, 'talk wins');
+  assert.equal(xReading({ own_views_per_h: 100_000 }, one), 100_000 * 24 * 0.5, 'own reach alone (no talk read yet)');
+  assert.equal(xReading({ rate_per_h: 10 }, one), 240 * one.xImpressionsPerPostFallback, 'old talk reading falls back');
+  assert.equal(xReading({}, one), null);
+  assert.equal(xReading({ own_views_per_h: null, views_per_h: null }, one), null);
+  // A known-zero talk slot with own reach scores the own reach.
+  const c = combine({ x: { source: 'x', level: 0, momentum: null, fetchedAt: at, meta: { own_views_per_h: 100_000 } } }, { calibration: one })!;
+  assert.ok(c.level > 0);
+  assert.deepEqual(c.sourcesPresent, ['x']);
 });

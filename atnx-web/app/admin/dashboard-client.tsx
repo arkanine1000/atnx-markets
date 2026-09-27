@@ -894,6 +894,12 @@ function HandlesTab({ rows }: { rows: HandleRow[] }) {
     });
   }
   const subs = (n: number | null) => (n === null ? "hidden" : n.toLocaleString());
+  // One tab for both platforms (supabase/017 allows youtube, tiktok, x).
+  const accountUrl = (platform: HandleRow["platform"], id: string | null, handle: string | null) =>
+    platform === "x" ? `https://x.com/${handle ?? id}` : `https://www.youtube.com/channel/${id}`;
+  const audienceWord = (platform: HandleRow["platform"]) => (platform === "x" ? "followers" : "subs");
+  const countWord = (platform: HandleRow["platform"]) => (platform === "x" ? "posts" : "videos");
+  const key = (r: HandleRow) => `${r.market_id}:${r.platform}`;
 
   return (
     <div className="space-y-8 text-xs">
@@ -901,12 +907,13 @@ function HandlesTab({ rows }: { rows: HandleRow[] }) {
         <h2 className="font-mono uppercase tracking-wider text-tertiary mb-2">Needs a decision ({queue.length})</h2>
         {queue.length === 0 && <p className="text-secondary">Nothing to review.</p>}
         {queue.map((r) => {
-          const busy = pending && busyId === r.market_id;
+          const busy = pending && busyId === key(r);
           return (
-            <div key={r.market_id} className="border border-surface rounded p-3 mb-3">
+            <div key={key(r)} className="border border-surface rounded p-3 mb-3">
               <div className="flex items-baseline justify-between gap-4 mb-2">
                 <Link href={`/app/markets/${r.market_id}`} className="font-mono text-atnx-cyan hover:underline">
                   {r.market?.entity_name ?? r.market_id}
+                  <span className="ml-2 text-tertiary uppercase">{r.platform}</span>
                 </Link>
                 <span className="text-tertiary">{r.confidence}</span>
               </div>
@@ -915,18 +922,18 @@ function HandlesTab({ rows }: { rows: HandleRow[] }) {
                   {(r.evidence?.candidates ?? []).map((c) => (
                     <tr key={c.id} className="border-t border-surface">
                       <td className="py-1.5 px-2 font-mono">
-                        <a href={`https://www.youtube.com/channel/${c.id}`} target="_blank" rel="noopener" className="text-atnx-cyan hover:underline">
+                        <a href={accountUrl(r.platform, c.id, c.handle)} target="_blank" rel="noopener" className="text-atnx-cyan hover:underline">
                           @{c.handle ?? c.id}
                         </a>
                       </td>
                       <td className="py-1.5 px-2 text-secondary">{c.title}</td>
-                      <td className="py-1.5 px-2 text-right font-mono">{subs(c.subscribers)} subs</td>
-                      <td className="py-1.5 px-2 text-right font-mono">{c.videos} videos</td>
+                      <td className="py-1.5 px-2 text-right font-mono">{subs(c.subscribers)} {audienceWord(r.platform)}</td>
+                      <td className="py-1.5 px-2 text-right font-mono">{c.videos} {countWord(r.platform)}</td>
                       <td className="py-1.5 px-2 text-tertiary">{c.evidence.join(", ")}</td>
                       <td className="py-1.5 px-2 text-right whitespace-nowrap">
                         <button
                           disabled={busy}
-                          onClick={() => run(r.market_id, () => decideHandle(r.market_id, "verify", { id: c.id, handle: c.handle, subscribers: c.subscribers }))}
+                          onClick={() => run(key(r), () => decideHandle(r.market_id, "verify", { id: c.id, handle: c.handle, subscribers: c.subscribers }, r.platform))}
                           className="text-atnx-cyan hover:text-atnx-cyan-dim cursor-pointer disabled:opacity-40"
                         >
                           Verify
@@ -938,7 +945,7 @@ function HandlesTab({ rows }: { rows: HandleRow[] }) {
               </table>
               <button
                 disabled={busy}
-                onClick={() => run(r.market_id, () => decideHandle(r.market_id, "reject"))}
+                onClick={() => run(key(r), () => decideHandle(r.market_id, "reject", undefined, r.platform))}
                 className="mt-2 text-atnx-magenta hover:underline cursor-pointer disabled:opacity-40"
               >
                 None of these
@@ -953,22 +960,23 @@ function HandlesTab({ rows }: { rows: HandleRow[] }) {
         <table className="w-full">
           <tbody>
             {verified.map((r) => (
-              <tr key={r.market_id} className="border-t border-surface">
+              <tr key={key(r)} className="border-t border-surface">
                 <td className="py-1.5 px-2 font-mono text-atnx-cyan">{r.market?.entity_name ?? r.market_id}</td>
                 <td className="py-1.5 px-2 font-mono">
-                  <a href={`https://www.youtube.com/channel/${r.platform_id}`} target="_blank" rel="noopener" className="hover:underline">
+                  <span className="text-tertiary uppercase mr-2">{r.platform}</span>
+                  <a href={accountUrl(r.platform, r.platform_id, r.handle)} target="_blank" rel="noopener" className="hover:underline">
                     @{r.handle ?? r.platform_id}
                   </a>
                 </td>
-                <td className="py-1.5 px-2 text-right font-mono">{subs(r.audience)} subs</td>
+                <td className="py-1.5 px-2 text-right font-mono">{subs(r.audience)} {audienceWord(r.platform)}</td>
                 <td className="py-1.5 px-2 text-tertiary">{r.confidence === "admin" ? "admin" : r.confidence}</td>
                 <td className="py-1.5 px-2 text-tertiary">{r.verified_at ? formatDate(r.verified_at) : "\u2014"}</td>
                 <td className="py-1.5 px-2 text-right">
                   <button
-                    disabled={pending && busyId === r.market_id}
+                    disabled={pending && busyId === key(r)}
                     onClick={() => {
-                      if (!window.confirm(`Stop scoring ${r.market?.entity_name} on @${r.handle}?`)) return;
-                      run(r.market_id, () => decideHandle(r.market_id, "reject"));
+                      if (!window.confirm(`Stop scoring ${r.market?.entity_name} on @${r.handle} (${r.platform})?`)) return;
+                      run(key(r), () => decideHandle(r.market_id, "reject", undefined, r.platform));
                     }}
                     className="text-atnx-magenta hover:underline cursor-pointer disabled:opacity-40"
                   >

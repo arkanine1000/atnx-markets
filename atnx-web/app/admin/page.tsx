@@ -18,6 +18,7 @@ export interface HandleCandidate {
 
 export interface HandleRow {
   market_id: string;
+  platform: "youtube" | "x";
   handle: string | null;
   platform_id: string | null;
   status: "candidate" | "verified" | "rejected";
@@ -104,8 +105,7 @@ export default async function AdminPage() {
       // (supabase/017; admin-readable under RLS).
       supabase
         .from("market_handles")
-        .select("market_id, handle, platform_id, status, review, confidence, evidence, audience, verified_at, checked_at, market:markets(entity_name)")
-        .eq("platform", "youtube")
+        .select("market_id, platform, handle, platform_id, status, review, confidence, evidence, audience, verified_at, checked_at, market:markets(entity_name)")
         .or("review.eq.true,status.eq.verified")
         .order("checked_at", { ascending: false })
         .limit(200)

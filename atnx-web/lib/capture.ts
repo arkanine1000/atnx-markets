@@ -47,10 +47,11 @@ import {
   type SubjectResolution,
 } from './review';
 import { normalizeSearchTerm } from './trends';
-import { composeVi, prefetchSlowSources, scoreTerms } from './signals';
+import { composeVi, prefetchSlowSources, scoreTerms, creatorOf } from './signals';
 import { runChannelJob, verifiedYoutubeHandles } from './creators/channel';
+import { runXAccountJob, verifiedXHandles } from './creators/x-account';
 import { runGdeltJob } from './vi/gdelt';
-import { hasYoutubeRow, resolveAndSave } from './creators/store';
+import { hasXRow, hasYoutubeRow, resolveAndSave, resolveAndSaveX, X_ACCOUNT_TYPES } from './creators/store';
 import type { Components } from './vi/score';
 import { addCapture, createMarket, DuplicateCaptureError, recordVi, type Capture } from './store';
 import { createAdminClient } from './supabase/admin';
@@ -967,9 +968,12 @@ async function scoreNewMarket(ctx: ScoringContext): Promise<void> {
     if (market.entity_type === 'person' && !(await hasYoutubeRow(ctx.marketId))) {
       await resolveAndSave(ctx.marketId).catch((err) => console.error('[capture] resolve failed', (err as Error).message));
     }
+    if (X_ACCOUNT_TYPES.includes(market.entity_type ?? '') && !(await hasXRow(ctx.marketId))) {
+      await resolveAndSaveX(ctx.marketId).catch((err) => console.error('[capture] x resolve failed', (err as Error).message));
+    }
     const now = Date.now();
-    await Promise.allSettled([runGdeltJob(now, { marketIds: [ctx.marketId], backfill: false }), runChannelJob(now, [ctx.marketId])]);
-    const [handle] = await verifiedYoutubeHandles([ctx.marketId]);
+    await Promise.allSettled([runGdeltJob(now, { marketIds: [ctx.marketId], backfill: false }), runChannelJob(now, [ctx.marketId]), runXAccountJob(now, [ctx.marketId])]);
+    const [[handle], [xHandle]] = await Promise.all([verifiedYoutubeHandles([ctx.marketId]), verifiedXHandles([ctx.marketId])]);
     const request = {
       term: normalizeSearchTerm({ name: market.entity_name }),
       aliases: ctx.aliases ?? ((market.aliases as string[] | null) ?? []),
@@ -977,7 +981,7 @@ async function scoreNewMarket(ctx: ScoringContext): Promise<void> {
       category: (market.category as string | null) ?? null,
       marketId: ctx.marketId,
       stored: (market.vi_components as Components | null) ?? null,
-      creator: handle ? { youtubeChannelId: handle.platform_id, verifiedAt: handle.verified_at } : null,
+      creator: creatorOf(handle, xHandle),
     };
     prefetchSlowSources([request]);
     const [signal] = await scoreTerms([request], 'all');
@@ -1002,7 +1006,10 @@ async function scoreMarketLater(ctx: ScoringContext): Promise<void> {
     if (market?.entity_type === 'person' && !(await hasYoutubeRow(ctx.marketId))) {
       await resolveAndSave(ctx.marketId).catch((err) => console.error('[creators] resolve at capture failed', (err as Error).message));
     }
-    const [handle] = await verifiedYoutubeHandles([ctx.marketId]);
+    if (X_ACCOUNT_TYPES.includes(market?.entity_type ?? '') && !(await hasXRow(ctx.marketId))) {
+      await resolveAndSaveX(ctx.marketId).catch((err) => console.error('[creators:x] resolve at capture failed', (err as Error).message));
+    }
+    const [[handle], [xHandle]] = await Promise.all([verifiedYoutubeHandles([ctx.marketId]), verifiedXHandles([ctx.marketId])]);
     const signal = await composeVi(
       {
         term,
@@ -1011,7 +1018,7 @@ async function scoreMarketLater(ctx: ScoringContext): Promise<void> {
         category: (market?.category as string | null) ?? null,
         marketId: ctx.marketId,
         stored: (market?.vi_components as Components | null) ?? null,
-        creator: handle ? { youtubeChannelId: handle.platform_id, verifiedAt: handle.verified_at } : null,
+        creator: creatorOf(handle, xHandle),
       }
     );
     if (signal.score === null) return;

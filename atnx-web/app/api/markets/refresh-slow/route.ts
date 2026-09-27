@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { authorized, refreshScores } from '../refresh/route';
 import { pruneComponentHistory } from '@/lib/store';
+import { runXResolverPass } from '@/lib/creators/store';
+import { runXAccountJob } from '@/lib/creators/x-account';
 import { refreshThumbnails } from '@/lib/thumbnails';
 import { sweepExpiredDrafts } from '@/lib/review';
 import { runGdeltJob } from '@/lib/vi/gdelt';
@@ -74,6 +76,16 @@ export async function GET(request: Request) {
     console.error('[creators] channel job failed:', err);
     channels = { error: (err as Error).message };
   }
+  // People's and brands' own X accounts: resolve the unchecked, then read
+  // every verified account's own reach (lib/creators/x-account.ts).
+  let xAccounts: Record<string, unknown>;
+  try {
+    const resolver = await runXResolverPass();
+    xAccounts = { resolver, ...(await runXAccountJob()) };
+  } catch (err) {
+    console.error('[creators:x] account job failed:', err);
+    xAccounts = { error: (err as Error).message };
+  }
 
   const [scores, thumbs] = await Promise.allSettled([refreshScores('slow', { limit }), refreshThumbnails()]);
   // Component snapshots older than 60 days (supabase/020).
@@ -93,7 +105,7 @@ export async function GET(request: Request) {
   }
 
   if (scores.status === 'rejected') {
-    return NextResponse.json({ error: (scores.reason as Error).message, gdeltJob: gdelt, channelJob: channels, thumbnails, drafts, componentHistory }, { status: 500 });
+    return NextResponse.json({ error: (scores.reason as Error).message, gdeltJob: gdelt, channelJob: channels, xAccounts, thumbnails, drafts, componentHistory }, { status: 500 });
   }
-  return NextResponse.json({ ...scores.value, gdeltJob: gdelt, channelJob: channels, thumbnails, drafts, componentHistory });
+  return NextResponse.json({ ...scores.value, gdeltJob: gdelt, channelJob: channels, xAccounts, thumbnails, drafts, componentHistory });
 }
