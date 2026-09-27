@@ -71,7 +71,7 @@ export function NavSearch({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const onMarkets = pathname === "/app";
-  const { sort, q: urlQ } = parseMarketsQuery(searchParams);
+  const { sort, categories, q: urlQ } = parseMarketsQuery(searchParams);
   // A term in the URL only means anything on the markets page.
   const activeQ = onMarkets ? urlQ : "";
 
@@ -113,7 +113,8 @@ export function NavSearch({
   // while typing; a submit from another page pushes so back returns there.
   const go = (term: string, mode: "replace" | "push") => {
     cancelPending();
-    const href = marketsHref({ sort: onMarkets ? sort : "virality", page: 1, q: term });
+    // On the markets page a search keeps the order and category filter.
+    const href = marketsHref(onMarkets ? { sort, categories, q: term } : { q: term });
     if (mode === "push") router.push(href);
     else router.replace(href, { scroll: false });
   };

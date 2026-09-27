@@ -5,15 +5,24 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
+  useTransition,
   Suspense,
 } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { MarketCard, MarketRow } from "@/components/MarketCard";
 import { FeaturedHero } from "@/components/FeaturedHero";
-import { EmptyState, Pager, Segmented } from "@/components/ui";
+import { CategoryFilter } from "@/components/CategoryFilter";
+import { EmptyState, Segmented } from "@/components/ui";
 import { startPolling } from "@/lib/poll";
-import { marketsHref, type SortMode } from "@/lib/markets-query";
+import {
+  MAX_LIMIT,
+  PAGE_SIZE,
+  marketsHref,
+  type MarketsQuery,
+  type SortMode,
+} from "@/lib/markets-query";
+import { CATEGORY_LABELS, type Category } from "@/lib/categories";
 import type { MarketsPage } from "@/lib/store";
 
 // A new VI point lands every five minutes; thirty seconds is plenty to
@@ -103,65 +112,127 @@ const ListIcon = (
 
 export function MarketsView({
   initial,
-  sort,
-  page,
-  q,
+  query,
 }: {
   initial: MarketsPage;
-  sort: SortMode;
-  page: number;
-  // The search term from the nav's search box; empty lists everything.
-  q: string;
+  // What the server rendered: order, search term (from the nav's search
+  // box; empty lists everything), category filter and how many to show.
+  query: MarketsQuery;
 }) {
   const router = useRouter();
   const [data, setData] = useState<MarketsPage>(initial);
+  const [limit, setLimit] = useState(query.limit);
+  // The order and filter as last clicked. They lead the URL while its
+  // navigation is in flight, so a second tick builds on the first.
+  const [sort, setSortState] = useState(query.sort);
+  const [categories, setCategories] = useState<Category[]>(query.categories);
+  const [more, setMore] = useState<"idle" | "loading" | "error">("idle");
+  const [pending, startTransition] = useTransition();
   const view = useSyncExternalStore<ViewMode>(subscribeView, readView, () => "grid");
-  // Body of the last page we rendered. A poll that returns the same bytes
-  // is dropped before setState, so two dozen sparklines are not redrawn
-  // for nothing every thirty seconds.
+  // Body of the last listing we rendered. A poll that returns the same
+  // bytes is dropped before setState, so two dozen sparklines are not
+  // redrawn for nothing every thirty seconds.
   const lastBody = useRef<string | null>(null);
 
-  // Poll the open page while the tab is visible, backing off while the API
+  // Not keyed on the query, so the filter's menu survives a tick: when the
+  // server sends a new listing (a sort, filter or search), start from it.
+  const [rendered, setRendered] = useState(initial);
+  if (initial !== rendered) {
+    setRendered(initial);
+    setData(initial);
+    setLimit(query.limit);
+    setSortState(query.sort);
+    setCategories(query.categories);
+    setMore("idle");
+  }
+  // Which listing a "Show more" answer belongs to, checked when it lands.
+  const current = useRef(initial);
+  useEffect(() => {
+    current.current = initial;
+  }, [initial]);
+
+  const listed = { ...query, limit };
+  const catsKey = query.categories.join(",");
+
+  // Poll the listing while the tab is visible, backing off while the API
   // is failing. The first fetch waits a full interval: the page arrived
   // with its data, unless the server render failed, in which case fetch now.
   useEffect(() => {
-    async function fetchPage() {
-      const res = await fetch(`/api/markets${marketsHref({ page, sort, q }, "")}`);
+    let live = true;
+    async function fetchListing() {
+      const res = await fetch(`/api/markets${marketsHref(listed, "")}`);
       if (!res.ok) throw new Error(`markets ${res.status}`);
       const body = await res.text();
-      if (body === lastBody.current) return;
+      // A tick that set off before the query or limit changed is stale.
+      if (!live || body === lastBody.current) return;
       const next = JSON.parse(body) as MarketsPage;
       if (Array.isArray(next.items)) {
         lastBody.current = body;
         setData(next);
       }
     }
-    return startPolling(fetchPage, {
+    const stop = startPolling(fetchListing, {
       intervalMs: POLL_MS,
-      immediate: initial.items.length === 0,
+      immediate: data.items.length === 0,
     });
-    // initial is the server render; it does not change for this key.
+    return () => {
+      live = false;
+      stop();
+    };
+    // listed is rebuilt every render; these are what it is made of.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, sort, q]);
+  }, [limit, query.sort, query.q, catsKey]);
 
-  // A page turn keeps the scroll (the links pass scroll={false}) and lands
-  // on the listing rather than re-showing the hero.
-  const mounted = useRef(false);
-  useEffect(() => {
-    if (!mounted.current) {
-      mounted.current = true;
-      return;
+  // One more page of the same listing. The API answers with the whole
+  // longer list, the one the poll then keeps fresh; the URL records the
+  // length so a reload or the back button comes back to it, without the
+  // server round trip a router navigation would make.
+  const showMore = async () => {
+    const next = { ...query, limit: Math.min(MAX_LIMIT, limit + PAGE_SIZE) };
+    const from = initial;
+    setMore("loading");
+    try {
+      const res = await fetch(`/api/markets${marketsHref(next, "")}`);
+      if (!res.ok) throw new Error(`markets ${res.status}`);
+      const body = await res.text();
+      const page = JSON.parse(body) as MarketsPage;
+      if (!Array.isArray(page.items)) throw new Error("markets: no items");
+      if (current.current !== from) return;
+      lastBody.current = body;
+      setData(page);
+      setLimit(next.limit);
+      setMore("idle");
+      window.history.replaceState(null, "", marketsHref(next));
+    } catch {
+      if (current.current === from) setMore("error");
     }
-    document.getElementById("all-markets")?.scrollIntoView({ block: "start" });
-  }, [page, sort]);
+  };
 
-  const setSort = (next: SortMode) =>
-    router.replace(marketsHref({ sort: next, page: 1, q }), { scroll: false });
+  // A new order or filter starts again from the top of the list.
+  const navigate = (next: Partial<MarketsQuery>) =>
+    startTransition(() =>
+      router.replace(marketsHref({ sort, q: query.q, categories, ...next }), {
+        scroll: false,
+      }),
+    );
+  const setSort = (next: SortMode) => {
+    setSortState(next);
+    navigate({ sort: next });
+  };
+  const setFilter = (next: Category[]) => {
+    setCategories(next);
+    navigate({ categories: next });
+  };
 
-  const { items, featured, total, pageSize } = data;
-  const pages = Math.max(1, Math.ceil(total / pageSize));
-  const offset = (page - 1) * pageSize;
-  const pastEnd = items.length === 0 && total > 0;
+  const { items, featured, total, categoryCounts } = data;
+  const q = query.q;
+  const filtered = query.categories.length > 0;
+  const filterNames = query.categories.map((c) => CATEGORY_LABELS[c]).join(", ");
+  const canShowMore = items.length < total && limit < MAX_LIMIT;
+
+  // Clears the search, keeps the order and filter.
+  const clearSearch = marketsHref({ sort, categories });
+  const clearFilter = marketsHref({ sort, q });
 
   return (
     <div>
@@ -177,7 +248,7 @@ export function MarketsView({
         id="all-markets"
         className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-4 scroll-mt-24"
       >
-        <div>
+        <div className="min-w-0">
           <h2 className="font-display text-lg sm:text-xl font-bold text-primary tracking-tight">
             {q ? (
               <>
@@ -190,12 +261,13 @@ export function MarketsView({
               "All markets"
             )}
           </h2>
-          <p className="text-xs text-tertiary mt-1 flex items-center gap-2">
+          <p className="text-xs text-tertiary mt-1 flex items-center gap-2 flex-wrap">
             {q ? (
               <>
                 {total} {total === 1 ? "market" : "markets"} match
+                {filtered && <> in {filterNames}</>}
                 <Link
-                  href={marketsHref({ sort, page: 1, q: "" })}
+                  href={clearSearch}
                   className="text-secondary hover:text-primary underline underline-offset-2"
                 >
                   Clear search
@@ -207,8 +279,17 @@ export function MarketsView({
                   <span className="absolute inline-flex h-full w-full rounded-full bg-atnx-cyan opacity-60 animate-live-pulse" />
                   <span className="relative inline-flex h-2 w-2 rounded-full bg-atnx-cyan" />
                 </span>
-                {total} live {total === 1 ? "market" : "markets"}, refreshed
-                every 30s
+                {total} live {total === 1 ? "market" : "markets"}
+                {filtered ? <> in {filterNames}</> : ", refreshed every 30s"}
+                {filtered && (
+                  <Link
+                    href={clearFilter}
+                    scroll={false}
+                    className="text-secondary hover:text-primary underline underline-offset-2"
+                  >
+                    Clear filter
+                  </Link>
+                )}
               </>
             )}
           </p>
@@ -224,8 +305,12 @@ export function MarketsView({
             options={[
               { value: "virality", label: "Virality" },
               { value: "newest", label: "Newest" },
-              { value: "category", label: "Category" },
             ]}
+          />
+          <CategoryFilter
+            selected={categories}
+            counts={categoryCounts}
+            onChange={setFilter}
           />
           <Segmented
             ariaLabel="View"
@@ -239,100 +324,118 @@ export function MarketsView({
         </div>
       </div>
 
-      {pastEnd ? (
-        <EmptyState
-          title="Nothing on this page"
-          body={`There are ${pages} ${pages === 1 ? "page" : "pages"} of markets.`}
-          action={
-            <Link
-              href={marketsHref({ sort, page: 1, q })}
-              className="btn-magenta inline-flex items-center rounded-full px-4 py-2 text-xs font-bold"
-            >
-              Back to the first page
-            </Link>
-          }
-        />
-      ) : items.length === 0 && q ? (
-        <EmptyState
-          title="No markets match"
-          body={`Nothing is named like “${q}”. Try a shorter term, or create the market.`}
-          action={
-            <div className="flex items-center gap-2">
-              <Link
-                href={marketsHref({ sort, page: 1, q: "" })}
-                className="inline-flex items-center rounded-full border border-surface bg-surface hover-lift px-4 py-2 text-xs font-bold text-primary"
-              >
-                Clear search
-              </Link>
-              <Link
-                href="/app/submit"
-                className="btn-magenta inline-flex items-center rounded-full px-4 py-2 text-xs font-bold"
-              >
-                Create a market
-              </Link>
-            </div>
-          }
-        />
-      ) : items.length === 0 ? (
-        <EmptyState
-          title="No markets yet"
-          body={
-            <>
-              Capture anything on the web with the ATNX extension
-              <span className="mx-1 rounded border border-surface bg-elevated px-1 py-0.5 text-[10px] text-secondary">
-                Ctrl+Shift+X
-              </span>
-              and it shows up here as a tradeable market.
-            </>
-          }
-        />
-      ) : view === "grid" ? (
-        <div className="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-          {items.map((c, i) => (
-            <MarketCard
-              key={c.marketId ?? c.id}
-              capture={c}
-              captureCount={c.captureCount ?? 1}
-              rank={offset + i + 1}
-              compact
-            />
-          ))}
-        </div>
-      ) : (
-        <div>
-          <div className="flex items-center gap-3 px-3 py-1.5 text-[11px] font-mono uppercase tracking-wider text-tertiary">
-            <span className="w-6 text-right shrink-0">#</span>
-            <span className="w-10 shrink-0" />
-            <span className="flex-1">Market</span>
-            <span className="hidden sm:block w-28 shrink-0 text-center">
-              History
-            </span>
-            <span className="hidden xs:block sm:w-20 shrink-0 text-right">
-              24h
-            </span>
-            <span className="w-14 sm:w-16 text-center shrink-0">VI</span>
-            <span className="w-3 shrink-0" />
-          </div>
-          <div className="space-y-1.5">
+      <div
+        aria-busy={pending}
+        className={`transition-opacity duration-200 ${pending ? "opacity-50" : ""}`}
+      >
+        {items.length === 0 && (q || filtered) ? (
+          <EmptyState
+            title="No markets match"
+            body={
+              q
+                ? `Nothing${filtered ? ` in ${filterNames}` : ""} is named like “${q}”. Try a shorter term, or create the market.`
+                : `Nothing is filed under ${filterNames} yet.`
+            }
+            action={
+              <div className="flex items-center justify-center gap-2 flex-wrap">
+                <Link
+                  href={q ? clearSearch : clearFilter}
+                  scroll={false}
+                  className="inline-flex items-center rounded-full border border-surface bg-surface hover-lift px-4 py-2 text-xs font-bold text-primary"
+                >
+                  {q ? "Clear search" : "Clear filter"}
+                </Link>
+                <Link
+                  href="/app/submit"
+                  className="btn-magenta inline-flex items-center rounded-full px-4 py-2 text-xs font-bold"
+                >
+                  Create a market
+                </Link>
+              </div>
+            }
+          />
+        ) : items.length === 0 ? (
+          <EmptyState
+            title="No markets yet"
+            body={
+              <>
+                Capture anything on the web with the ATNX extension
+                <span className="mx-1 rounded border border-surface bg-elevated px-1 py-0.5 text-[10px] text-secondary">
+                  Ctrl+Shift+X
+                </span>
+                and it shows up here as a tradeable market.
+              </>
+            }
+          />
+        ) : view === "grid" ? (
+          <div className="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
             {items.map((c, i) => (
-              <MarketRow
+              <MarketCard
                 key={c.marketId ?? c.id}
                 capture={c}
                 captureCount={c.captureCount ?? 1}
-                rank={offset + i + 1}
+                rank={i + 1}
+                compact
               />
             ))}
           </div>
-        </div>
-      )}
+        ) : (
+          <div>
+            <div className="flex items-center gap-3 px-3 py-1.5 text-[11px] font-mono uppercase tracking-wider text-tertiary">
+              <span className="w-6 text-right shrink-0">#</span>
+              <span className="w-10 shrink-0" />
+              <span className="flex-1">Market</span>
+              <span className="hidden sm:block w-28 shrink-0 text-center">
+                History
+              </span>
+              <span className="hidden xs:block sm:w-20 shrink-0 text-right">
+                24h
+              </span>
+              <span className="w-14 sm:w-16 text-center shrink-0">VI</span>
+              <span className="w-3 shrink-0" />
+            </div>
+            <div className="space-y-1.5">
+              {items.map((c, i) => (
+                <MarketRow
+                  key={c.marketId ?? c.id}
+                  capture={c}
+                  captureCount={c.captureCount ?? 1}
+                  rank={i + 1}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
 
-      {pages > 1 && (
-        <div className="mt-6 flex justify-center">
-          <Pager
-            page={page}
-            pages={pages}
-            href={(p) => marketsHref({ sort, page: p, q })}
-          />
+      {items.length > 0 && items.length < total && (
+        <div className="mt-6 flex flex-col items-center gap-2">
+          {canShowMore && (
+            <button
+              type="button"
+              onClick={showMore}
+              disabled={more === "loading" || pending}
+              className="inline-flex items-center gap-2 rounded-full border border-surface bg-surface hover-lift px-5 py-2.5 text-xs font-bold text-primary cursor-pointer disabled:cursor-wait disabled:opacity-60"
+            >
+              {more === "loading" ? "Loading…" : "Show more"}
+            </button>
+          )}
+          <p className="text-[11px] font-mono tabular-nums text-tertiary" aria-live="polite">
+            {more === "error" ? (
+              <span className="text-atnx-magenta light:text-atnx-magenta-light">
+                Could not load more. Try again.
+              </span>
+            ) : canShowMore ? (
+              <>
+                Showing {items.length} of {total}
+              </>
+            ) : (
+              <>
+                Showing the top {items.length} of {total}. Search or filter to
+                find the rest.
+              </>
+            )}
+          </p>
         </div>
       )}
     </div>

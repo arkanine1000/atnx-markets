@@ -2,11 +2,12 @@ import { getMarketsPage } from '@/lib/store';
 import { parseMarketsQuery } from '@/lib/markets-query';
 import { corsHeaders, corsPreflight } from '@/lib/cors';
 
-// One page of the dashboard's market listing plus the hero's featured set,
-// sorted in the database. The dashboard polls this for the page it has
-// open; the extension reads its top markets from here too. It used to rank
-// the 50 newest captures, so a market whose captures were older (Google,
-// VI #1) fell out of its list altogether.
+// The dashboard's market listing (the top `limit`, after any search and
+// category filter) plus the hero's featured set, sorted in the database.
+// The dashboard polls this for as many markets as it has shown; the
+// extension reads its top markets from here too. It used to rank the 50
+// newest captures, so a market whose captures were older (Google, VI #1)
+// fell out of its list altogether.
 const FEED_CACHE = 'public, s-maxage=15, stale-while-revalidate=45';
 
 export async function GET(request: Request) {
@@ -18,7 +19,14 @@ export async function GET(request: Request) {
   } catch (err) {
     console.error('[markets GET] failed to load', err);
     return Response.json(
-      { items: [], featured: [], total: 0, page: query.page, pageSize: 0, error: (err as Error).message },
+      {
+        items: [],
+        featured: [],
+        total: 0,
+        limit: query.limit,
+        categoryCounts: {},
+        error: (err as Error).message,
+      },
       { status: 500, headers }
     );
   }
