@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { channelReading, effectiveYoutube, ofChannel } from './channel';
 import { youtubeLevel } from '../vi/youtube';
+import { CALIBRATION } from '../vi/score';
 import type { Sample } from '../vi/samples';
 
 const NOW = Date.parse('2026-09-28T15:07:00Z');
@@ -48,34 +49,41 @@ test('stale totals and stale bootstraps read nothing', () => {
   assert.equal(channelReading([boot(30, 5_000_000)], NOW).level, null);
 });
 
+// Own-channel factor 1 in these tests; the fitted default is covered by score.test.ts.
+const ONE = { ...CALIBRATION, ownChannelFactor: 1 };
+
 test('the channel scores the slot only when its week beats the name search', () => {
   const base = { source: 'youtube' as const, level: 0, momentum: null, fetchedAt: new Date(NOW).toISOString() };
-  const forrest = effectiveYoutube({ ...base, meta: { views_7d: 0, channel_views_7d: 23_755_300, channel_momentum: null } });
+  const forrest = effectiveYoutube({ ...base, meta: { views_7d: 0, channel_views_7d: 23_755_300, channel_momentum: null } }, ONE);
   assert.equal(forrest.channel, true);
   assert.equal(forrest.component?.meta?.views_7d, 23_755_300);
   assert.equal(forrest.component?.meta?.views_basis, 'channel');
   assert.equal(forrest.component?.level, youtubeLevel(23_755_300));
-  const trump = effectiveYoutube({ ...base, level: 650, momentum: 0.45, meta: { views_7d: 31_689_610, channel_views_7d: 175_889, channel_momentum: 1.1 } });
+  const trump = effectiveYoutube({ ...base, level: 650, momentum: 0.45, meta: { views_7d: 31_689_610, channel_views_7d: 175_889, channel_momentum: 1.1 } }, ONE);
   assert.equal(trump.channel, false);
   assert.equal(trump.component?.level, 650);
   assert.equal(trump.component?.momentum, 0.45, 'the name search keeps its own momentum');
   assert.equal(effectiveYoutube(undefined).channel, false);
-  assert.equal(effectiveYoutube({ ...base, meta: { views_7d: 100 } }).channel, false, 'no channel reading');
+  assert.equal(effectiveYoutube({ ...base, meta: { views_7d: 100 } }, ONE).channel, false, 'no channel reading');
 });
 
 test('a channel is discounted for its Shorts share before it competes with the name search', () => {
   const base = { source: 'youtube' as const, level: 0, momentum: null, fetchedAt: new Date(NOW).toISOString() };
-  const shorts = effectiveYoutube({ ...base, meta: { views_7d: 0, channel_views_7d: 24e6, channel_shorts_share: 1, channel_momentum: 1.2 } });
+  const shorts = effectiveYoutube({ ...base, meta: { views_7d: 0, channel_views_7d: 24e6, channel_shorts_share: 1, channel_momentum: 1.2 } }, ONE);
   assert.equal(shorts.channel, true);
   assert.equal(shorts.component?.meta?.views_7d, 6e6, 'all Shorts: x0.25');
   assert.equal(shorts.component?.momentum, 1.2, 'the channel momentum is used when the channel wins');
-  const loses = effectiveYoutube({ ...base, meta: { views_7d: 7e6, channel_views_7d: 24e6, channel_shorts_share: 1 } });
+  const loses = effectiveYoutube({ ...base, meta: { views_7d: 7e6, channel_views_7d: 24e6, channel_shorts_share: 1 } }, ONE);
   assert.equal(loses.channel, false, 'discounted 6M loses to 7M of name search');
-  const mixed = effectiveYoutube({ ...base, meta: { views_7d: 7e6, channel_views_7d: 24e6, channel_shorts_share: 0.6 } });
+  const mixed = effectiveYoutube({ ...base, meta: { views_7d: 7e6, channel_views_7d: 24e6, channel_shorts_share: 0.6 } }, ONE);
   assert.equal(mixed.channel, true);
   assert.equal(mixed.component?.meta?.views_7d, 24e6 * (1 - 0.75 * 0.6), 'linear in the share');
-  const unknown = effectiveYoutube({ ...base, meta: { views_7d: 7e6, channel_views_7d: 24e6 } });
+  const unknown = effectiveYoutube({ ...base, meta: { views_7d: 7e6, channel_views_7d: 24e6 } }, ONE);
   assert.equal(unknown.component?.meta?.views_7d, 24e6, 'no share known: no discount');
+  const half = { ...CALIBRATION, ownChannelFactor: 0.5 };
+  const factored = effectiveYoutube({ ...base, meta: { views_7d: 7e6, channel_views_7d: 24e6 } }, half);
+  assert.equal(factored.component?.meta?.views_7d, 12e6, 'the own-channel factor applies to what the channel stands for');
+  assert.equal(effectiveYoutube({ ...base, meta: { views_7d: 7e6, channel_views_7d: 12e6 } }, half).channel, false, '6M loses to 7M');
 });
 
 test('a switched channel never mixes the old one in', () => {

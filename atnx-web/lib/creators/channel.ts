@@ -11,7 +11,7 @@
 // complete day's growth against the days before it.
 import { createAdminClient } from '@/lib/supabase/admin';
 import { readSamples, writeSample, type Sample } from '@/lib/vi/samples';
-import { CALIBRATION, metaNumber, ratioToBaseline, shortsFactor, type Calibration, type SourceComponent } from '@/lib/vi/score';
+import { CALIBRATION, channelViewsAsAttention, metaNumber, ratioToBaseline, type Calibration, type SourceComponent } from '@/lib/vi/score';
 import { youtubeConfigured, youtubeLevel } from '@/lib/vi/youtube';
 
 const API = 'https://www.googleapis.com/youtube/v3';
@@ -116,9 +116,8 @@ export function channelMeta(channelId: string, r: ChannelReading): Record<string
 // views_7d and its momentum; the stored reading is not changed.
 export function effectiveYoutube(youtube: SourceComponent | undefined, cal: Calibration = CALIBRATION): { component: SourceComponent | undefined; channel: boolean } {
   const meta = youtube?.meta;
-  const channel = metaNumber(meta?.channel_views_7d);
-  if (!youtube || channel === null) return { component: youtube, channel: false };
-  const discounted = channel * shortsFactor(metaNumber(meta?.channel_shorts_share), cal);
+  const discounted = youtube ? channelViewsAsAttention(meta, cal) : null;
+  if (!youtube || discounted === null) return { component: youtube, channel: false };
   if (discounted <= (metaNumber(meta?.views_7d) ?? 0)) return { component: youtube, channel: false };
   const mom = meta?.channel_momentum;
   return {

@@ -331,26 +331,32 @@ export interface Calibration {
   // before views_per_h existed (lib/vi/x.ts); gone once every market has
   // been re-read.
   xImpressionsPerPostFallback: number;
+  // A creator's own-channel views count this much of a view of talk about
+  // them: consumption of the content is a weaker signal of attention on
+  // the person than a mention or a search. Fitted against the anchors.
+  ownChannelFactor: number;
   units: Record<SourceName, UnitScale | null>;
 }
 
 export const DEFAULT_CALIBRATION: Calibration = {
-  // Refit 2026-09-27 15:25 UTC on a day of readings under #48 and #50
-  // (npm run vi:calibrate): 16 anchors, leave-one-out RMSE 88, in-sample 68.
-  version: 'sum-v1-2026-09-27',
-  pointsPerDecade: 361.8,
-  log10ZeroPoint: 5.631,
+  // Refit 2026-09-27 16:05 UTC on a day of readings under #48 and #50,
+  // TikTok in views a day and the own-channel factor free
+  // (npm run vi:calibrate): 16 anchors, leave-one-out RMSE 93, in-sample 67.
+  version: 'sum-v1-2026-09-27b',
+  pointsPerDecade: 391.3,
+  log10ZeroPoint: 5.828,
   shorts: { maxSeconds: 180, discount: 0.25 },
   xImpressionsPerPostFallback: 300,
+  ownChannelFactor: 0.694,
   units: {
-    youtube: { k: 988, q: 0.509 }, // views a week: name search or the discounted channel, whichever is larger
-    tiktok: { k: 5.381e5, q: 0.509 }, // videos a day under the hashtag
-    x: { k: 1586, q: 0.509 }, // impressions a day on posts about the name (matured two hours)
-    trends: { k: 1.288e7, q: 1 }, // ratio to the benchmark query
-    bluesky: { k: 746, q: 1 }, // posts a day
-    wikipedia: { k: 76.67, q: 1 }, // pageviews a day (14-day median)
-    gdelt: { k: 4.34e7, q: 1 }, // share (%) of the week's news articles
-    hn: { k: 3355, q: 1 }, // hits a day
+    youtube: { k: 454, q: 0.568 }, // views a week: name search or the discounted channel, whichever is larger
+    tiktok: { k: 977, q: 0.568 }, // views a day gained under the hashtag
+    x: { k: 871, q: 0.568 }, // impressions a day on posts about the name (matured two hours)
+    trends: { k: 1.445e7, q: 1 }, // ratio to the benchmark query
+    bluesky: { k: 703, q: 1 }, // posts a day
+    wikipedia: { k: 75.89, q: 1 }, // pageviews a day (14-day median)
+    gdelt: { k: 3.822e7, q: 1 }, // share (%) of the week's news articles
+    hn: { k: 3254, q: 1 }, // hits a day
     dex: null, // uncalibrated (one market has it); not scored
   },
 };
@@ -383,6 +389,7 @@ export function applyCalibrationOverride(base: Calibration, json: string | undef
     log10ZeroPoint: num(o.log10ZeroPoint, base.log10ZeroPoint),
     shorts: { maxSeconds: num(o.shorts?.maxSeconds, base.shorts.maxSeconds), discount: num(o.shorts?.discount, base.shorts.discount) },
     xImpressionsPerPostFallback: num(o.xImpressionsPerPostFallback, base.xImpressionsPerPostFallback),
+    ownChannelFactor: num(o.ownChannelFactor, base.ownChannelFactor),
     units,
   };
 }
@@ -407,15 +414,22 @@ export const metaNumber = (v: unknown): number | null => {
   return null;
 };
 
+// A creator's own channel views as attention on the creator: the Shorts
+// discount, then the own-channel factor. Pure.
+export function channelViewsAsAttention(meta: SourceComponent['meta'] | undefined, cal: Calibration = CALIBRATION): number | null {
+  const channel = metaNumber(meta?.channel_views_7d);
+  if (channel === null) return null;
+  return channel * shortsFactor(metaNumber(meta?.channel_shorts_share), cal) * cal.ownChannelFactor;
+}
+
 // The week's views a creator market's YouTube slot stands for: the name
-// search or the own channel, whichever is larger (they overlap). A Shorts-
-// first channel is discounted before the power.
+// search or the own channel (Shorts-discounted, own-channel factor),
+// whichever is larger (they overlap). Before the power.
 export function youtubeReading(meta: SourceComponent['meta'] | undefined, cal: Calibration = CALIBRATION): number | null {
   const search = metaNumber(meta?.views_7d);
-  const channel = metaNumber(meta?.channel_views_7d);
+  const channel = channelViewsAsAttention(meta, cal);
   if (search === null && channel === null) return null;
-  const discounted = channel === null ? 0 : channel * shortsFactor(metaNumber(meta?.channel_shorts_share), cal);
-  return Math.max(search ?? 0, discounted);
+  return Math.max(search ?? 0, channel ?? 0);
 }
 
 // A source's raw reading in its own unit (see CALIBRATION.units), or null
@@ -429,8 +443,17 @@ export function sourceReading(c: SourceComponent, cal: Calibration = CALIBRATION
       r = youtubeReading(m, cal);
       break;
     case 'tiktok': {
-      const h = metaNumber(m?.videos_per_h);
-      r = h === null ? null : h * 24;
+      // Views a day gained under the tag (lib/vi/tiktok.ts); a reading
+      // from before the view trend existed stands in with videos a day
+      // times the tag's lifetime views per video.
+      const v = metaNumber(m?.views_per_h);
+      if (v !== null) r = v * 24;
+      else {
+        const h = metaNumber(m?.videos_per_h);
+        const vt = metaNumber(m?.views_total);
+        const nt = metaNumber(m?.videos_total);
+        r = h === null ? null : vt !== null && nt !== null && nt > 0 ? h * 24 * (vt / nt) : null;
+      }
       break;
     }
     case 'trends':

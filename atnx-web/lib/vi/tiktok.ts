@@ -151,6 +151,10 @@ export interface TiktokReading {
   level: number | null;
   momentum: number | null;
   videosPerHour: number | null;
+  // Growth of the tag's total views, the same trend on the view totals
+  // the vendor returns beside the video counts: attention in view units
+  // (a tag of 4,600 fan edits a day that nobody watches counts for little).
+  viewsPerHour: number | null;
 }
 
 // sqrt of the summed squared distances from the mean hour: what a
@@ -197,13 +201,13 @@ export function trendFit(points: { h: number; v: number }[]): TrendFit {
 // curve as noise and let no market through) and yesterday had volume.
 // Samples newest first, the current one included. Pure.
 export function tiktokReading(samples: Sample[], now = Date.now()): TiktokReading {
-  const none = { level: null, momentum: null, videosPerHour: null };
+  const none = { level: null, momentum: null, videosPerHour: null, viewsPerHour: null };
   const tag = samples[0]?.meta?.hashtag;
   if (!tag) return none;
 
   // The current hashtag's unbroken run, oldest first, reads at least
   // MIN_GAP_H apart (an off-cycle read next to a scheduled one is dropped).
-  const run: { h: number; v: number }[] = [];
+  const run: { h: number; v: number; w: number | null }[] = [];
   for (const smp of samples) {
     if (smp.meta?.hashtag !== tag) break;
     const h = Date.parse(smp.sampled_at) / 3600_000;
@@ -213,13 +217,29 @@ export function tiktokReading(samples: Sample[], now = Date.now()): TiktokReadin
     if (newer && newer.h - h < MIN_GAP_H) continue;
     if (newer && newer.h - h > MAX_GAP_H) break;
     if (run.length && run[run.length - 1].h - h > BASELINE_WINDOW_H) break;
-    run.unshift({ h, v });
+    const w = typeof smp.meta?.view_count === 'number' && Number.isFinite(smp.meta.view_count) ? smp.meta.view_count : null;
+    run.unshift({ h, v, w });
   }
   if (run.length < 2) return none;
+  if (now / 3600_000 - run[run.length - 1].h > MAX_GAP_H) return none;
+
+  const videos = runRate(run.map((p) => ({ h: p.h, v: p.v })));
+  const viewsRun = run.filter((p): p is { h: number; v: number; w: number } => p.w !== null).map((p) => ({ h: p.h, v: p.w }));
+  // The view series needs the newest read too, else its trend is stale.
+  const views = viewsRun.length >= 2 && viewsRun[viewsRun.length - 1].h === run[run.length - 1].h ? runRate(viewsRun) : null;
+  return {
+    level: tiktokLevel(videos.rate * 24),
+    momentum: videos.momentum,
+    videosPerHour: Number(videos.rate.toFixed(2)),
+    viewsPerHour: views ? Math.round(views.rate) : null,
+  };
+}
+
+// Rate and momentum of one cumulative series (oldest first, the newest
+// read last), as described above. Pure.
+function runRate(run: { h: number; v: number }[]): { rate: number; momentum: number | null } {
   const last = run[run.length - 1];
   const prev = run[run.length - 2];
-  if (now / 3600_000 - last.h > MAX_GAP_H) return none;
-
   const pair = Math.max(0, (last.v - prev.v) / (last.h - prev.h));
   const earlier = run.slice(0, -1);
   const recent = earlier.filter((p) => last.h - p.h <= TREND_WINDOW_H + 0.5);
@@ -245,8 +265,7 @@ export function tiktokReading(samples: Sample[], now = Date.now()): TiktokReadin
       momentum = ratioToBaseline(rate, [baseline]);
     }
   }
-
-  return { level: tiktokLevel(rate * 24), momentum, videosPerHour: Number(rate.toFixed(2)) };
+  return { rate, momentum };
 }
 
 export interface TiktokRequest {
@@ -372,7 +391,7 @@ export async function fetchTiktokSignal(req: TiktokRequest): Promise<SourceCompo
     return { ...empty, meta: { hashtag: null, discovered_at: discoveredAt, queried } };
   }
 
-  let reading: TiktokReading = { level: null, momentum: null, videosPerHour: null };
+  let reading: TiktokReading = { level: null, momentum: null, videosPerHour: null, viewsPerHour: null };
   if (marketId) {
     await writeSample(marketId, 'tiktok', stats.video_count, { hashtag: stats.hashtag, queried, view_count: stats.view_count });
     reading = tiktokReading(await readSamples(marketId, 'tiktok', MAX_SAMPLES), now);
@@ -389,6 +408,8 @@ export async function fetchTiktokSignal(req: TiktokRequest): Promise<SourceCompo
       videos_total: stats.video_count,
       views_total: stats.view_count,
       videos_per_h: reading.videosPerHour,
+      views_per_h: reading.viewsPerHour,
+      views_24h: reading.viewsPerHour === null ? null : reading.viewsPerHour * 24,
       queried,
     },
   };

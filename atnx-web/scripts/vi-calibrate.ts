@@ -26,13 +26,16 @@ import {
 } from '../lib/vi/score';
 
 import { ANCHORS, REPORTED } from './vi-anchors';
+import { tiktokReading } from '../lib/vi/tiktok';
 
 const FIT_SOURCES: SourceName[] = ['youtube', 'tiktok', 'x', 'trends', 'bluesky', 'wikipedia', 'gdelt', 'hn'];
 // Passive-view sources share one exponent q: YouTube views, TikTok videos,
 // X impressions. Their prior centre for log k is pinned at a reference
 // reading (log10 of it) so a change of q keeps that reading's unit.
-const VIDEO_LIKE: Partial<Record<SourceName, number>> = { youtube: 7, tiktok: 3, x: 5 };
-// theta = [P, log10 A0, q_video, log10 k per FIT_SOURCES]
+const VIDEO_LIKE: Partial<Record<SourceName, number>> = { youtube: 7, tiktok: 6, x: 5 };
+// Own-channel factor prior: centred on 0.5, a factor of 2 either way.
+const PRIOR_OWN_CHANNEL = [Math.log10(0.5), 0.3];
+// theta = [P, log10 A0, q_video, log10 ownChannelFactor, log10 k per FIT_SOURCES]
 const PRIOR_SIGMA_LINEAR = 0.3;
 const PRIOR_SIGMA_VIDEO = 0.5;
 const PRIOR_SIGMA_Q = 0.15;
@@ -51,16 +54,16 @@ interface Row {
 }
 
 function toCalibration(theta: number[]): Calibration {
-  const [P, z, q, ...lk] = theta;
+  const [P, z, q, lf, ...lk] = theta;
   const units = { ...CALIBRATION.units } as Record<SourceName, { k: number; q: number } | null>;
   FIT_SOURCES.forEach((s, i) => {
     units[s] = { k: 10 ** lk[i], q: VIDEO_LIKE[s] !== undefined ? q : 1 };
   });
-  return { ...CALIBRATION, pointsPerDecade: P, log10ZeroPoint: z, units };
+  return { ...CALIBRATION, pointsPerDecade: P, log10ZeroPoint: z, ownChannelFactor: Math.min(1, 10 ** lf), units };
 }
 
 function fromCalibration(cal: Calibration): number[] {
-  return [cal.pointsPerDecade, cal.log10ZeroPoint, cal.units.youtube!.q, ...FIT_SOURCES.map((s) => Math.log10(cal.units[s]!.k))];
+  return [cal.pointsPerDecade, cal.log10ZeroPoint, cal.units.youtube!.q, Math.log10(Math.max(0.01, cal.ownChannelFactor)), ...FIT_SOURCES.map((s) => Math.log10(cal.units[s]!.k))];
 }
 
 // Prior centre for each log k, given the video exponent: a 10M-view week
@@ -88,9 +91,12 @@ function loss(theta: number[], rows: Row[], anchors: Record<string, number>): nu
   }
   const q = theta[2];
   L += (((q - 0.5) / PRIOR_SIGMA_Q) * PEN) ** 2;
+  const lf = theta[3];
+  L += (((lf - PRIOR_OWN_CHANNEL[0]) / PRIOR_OWN_CHANNEL[1]) * PEN) ** 2;
+  if (lf > 0) L += ((lf / 0.02) * PEN) ** 2; // never above 1
   FIT_SOURCES.forEach((s, i) => {
     const sigma = VIDEO_LIKE[s] !== undefined ? PRIOR_SIGMA_VIDEO : PRIOR_SIGMA_LINEAR;
-    L += (((theta[3 + i] - priorCentre(s, q)) / sigma) * PEN) ** 2;
+    L += (((theta[4 + i] - priorCentre(s, q)) / sigma) * PEN) ** 2;
   });
   if (q > 1) L += (((q - 1) / 0.05) * PEN) ** 2;
   if (q < 0.3) L += (((0.3 - q) / 0.05) * PEN) ** 2;
@@ -157,9 +163,9 @@ function fit(rows: Row[], anchors: Record<string, number>): number[] {
     [200, 5.0, 0.8],
     [350, 5.8, 0.45],
   ]) {
-    const start = [P, z, q, ...FIT_SOURCES.map((s) => priorCentre(s, q))];
-    let r = nelderMead((t) => loss(t, rows, anchors), start, [30, 0.2, 0.1, ...FIT_SOURCES.map(() => 0.4)]);
-    r = nelderMead((t) => loss(t, rows, anchors), r.x, [10, 0.05, 0.03, ...FIT_SOURCES.map(() => 0.15)]);
+    const start = [P, z, q, PRIOR_OWN_CHANNEL[0], ...FIT_SOURCES.map((s) => priorCentre(s, q))];
+    let r = nelderMead((t) => loss(t, rows, anchors), start, [30, 0.2, 0.1, 0.3, ...FIT_SOURCES.map(() => 0.4)]);
+    r = nelderMead((t) => loss(t, rows, anchors), r.x, [10, 0.05, 0.03, 0.1, ...FIT_SOURCES.map(() => 0.15)]);
     if (!best || r.f < best.f) best = r;
   }
   return best!.x;
@@ -175,6 +181,7 @@ function fmtCalibration(cal: Calibration): string {
     `  log10ZeroPoint: ${cal.log10ZeroPoint.toFixed(3)},`,
     `  shorts: { maxSeconds: ${cal.shorts.maxSeconds}, discount: ${cal.shorts.discount} },`,
     `  xImpressionsPerPostFallback: ${cal.xImpressionsPerPostFallback},`,
+    `  ownChannelFactor: ${cal.ownChannelFactor.toFixed(3)},`,
     `  units: {`,
     ...FIT_SOURCES.map((s) => `    ${s}: { k: ${k(u(s).k)}, q: ${u(s).q.toFixed(3)} },`),
     `    dex: null,`,
@@ -198,6 +205,15 @@ function fmtCalibration(cal: Calibration): string {
     const components = { ...((m.vi_components ?? {}) as Components) };
     if (assumeShorts.has(m.entity_name) && components.youtube?.meta && components.youtube.meta.channel_shorts_share == null) {
       components.youtube = { ...components.youtube, meta: { ...components.youtube.meta, channel_shorts_share: 1 } };
+    }
+    // A TikTok reading written before the views trend existed: compute it
+    // from the stored samples (the view totals were always recorded), so
+    // the fit sees real view gains rather than the lifetime-average fallback.
+    const tt = components.tiktok;
+    if (tt && tt.level !== null && tt.meta && tt.meta.views_per_h == null) {
+      const { data: smp } = await s.from('vi_samples').select('sampled_at, value, meta').eq('market_id', m.id).eq('source', 'tiktok').order('sampled_at', { ascending: false }).limit(60);
+      const r = tiktokReading(((smp ?? []) as { sampled_at: string; value: number; meta: Record<string, string | number | boolean | null> | null }[]).map((x) => ({ ...x, value: Number(x.value) })), Date.parse(tt.fetchedAt));
+      if (r.viewsPerHour !== null) components.tiktok = { ...tt, meta: { ...tt.meta, views_per_h: r.viewsPerHour, views_24h: r.viewsPerHour * 24 } };
     }
     const { data: h } = await s.from('vi_history').select('raw_vi').eq('market_id', m.id).order('recorded_at', { ascending: false }).limit(1).maybeSingle();
     rows.push({ name: m.entity_name, category: m.category, vi: Number(m.current_vi ?? 0), raw: h?.raw_vi === null || h?.raw_vi === undefined ? null : Number(h.raw_vi), components });

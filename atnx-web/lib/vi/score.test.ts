@@ -156,7 +156,9 @@ test('isVerifiableAlias: plain single words only', () => {
 test('sourceReading reads each source in its own unit', () => {
   assert.equal(sourceReading(cmp('x', 500, { views_per_h: 1000, rate_per_h: 10 })), 24_000, 'impressions a day');
   assert.equal(sourceReading(cmp('x', 500, { rate_per_h: 10 })), 240 * CALIBRATION.xImpressionsPerPostFallback, 'an old reading stands in with posts x fallback');
-  assert.equal(sourceReading(cmp('tiktok', 400, { videos_per_h: 2.5 })), 60);
+  assert.equal(sourceReading(cmp('tiktok', 400, { views_per_h: 1000, videos_per_h: 2.5 })), 24_000, 'views a day');
+  assert.equal(sourceReading(cmp('tiktok', 400, { videos_per_h: 2.5, views_total: 1e6, videos_total: 1000 })), 60 * 1000, 'old reading: videos x lifetime views per video');
+  assert.equal(sourceReading(cmp('tiktok', 400, { videos_per_h: 2.5 })), null, 'old reading without totals: unknown');
   assert.equal(sourceReading(cmp('bluesky', 500, { posts_24h: '123+' })), 123);
   assert.equal(sourceReading(cmp('trends', 500, { ratio_to_benchmark: 1.5 })), 1.5);
   assert.equal(sourceReading(cmp('wikipedia', 600, { views_median_14d: 8000, views_latest: 20000 })), 8000, 'median for the level');
@@ -171,12 +173,18 @@ test('sourceReading reads each source in its own unit', () => {
 });
 
 test('youtubeReading takes the larger of name search and channel, and discounts a Shorts-first channel', () => {
-  assert.equal(youtubeReading({ views_7d: 1e6, channel_views_7d: 4e6 }), 4e6);
-  assert.equal(youtubeReading({ views_7d: 5e6, channel_views_7d: 4e6 }), 5e6);
-  assert.equal(youtubeReading({ views_7d: 0, channel_views_7d: 24e6, channel_shorts_share: 1 }), 6e6, 'all Shorts: x0.25');
-  assert.equal(youtubeReading({ views_7d: 0, channel_views_7d: 24e6, channel_shorts_share: 0.6 }), 24e6 * (1 - 0.75 * 0.6), 'linear in the share');
-  assert.equal(youtubeReading({ views_7d: 0, channel_views_7d: 24e6, channel_shorts_share: 0 }), 24e6);
-  assert.equal(youtubeReading({ views_7d: 0, channel_views_7d: 24e6, channel_shorts_share: null }), 24e6);
+  // Own-channel factor 1 here; the fitted default is tested below.
+  const one = { ...CALIBRATION, ownChannelFactor: 1 };
+  assert.equal(youtubeReading({ views_7d: 1e6, channel_views_7d: 4e6 }, one), 4e6);
+  assert.equal(youtubeReading({ views_7d: 5e6, channel_views_7d: 4e6 }, one), 5e6);
+  assert.equal(youtubeReading({ views_7d: 0, channel_views_7d: 24e6, channel_shorts_share: 1 }, one), 6e6, 'all Shorts: x0.25');
+  assert.equal(youtubeReading({ views_7d: 0, channel_views_7d: 24e6, channel_shorts_share: 0.6 }, one), 24e6 * (1 - 0.75 * 0.6), 'linear in the share');
+  assert.equal(youtubeReading({ views_7d: 0, channel_views_7d: 24e6, channel_shorts_share: 0 }, one), 24e6);
+  assert.equal(youtubeReading({ views_7d: 0, channel_views_7d: 1e6 }), 1e6 * CALIBRATION.ownChannelFactor, 'the fitted factor by default');
+  const half = { ...CALIBRATION, ownChannelFactor: 0.5 };
+  assert.equal(youtubeReading({ views_7d: 0, channel_views_7d: 24e6, channel_shorts_share: 1 }, half), 3e6, 'own-channel factor after the Shorts discount');
+  assert.equal(youtubeReading({ views_7d: 4e6, channel_views_7d: 6e6 }, half), 4e6, 'a halved channel can lose to the name search');
+  assert.equal(youtubeReading({ views_7d: 0, channel_views_7d: 24e6, channel_shorts_share: null }, one), 24e6);
   assert.equal(youtubeReading({}), null);
 });
 
@@ -264,6 +272,8 @@ test('applyCalibrationOverride merges an env JSON over the defaults', () => {
   assert.equal(o.units.x!.q, base.units.x!.q, 'a unit override keeps the other field');
   assert.deepEqual(o.units.dex, { k: 1, q: 1 }, 'a null unit can be switched on');
   assert.equal(o.units.youtube, base.units.youtube);
+  assert.equal(o.ownChannelFactor, base.ownChannelFactor);
+  assert.equal(applyCalibrationOverride(base, JSON.stringify({ ownChannelFactor: 0.4 })).ownChannelFactor, 0.4);
   assert.match(o.version, /\+env$/);
   const named = applyCalibrationOverride(base, JSON.stringify({ version: 'sum-v2' }));
   assert.equal(named.version, 'sum-v2');
