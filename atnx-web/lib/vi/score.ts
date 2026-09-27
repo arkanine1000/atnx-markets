@@ -342,7 +342,7 @@ export const DEFAULT_CALIBRATION: Calibration = {
   // Refit 2026-09-27 16:05 UTC on a day of readings under #48 and #50,
   // TikTok in views a day and the own-channel factor free
   // (npm run vi:calibrate): 16 anchors, leave-one-out RMSE 93, in-sample 67.
-  version: 'sum-v1-2026-09-27b',
+  version: 'sum-v1-2026-09-27c',
   pointsPerDecade: 391.3,
   log10ZeroPoint: 5.828,
   shorts: { maxSeconds: 180, discount: 0.25 },
@@ -350,7 +350,12 @@ export const DEFAULT_CALIBRATION: Calibration = {
   ownChannelFactor: 0.694,
   units: {
     youtube: { k: 454, q: 0.568 }, // views a week: name search or the discounted channel, whichever is larger
-    tiktok: { k: 977, q: 0.568 }, // views a day gained under the hashtag
+    // Views a day gained under the hashtag. Half the fitted 977: the anchors
+    // do not pin what a TikTok view is worth against a search or a news
+    // mention, so this is set by judgement (2026-09-27, with the user):
+    // the meme band sits with Anthropic and under Bitcoin, MrBeast on his
+    // target. Move to a quarter once own-account X reach carries Musk.
+    tiktok: { k: 488.5, q: 0.568 },
     x: { k: 871, q: 0.568 }, // impressions a day on posts about the name (matured two hours)
     trends: { k: 1.445e7, q: 1 }, // ratio to the benchmark query
     bluesky: { k: 703, q: 1 }, // posts a day
