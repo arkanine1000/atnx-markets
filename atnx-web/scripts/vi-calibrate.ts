@@ -9,6 +9,7 @@
 //   npm run vi:calibrate                      # fit, then the full table
 //   npm run vi:calibrate -- --apply           # no fit: the table from CALIBRATION as it is
 //   npm run vi:calibrate -- --shorts=Forrest Jones,Other   # assume a Shorts-first channel where the meta lacks it
+//   npm run vi:calibrate -- --anchors=scripts/snapshots/vi-2026-09-27T19.json   # a saved live ranking as the target set
 //
 // Writes nothing.
 import { createClient } from '@supabase/supabase-js';
@@ -25,7 +26,20 @@ import {
   type SourceName,
 } from '../lib/vi/score';
 
-import { ANCHORS, REPORTED } from './vi-anchors';
+import { readFileSync } from 'node:fs';
+import { ANCHORS as HAND_ANCHORS, REPORTED as HAND_REPORTED } from './vi-anchors';
+
+// --anchors=scripts/snapshots/vi-2026-09-27T19.json fits against a saved
+// live ranking (every market's displayed VI at that moment) instead of the
+// hand-written anchor table: the user judged that ranking a good eyeball,
+// so it stands as a target set the fit can be checked against later.
+const anchorsArg = process.argv.find((a) => a.startsWith('--anchors='));
+const snapshot = anchorsArg
+  ? (JSON.parse(readFileSync(anchorsArg.slice('--anchors='.length), 'utf8')) as { captured_at: string; markets: { name: string; vi: number }[] })
+  : null;
+const ANCHORS: Record<string, number> = snapshot ? Object.fromEntries(snapshot.markets.map((m) => [m.name, m.vi])) : HAND_ANCHORS;
+const REPORTED: Record<string, number> = snapshot ? {} : HAND_REPORTED;
+if (snapshot) console.log(`Anchors: ${Object.keys(ANCHORS).length} markets from the live snapshot of ${snapshot.captured_at}\n`);
 import { tiktokReading } from '../lib/vi/tiktok';
 
 const FIT_SOURCES: SourceName[] = ['youtube', 'tiktok', 'x', 'trends', 'bluesky', 'wikipedia', 'gdelt', 'hn'];
