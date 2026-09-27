@@ -437,6 +437,24 @@ export function youtubeReading(meta: SourceComponent['meta'] | undefined, cal: C
   return Math.max(search ?? 0, channel ?? 0);
 }
 
+// Impressions a day on posts about the name (lib/vi/x.ts; a reading from
+// before views were kept stands in with posts x a typical count), or the
+// account's own posts' impressions (lib/creators/x-account.ts) times the
+// own-channel factor, whichever is larger. Pure.
+export function xReading(meta: SourceComponent['meta'] | undefined, cal: Calibration = CALIBRATION): number | null {
+  let talk: number | null = null;
+  const v = metaNumber(meta?.views_per_h);
+  if (v !== null) talk = v * 24;
+  else {
+    const h = metaNumber(meta?.rate_per_h);
+    if (h !== null) talk = h * 24 * cal.xImpressionsPerPostFallback;
+  }
+  const ownPerHour = metaNumber(meta?.own_views_per_h);
+  const own = ownPerHour === null ? null : ownPerHour * 24 * cal.ownChannelFactor;
+  if (talk === null && own === null) return null;
+  return Math.max(talk ?? 0, own ?? 0);
+}
+
 // A source's raw reading in its own unit (see CALIBRATION.units), or null
 // when the source is unknown, not scored, or has a level but no raw meta.
 export function sourceReading(c: SourceComponent, cal: Calibration = CALIBRATION): number | null {
@@ -464,17 +482,9 @@ export function sourceReading(c: SourceComponent, cal: Calibration = CALIBRATION
     case 'trends':
       r = metaNumber(m?.ratio_to_benchmark);
       break;
-    case 'x': {
-      // Impressions a day on the hour's posts (lib/vi/x.ts); a reading
-      // from before views were kept stands in with posts x a typical count.
-      const v = metaNumber(m?.views_per_h);
-      if (v !== null) r = v * 24;
-      else {
-        const h = metaNumber(m?.rate_per_h);
-        r = h === null ? null : h * 24 * cal.xImpressionsPerPostFallback;
-      }
+    case 'x':
+      r = xReading(m, cal);
       break;
-    }
     case 'bluesky':
       r = metaNumber(m?.posts_24h);
       break;

@@ -201,7 +201,8 @@ export async function approveCapture(
 export async function decideHandle(
   marketId: string,
   decision: "verify" | "reject",
-  channel?: { id: string; handle: string | null; subscribers: number | null }
+  channel?: { id: string; handle: string | null; subscribers: number | null },
+  platform: "youtube" | "x" = "youtube"
 ): Promise<AdminActionResult> {
   const supabase = await createClient();
   const {
@@ -222,7 +223,7 @@ export async function decideHandle(
     .from("market_handles")
     .update({ ...update, review: false, confidence: "admin", checked_at: now })
     .eq("market_id", marketId)
-    .eq("platform", "youtube");
+    .eq("platform", platform);
   if (error) return { success: false, error: error.message };
 
   await admin.from("moderation_log").insert({
@@ -230,7 +231,7 @@ export async function decideHandle(
     action: decision === "verify" ? "verify_handle" : "reject_handle",
     target_type: "market",
     target_id: marketId,
-    metadata: { platform: "youtube", channel_id: channel?.id ?? null, handle: channel?.handle ?? null },
+    metadata: { platform, channel_id: channel?.id ?? null, handle: channel?.handle ?? null },
   });
   revalidatePath("/admin");
   return { success: true };

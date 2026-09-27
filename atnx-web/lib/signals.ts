@@ -30,7 +30,8 @@ import { fetchHnSignal } from './vi/hn';
 import { fetchDexSignal } from './vi/dex';
 import { fetchXSignal } from './vi/x';
 import { fetchTiktokSignal, prefetchTiktok } from './vi/tiktok';
-import { effectiveYoutube, readChannelMeta } from './creators/channel';
+import { effectiveYoutube, readChannelMeta, type CreatorHandle } from './creators/channel';
+import { readXAccountMeta, type XHandle } from './creators/x-account';
 
 export interface ScoreRequest {
   term: string;
@@ -48,8 +49,10 @@ export interface ScoreRequest {
   category?: string | null;
   // markets.id, for sources that keep their own sample series.
   marketId?: string | null;
-  // A verified own YouTube channel (market_handles), for creator reach.
-  creator?: { youtubeChannelId: string; verifiedAt: string | null } | null;
+  // Verified own accounts (market_handles), for creator reach: the YouTube
+  // channel (lib/creators/channel.ts) and the X account
+  // (lib/creators/x-account.ts).
+  creator?: { youtubeChannelId?: string | null; xHandle?: string | null; verifiedAt: string | null } | null;
 }
 
 // The composite, with the GDELT switch-over ramp: GDELT moved to BigQuery
@@ -84,6 +87,12 @@ const APPLIES: Partial<Record<SourceName, (r: ScoreRequest) => boolean>> = {
 const TIKTOK_CATEGORIES = new Set(['memes', 'people', 'music', 'film_tv', 'gaming', 'other']);
 function applies(name: SourceName, r: ScoreRequest): boolean {
   return APPLIES[name]?.(r) ?? true;
+}
+
+// The verified accounts a market is scored with, from market_handles.
+export function creatorOf(youtube?: CreatorHandle | null, x?: XHandle | null): ScoreRequest['creator'] {
+  if (!youtube && !x) return null;
+  return { youtubeChannelId: youtube?.platform_id ?? null, xHandle: x?.handle ?? null, verifiedAt: youtube?.verified_at ?? x?.verified_at ?? null };
 }
 
 export interface SignalResult {
@@ -214,13 +223,25 @@ export async function scoreTerms(
       const now = Date.now();
       // A creator's own channel, read on the slow paths and carried on the
       // YouTube component so the fast path sees it too.
-      if (req.creator && req.marketId && want.has('youtube')) {
+      if (req.creator?.youtubeChannelId && req.marketId && want.has('youtube')) {
         try {
           const meta = await readChannelMeta(req.marketId, req.creator.youtubeChannelId, now);
           const yt = components.youtube ?? { source: 'youtube' as const, level: null, momentum: null, fetchedAt: new Date(now).toISOString() };
           components.youtube = { ...yt, meta: { ...(yt.meta ?? {}), ...meta } };
         } catch (err) {
           console.error('[creators] channel reading failed', (err as Error).message);
+        }
+      }
+      // The own X account's reach, read on the slow paths and carried on the
+      // X component. With no talk reading the slot still exists, at a known
+      // zero of talk, so the own reach scores (lib/vi/score.ts xReading).
+      if (req.creator?.xHandle && req.marketId && want.has('x')) {
+        try {
+          const meta = await readXAccountMeta(req.marketId, req.creator.xHandle, now);
+          const x = components.x ?? { source: 'x' as const, level: 0, momentum: null, fetchedAt: new Date(now).toISOString() };
+          components.x = { ...x, meta: { ...(x.meta ?? {}), ...meta } };
+        } catch (err) {
+          console.error('[creators:x] account reading failed', (err as Error).message);
         }
       }
 
@@ -241,7 +262,7 @@ export async function scoreTerms(
       // discounted) week beats the name search, and the score walks there
       // over the ramp from the handle's verification. The talk sources'
       // zeros need no special case: a zero adds nothing to the total.
-      if (req.creator) {
+      if (req.creator?.youtubeChannelId) {
         const yt = effectiveYoutube(components.youtube);
         if (yt.channel) {
           const creator = rampedScore({ ...scoring, youtube: yt.component }, {}, now);
