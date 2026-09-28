@@ -378,7 +378,8 @@ async function analyseAndRoute(opts: {
       shownCandidates: candidates,
       postRetrieval,
       embedding,
-    })
+    }),
+    { captureText: [submission.description, submission.ocr_text].filter(Boolean).join('\n') }
   );
   if (decision.outcome === 'rejected' && decision.blocked) console.log(`[capture] proposal blocked: ${decision.blocked}`);
 
@@ -508,6 +509,7 @@ export async function proposeCapture(
       submission: stage.submission,
       outcome: 'rejected',
       rejectReason: stage.decision.reason,
+      extra: stage.decision.jev ? { jev: stage.decision.jev } : undefined,
     });
     throw new SubmissionRejectedError(stage.decision.reason, stage.submission);
   }
@@ -750,7 +752,7 @@ export async function commitDraft(
     throw err;
   }
 
-  await recordDecision({ ...audit, outcome, captureId: capture.id, marketId, extra });
+  await recordDecision({ ...audit, outcome, captureId: capture.id, marketId, extra: { ...extra, ...(draft.decision.jev ? { jev: draft.decision.jev } : {}) } });
   if (opts.persisted) {
     await markDraftCommitted(draft.id, capture.id, marketId);
     await removeParkedImages([draft.imagePath, draft.cropPath]);
@@ -876,6 +878,7 @@ export async function recropDraft(draft: ReviewDraft, rect: unknown): Promise<Pr
       submission: stage.submission,
       outcome: 'rejected',
       rejectReason: stage.decision.reason,
+      extra: stage.decision.jev ? { jev: stage.decision.jev } : undefined,
     });
     // The crop was the problem; the draft keeps its earlier proposal.
     await updateDraft(draft);

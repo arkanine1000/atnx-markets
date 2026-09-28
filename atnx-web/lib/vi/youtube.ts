@@ -13,6 +13,8 @@
 import { clamp, ratioToBaseline, type SourceComponent } from './score';
 import { dailyLedger, pruneSamples, readSamples, writeSample } from './samples';
 import { filterRelevantTitles } from './relevance';
+import { compareKeeps, jevTitleVerdicts } from './relevance-jev';
+import { jevMode } from '../jev';
 
 const API = 'https://www.googleapis.com/youtube/v3';
 const CACHE_TTL = 50 * 60 * 1000;
@@ -224,15 +226,50 @@ export async function fetchYoutubeSignal({ term, aliases = [], marketId, stored,
     if (!videos) return empty;
     let titleFilter: string | null = typeof stored?.meta?.title_filter === 'string' ? stored.meta.title_filter : null;
     let filteredOut: number | null = typeof stored?.meta?.filtered_out === 'number' ? stored.meta.filtered_out : null;
+    let jevTitles: Record<string, string | number | null> = {};
     if (checkTitles && videos.length > 0) {
-      const verdict = await filterRelevantTitles({ name: term, aliases, entityType, category }, videos);
+      const subject = { name: term, aliases, entityType, category };
+      const all = videos;
+      const verdict = await filterRelevantTitles(subject, all);
       titleFilter = verdict.status;
       filteredOut = verdict.filteredOut;
-      if (verdict.status === 'ok') {
-        const kept = new Set(verdict.keep);
+      let keep = verdict.status === 'ok' ? verdict.keep : all.map((v) => v.id);
+      // Shadow pilot: Jev judges the same titles; both verdicts are kept
+      // (component meta, vi_samples yt_title_shadow). JEV_TITLES=on makes
+      // Jev's the one that counts.
+      const mode = jevMode(process.env.JEV_TITLES);
+      if (mode !== 'off') {
+        const jv = await jevTitleVerdicts(subject, all);
+        if (jv) {
+          const cmp = compareKeeps(all.map((v) => v.id), keep, jv.keep);
+          jevTitles = { jev_titles: 'ok', jev_keep: jv.keep.length, jev_agree: cmp.agree, jev_disagree: cmp.aOnly.length + cmp.bOnly.length, jev_ms: jv.latency_ms, jev_model: jv.model };
+          if (marketId) {
+            const title = (id: string) => (all.find((v) => v.id === id)?.title ?? '').slice(0, 80);
+            await writeSample(marketId, 'yt_title_shadow', cmp.aOnly.length + cmp.bOnly.length, {
+              videos: all.length,
+              gemini_status: verdict.status,
+              gemini_keep: keep.length,
+              jev_keep: jv.keep.length,
+              agree: cmp.agree,
+              gemini_only: cmp.aOnly.map((id) => `${id}|${jv.probabilities[id]}|${title(id)}`).join(' ;; '),
+              jev_only: cmp.bOnly.map((id) => `${id}|${jv.probabilities[id]}|${title(id)}`).join(' ;; '),
+              jev_model: jv.model,
+              jev_ms: jv.latency_ms,
+            });
+          }
+          if (mode === 'on') {
+            keep = jv.keep;
+            titleFilter = 'jev';
+            filteredOut = all.length - keep.length;
+          }
+        } else jevTitles = { jev_titles: 'failed' };
+      }
+      if (verdict.status === 'ok' || mode === 'on') {
+        const kept = new Set(keep);
         ids = ids.filter((id) => kept.has(id));
         videos = videos.filter((v) => kept.has(v.id));
-        if (verdict.dropped.length) console.log(`[youtube] title filter "${term}" dropped ${verdict.dropped.length}: ${verdict.dropped.map((t) => JSON.stringify(t)).join(' | ')}`);
+        const dropped = all.filter((v) => !kept.has(v.id)).map((v) => v.title);
+        if (dropped.length) console.log(`[youtube] title filter "${term}" dropped ${dropped.length}: ${dropped.map((t) => JSON.stringify(t)).join(' | ')}`);
       }
     }
     const cutoff = Date.now() - WINDOW_DAYS * 24 * 3600 * 1000;
@@ -264,6 +301,7 @@ export async function fetchYoutubeSignal({ term, aliases = [], marketId, stored,
         discovered_at: discovered,
         title_filter: titleFilter,
         filtered_out: filteredOut,
+        ...jevTitles,
       },
     };
     cache.set(key, { data: result, expiry: Date.now() + CACHE_TTL });
