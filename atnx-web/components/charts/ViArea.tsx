@@ -218,12 +218,16 @@ export function ViChart({
   height = 280,
   entryVi,
   entryType,
+  scoring = false,
 }: {
   dataPoints: ViPoint[];
   range: Range;
   height?: number;
   entryVi?: number;
   entryType?: "long" | "short";
+  // The market is still on its first pass over the sources: there is no
+  // history because there is no score yet, not because the range is narrow.
+  scoring?: boolean;
 }) {
   const { isLiveMode } = useDemoContext();
   const live = useFakeTicker(dataPoints, isLiveMode);
@@ -262,8 +266,21 @@ export function ViChart({
         style={{ height }}
         className="flex flex-col items-center justify-center gap-1 text-tertiary text-xs"
       >
-        <span>Not enough history for this range.</span>
-        <span className="text-[11px]">Try a wider range.</span>
+        {scoring ? (
+          <>
+            <span className="font-mono uppercase tracking-[0.12em] text-secondary animate-pulse">
+              Scoring…
+            </span>
+            <span className="text-[11px]">
+              Reading the sources for the first time. The chart starts with the first score.
+            </span>
+          </>
+        ) : (
+          <>
+            <span>Not enough history for this range.</span>
+            <span className="text-[11px]">Try a wider range.</span>
+          </>
+        )}
       </div>
     );
   }

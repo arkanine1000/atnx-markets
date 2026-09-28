@@ -433,6 +433,7 @@ export function MarketDetailClient({
                   height={280}
                   entryVi={openPos?.entryIndex}
                   entryType={openPos?.type}
+                  scoring={scoring}
                 />
               </div>
             </Card>
