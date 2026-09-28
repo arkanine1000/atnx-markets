@@ -5,7 +5,7 @@ text that people submit. Next.js App Router on Vercel, Supabase for the
 database, auth and storage, and the Vercel AI Gateway for the vision model
 and embeddings.
 
-Read `AGENTS.md` before touching Next.js code. 
+Read `AGENTS.md` before touching Next.js code.
 
 ## Run it
 
@@ -42,9 +42,12 @@ in the Supabase SQL editor or with `npx supabase db query --linked -f <file>`:
 | `012_market_description.sql` | `markets.description` and `description_source`: the market's own summary, filled by the thumbnail job from the same place it took the image (the Wikipedia intro, the reference page's summary). The hero and the market page header show it instead of the newest capture's description, which describes that post rather than the subject. `manual` is never overwritten. **The hero and market page select the column and require this migration.** |
 | `013_purge_market.sql` | `admin_purge_market()`: permanent deletion of a soft-deleted market from the admin dashboard (the Purge button on deleted rows). Removes the market, its captures and VI history and returns the image URLs so the server action can delete the files; refuses a live market or one with trades on record, since positions and fees cascade. |
 | `014_handles_fixed.sql` | Handles are fixed: one trigger guards both `role` and `handle` on `user_profiles` (replaces the 006 role guard), so a self-edit of the handle is refused at the table; the settings page shows it read-only. Admins may still change one from the SQL editor. |
+| `015_waitlist.sql` | `waitlist`: the landing page's signups, one row per lowercased address, written by the server from `/api/waitlist`, read by admins. |
 | `016_vi_samples.sql` | `vi_samples`: per-source raw readings over time (YouTube view totals hourly; later the X and TikTok series), from which `lib/vi/youtube.ts` derives momentum between samples of the same video set. Service-role only. **The YouTube source writes to it on every hourly run and requires this migration; without it the source still reports a level but never a momentum.** |
 | `017_market_handles.sql` | `market_handles`: a creator market's own platform accounts, one row per platform, resolved automatically (`lib/creators/resolve.ts`, `store.ts`); only `verified` rows feed the creator-reach reading (`lib/creators/channel.ts`). Admins read it and decide review candidates on the dashboard's Handles tab. **Applied 2026-09-25.** |
 | `018_vi_state.sql` | `markets.vi_state` (`scoring` / `live`) and `vi_scoring_since`: a new market is `scoring` until its first full pass over every source (right after the commit, else the next slow refresh, at most two hours), shown as "Scoring…" with no trading; a trigger on `positions` refuses an open on a scoring market. Existing rows are `live`. **`lib/store.ts` selects the column, so apply this before deploying code that reads it.** |
+| `020_vi_component_history.sql` | `vi_component_history`: one snapshot per market per hourly run of the per-source breakdown, raw and smoothed score, pruned after sixty days, so a calibration can be refitted on any past hour (`npm run vi:calibrate`, `vi:compare`). The writer tolerates a missing table. **Applied 2026-09-27.** |
+| `021_blocked_terms.sql` | `blocked_terms`: names an admin retired (the dashboard's Retire button) may not become markets again; `lib/blocklist.ts` rejects a matching proposal. Seeded with "November 2026". **Applied 2026-09-28.** |
 | `019_purge_with_trades.sql` | `admin_purge_market()` takes `with_trades`: the dashboard's Purge asks, when a market has trades on record, whether to delete them too. The trades are unwound from every account as if they never happened (open stakes and fees refunded, realized PnL reversed, creator and treasury fee shares taken back) before the positions and `fee_events` rows go. Replaces the two-argument function from 013; a plain purge works with or without it. **Applied 2026-09-25.** |
 
 After a migration, update `lib/supabase/database.ts` by hand to match. After
@@ -133,6 +136,14 @@ ignores for Gemini 3.x (measured: 18 s and truncated JSON versus 2.6 s).
 | `npm run vi:audit [--json]` | Read-only audit of every live market's VI: score and tier, each source's stored level, momentum and age, `vi_history` coverage and ranges over 24 h and 7 d, the largest one-hour moves, aliases and the Wikipedia title behind the generic-term guard, cron health per hour over 48 h, and the tier spread. `--json` for a diff against an earlier run. |
 | `npm run vi:jumps [threshold]` | Moves larger than the threshold (default 200) within one hour over the last 7 days, smoothed and raw, with each market's first point and peak. Steps cluster at calculation changes and slow-refresh writes. |
 | `npm run vi:report [since]` | What the last slow run (or any run since a given time) did: per-source coverage, tier spread, GDELT health, X and TikTok spend from `vi_samples`, and the top and notable markets with breakdowns. `VI_REPORT_NOTABLE` overrides the notable list. |
+| `npm run vi:probe "term"` | Reads every source for a term now and prints the breakdown and the combined score, without writing anything. |
+| `npm run vi:calibrate [--apply] [--anchors=file] [--q=]` | Fits the calibration constants (worth per unit, points per decade, zero point) against the hand anchors in `scripts/vi-anchors.ts` or a saved snapshot, and prints each market's current, fitted and target score. `--apply` writes the constants into `lib/vi/score.ts`. |
+| `npm run vi:compare -- <iso time> [hours]` | Measures a change: each market's score before and after the given time, anchor RMSE and rank correlation, the largest moves. |
+| `npm run vi:titles -- "Market"` | Runs the YouTube title relevance filter on a market's stored video set and prints what it keeps and drops. |
+| `npm run jev:backtest` | Replays past create proposals and the blocklist's synthetic generics through the Jev admission gate and prints the verdicts, thresholds and latencies. |
+| `npm run test:vi` | The pure-math tests under `lib/vi/`, `lib/creators/` and `lib/` (node:test through tsx). Run after any change to scoring. |
+| `npm run creators:resolve` | Runs the creator handle resolver over person and brand markets now, the pass the hourly run does a few markets at a time. |
+| `npm run aliases:backfill` | Fills aliases on markets that have none, one text-model call each. |
 
 ## Layout
 
