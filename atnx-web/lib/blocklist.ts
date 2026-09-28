@@ -12,15 +12,15 @@ import { normalizeName } from './retrieve';
 import type { RoutingDecision } from './route';
 
 const MONTHS = 'january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sept?|oct|nov|dec';
-const WEEKDAYS = 'monday|tuesday|wednesday|thursday|friday|saturday|sunday';
+// Only forms that cannot be a title. A bare year ("1984", "2012", "1917")
+// and a weekday ("Wednesday") are films, novels and series, so they are
+// left to the model's judgement and the blocklist.
 const GENERIC: RegExp[] = [
   new RegExp(`^(${MONTHS})\\.?,?\\s+\\d{4}$`, 'i'), // November 2026, Nov. 2026
   new RegExp(`^\\d{4}\\s+(${MONTHS})$`, 'i'), // 2026 November
-  /^\d{4}$/, // 2026
   /^(q[1-4]|h[12])\s*\d{4}$/i, // Q4 2026
   new RegExp(`^(${MONTHS})\\s+\\d{1,2}(st|nd|rd|th)?,?\\s+\\d{4}$`, 'i'), // November 5, 2026
-  new RegExp(`^(${WEEKDAYS})$`, 'i'), // Friday
-  /^(the )?\d{2,4}s$/i, // the 90s, 2020s
+  /^the \d{2,4}s$/i, // the 90s
 ];
 
 // A name that is a calendar period, not a subject. Pure.
