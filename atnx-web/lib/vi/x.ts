@@ -288,6 +288,7 @@ export async function fetchXSignal({ term, aliases = [], marketId, stored, entit
           jev_tweets: 'ok',
           jev_keep: v.kept.length,
           jev_drop: dropped.length,
+          jev_unjudged: jv.unjudged.length,
           jev_keep_share: Math.round(v.share * 1000) / 1000,
           rate_per_h_jev: Number(v.rate.toFixed(2)),
           views_per_h_jev: xImpressionsPerHour(v.views, v.kept.length, v.rate),
@@ -298,6 +299,7 @@ export async function fetchXSignal({ term, aliases = [], marketId, stored, entit
           await writeSample(marketId, 'x_tweet_shadow', dropped.length, {
             tweets: tweets.length,
             keep: v.kept.length,
+            unjudged: jv.unjudged.length,
             keep_share: Math.round(v.share * 1000) / 1000,
             capped: capped ? 1 : 0,
             rate: Number(rate.toFixed(2)),

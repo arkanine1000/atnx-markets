@@ -31,12 +31,27 @@ export interface TweetForJudging {
 }
 
 export interface TweetVerdicts {
-  // ids Jev would keep at JEV_TWEET_KEEP_AT
+  // ids Jev would keep at JEV_TWEET_KEEP_AT, plus the unjudged ones
   keep: string[];
-  probabilities: Record<string, number>; // by tweet id
+  probabilities: Record<string, number>; // by tweet id, judged ones only
+  // Posts with no words to judge (a bare media link): kept, never asked.
+  unjudged: string[];
   model: string;
   latency_ms: number;
   input_tokens: number | null;
+}
+
+// The words of a post once links and handles are gone. A post that is
+// only a media link (X tags it lang "zxx") is a screenshot or a clip, and
+// the judge cannot see it: on a game market those were 40 % of a page's
+// views and read 0.41, a coin flip. Such a post is unjudgeable and stays
+// in, as an unknown rather than a no. Pure.
+export function judgeableText(text: string): string {
+  return text
+    .replace(/https?:\/\/\S+/g, ' ')
+    .replace(/(^|\s)@\w+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function subjectLine(s: XSubject): string {
@@ -45,8 +60,11 @@ function subjectLine(s: XSubject): string {
 }
 
 export async function jevTweetVerdicts(subject: XSubject, tweets: TweetForJudging[]): Promise<TweetVerdicts | null> {
-  const ts = tweets.slice(0, MAX_TWEETS);
-  if (ts.length === 0) return null;
+  const all = tweets.slice(0, MAX_TWEETS);
+  if (all.length === 0) return null;
+  const unjudged = all.filter((t) => judgeableText(t.text) === '').map((t) => t.id);
+  const ts = all.filter((t) => judgeableText(t.text) !== '');
+  if (ts.length === 0) return { keep: unjudged, probabilities: {}, unjudged, model: 'none', latency_ms: 0, input_tokens: null };
   const questions: Record<string, { type: 'boolean'; instructions: string }> = {};
   ts.forEach((t, i) => {
     const text = t.text.replace(/\s+/g, ' ').trim().slice(0, MAX_TEXT);
@@ -59,12 +77,12 @@ export async function jevTweetVerdicts(subject: XSubject, tweets: TweetForJudgin
   const r = await jevEvaluate({ subject: subjectLine(subject) }, questions, `tweets "${subject.name}" x${ts.length}`);
   if (!r) return null;
   const probabilities: Record<string, number> = {};
-  const keep: string[] = [];
+  const keep: string[] = [...unjudged];
   ts.forEach((t, i) => {
     const a = r.answers[`p${i}`] as { type: 'boolean'; probability: number } | undefined;
     const p = a ? Math.round(a.probability * 1000) / 1000 : NaN;
     probabilities[t.id] = p;
     if (p >= JEV_TWEET_KEEP_AT) keep.push(t.id);
   });
-  return { keep, probabilities, model: r.model, latency_ms: r.latencyMs, input_tokens: r.inputTokens };
+  return { keep, probabilities, unjudged, model: r.model, latency_ms: r.latencyMs, input_tokens: r.inputTokens };
 }
