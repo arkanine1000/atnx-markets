@@ -234,7 +234,7 @@ export function ViChart({
   const gradId = useId();
   const stroke = polarityColor(data);
 
-  // Legacy series mix a 0–100 seed with 0–1000 scores; put the entry marker
+  // Legacy series mix a 0–100 seed with today's scores; put the entry marker
   // on whichever scale the visible data is using.
   const entryY = useMemo(() => {
     if (entryVi === undefined || !data.length) return undefined;
@@ -296,8 +296,8 @@ export function ViChart({
             interval="preserveStartEnd"
             height={28}
           />
-          {/* Anchored at zero: the Virality Index is a level on a 0 to
-              1000 scale, and a domain fitted to the data draws a steady
+          {/* Anchored at zero: the Virality Index is a level with a
+              floor of 0, and a domain fitted to the data draws a steady
               438 along the bottom edge as if the market were dead. */}
           <YAxis
             orientation="right"

@@ -131,7 +131,7 @@ How a submission is decided, stage by stage, is in [`atnx-web/README.md`](atnx-w
 
 ## VI (Virality Index) pipeline
 
-VI is a composite 0-1000 score from four sources, each reporting an absolute level and a momentum ratio against the term's own baseline; the composite is the weighted level scaled by momentum over the sources that answered, times a presence multiplier (see `signals.ts` above). Nothing read off the screenshot feeds the score, so resubmitting the same image cannot move it. Each source searches the market's name and its aliases together.
+VI is a composite score (floor 0, no ceiling; 1000 is where the giants sit) from four sources, each reporting an absolute level and a momentum ratio against the term's own baseline; the composite is the weighted level scaled by momentum over the sources that answered, times a presence multiplier (see `signals.ts` above). Nothing read off the screenshot feeds the score, so resubmitting the same image cannot move it. Each source searches the market's name and its aliases together.
 
 | Source | Cadence | Notes |
 | --- | --- | --- |
