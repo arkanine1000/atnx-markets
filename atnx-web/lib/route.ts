@@ -27,7 +27,8 @@ export interface NewMarketSpec {
 }
 
 export type RoutingDecision =
-  | { outcome: 'rejected'; reason: RejectReason }
+  // `blocked` names what the blocklist guard (lib/blocklist.ts) refused.
+  | { outcome: 'rejected'; reason: RejectReason; blocked?: string }
   | { outcome: 'matched'; marketId: string; similarity: number; matched: CandidateMarket }
   | { outcome: 'linked'; marketId: string; similarity: number; matched: ScoredCandidate }
   | { outcome: 'created' | 'created_review'; newMarket: NewMarketSpec };
