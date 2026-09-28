@@ -19,7 +19,7 @@ import {
   compositeMomentum,
   levelFromAttention,
   viTier,
-  clamp,
+  floor,
   type Calibration,
   type Components,
   type SourceComponent,
@@ -269,7 +269,7 @@ function fmtCalibration(cal: Calibration): string {
       const lvl = levelFromAttention(at.A, cal);
       const seeing = (Object.values(r.components) as (SourceComponent | undefined)[]).filter((c): c is SourceComponent => !!c && (at.terms[c.source] ?? 0) > 0);
       const m = compositeMomentum(seeing, at.shares);
-      const score = clamp(Math.round(lvl * (0.65 + 0.35 * (m / 500))));
+      const score = floor(Math.round(lvl * (0.65 + 0.35 * (m / 500))));
       return { r, at, lvl, score };
     })
     .sort((a, b) => b.score - a.score);

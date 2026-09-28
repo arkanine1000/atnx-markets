@@ -62,10 +62,10 @@ test('adding a source raises the level by P * log10 of the ratio of totals, with
   assert.equal(two.topSource, 'youtube');
 });
 
-test('under the zero point is 0, far above it is 1000, all zeros is 0, nothing answered is null', () => {
+test('under the zero point is 0, far above it passes 1000, all zeros is 0, nothing answered is null', () => {
   assert.equal(combine({ youtube: yt(1) })!.level, 0, 'a single view rounds to 0');
   assert.ok(combine({ youtube: yt(1000) })!.level > 0 && combine({ youtube: yt(1000) })!.level < 20, 'a little attention reads a little');
-  assert.equal(combine({ trends: src('trends', 900, { ratio_to_benchmark: 1e9 }) })!.score, 1000);
+  assert.ok(combine({ trends: src('trends', 900, { ratio_to_benchmark: 1e9 }) })!.score > 1000, 'no ceiling at 1000');
   const zeros = combine({ x: src('x', 0, { views_per_h: 0 }), trends: src('trends', 0, { ratio_to_benchmark: 0 }) })!;
   assert.equal(zeros.score, 0);
   assert.deepEqual(zeros.sourcesPresent, []);
@@ -207,13 +207,14 @@ test('attention sums k * r^q over the sources that answered; zeros add nothing',
   assert.equal(attention({ trends: unknown }).answered.length, 0);
 });
 
-test('levelFromAttention: pointsPerDecade per tenfold from the zero point, clamped', () => {
+test('levelFromAttention: pointsPerDecade per tenfold from the zero point, floored at 0, no ceiling', () => {
   const P = CALIBRATION.pointsPerDecade;
   const A0 = 10 ** CALIBRATION.log10ZeroPoint;
   assert.equal(levelFromAttention(A0 * 10), Math.round(P * Math.log10(11)));
   assert.equal(levelFromAttention(A0 * 100), Math.round(P * Math.log10(101)));
   assert.equal(levelFromAttention(0), 0);
-  assert.equal(levelFromAttention(A0 * 1e9), 1000);
+  assert.equal(levelFromAttention(A0 * 1e9), Math.round(P * Math.log10(1 + 1e9)), 'keeps counting past 1000');
+  assert.equal(levelFromAttention(A0 * 10 ** (1000 / P)), 1000, '1000 is a point on the scale, not its end');
   const custom = { ...CALIBRATION, pointsPerDecade: 200, log10ZeroPoint: 5 };
   assert.equal(levelFromAttention(1e7, custom), Math.round(200 * Math.log10(101)));
 });

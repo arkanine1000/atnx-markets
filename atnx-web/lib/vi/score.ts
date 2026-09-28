@@ -10,10 +10,17 @@
 // plus the raw reading in its meta (views, posts a day, pageviews...).
 // The composite converts each raw reading to YouTube-view-equivalents a
 // week (CALIBRATION), sums them over the sources that answered, maps the
-// total to 0-1000 with one log (pointsPerDecade per tenfold), and scales
+// total to a level with one log (pointsPerDecade per tenfold), and scales
 // that level by momentum (0.65x at a collapse, 1x steady, 1.35x at a 10x
 // spike). Total attention: a market seen on many platforms adds up, one
 // seen only on its own channel gets that channel's full credit.
+//
+// The level has a floor of 0 and no ceiling. 1000 is where the giants
+// sit (about 2.4e8 view-equivalents a week), not the top of the scale:
+// Google reads about 1100, a Super Bowl week would read about 1500.
+// A hard cap at 1000 made the giants tie, hid a spike on a saturated
+// market, and left a long opened at 1000 with nothing to win. PnL and
+// liquidation are relative to the entry, so nothing needs a bound.
 
 export type SourceName = 'trends' | 'bluesky' | 'gdelt' | 'wikipedia' | 'youtube' | 'hn' | 'dex' | 'x' | 'tiktok';
 
@@ -57,7 +64,10 @@ const LEVEL_SHARE = 0.65;
 const MOMENTUM_SHARE = 0.35;
 export const MOMENTUM_CAP = 10;
 
+// Per-source levels and the momentum axis stay on 0-1000. The composite
+// level and score use `floor` instead: 0 at the bottom, open at the top.
 export const clamp = (x: number, lo = 0, hi = 1000) => Math.max(lo, Math.min(hi, x));
+export const floor = (x: number) => Math.max(0, x);
 
 // Maps a hype ratio to 0-1000: 0.1x -> 0, 1x -> 500, 10x -> 1000. Log
 // scale so a halving hurts as much as a doubling helps.
@@ -101,7 +111,7 @@ export function combine(components: Components, { calibration = CALIBRATION }: C
   // the level alone, 10x lifts it by a third, 0.1x cuts it by a third.
   const momentumFactor = LEVEL_SHARE + MOMENTUM_SHARE * (momentum / 500);
   return {
-    score: clamp(Math.round(level * momentumFactor)),
+    score: floor(Math.round(level * momentumFactor)),
     level,
     momentum: Math.round(momentum),
     sourcesPresent: seeing.map((c) => c.source),
@@ -128,7 +138,7 @@ export function rescaleSeed(
   return series.map((p) => {
     const f = p.value <= 0 ? 0 : Math.pow(10, (p.value - last) / 200);
     const delta = cal.pointsPerDecade * Math.log10(Math.max(1e-9, 1 + trendsShare * (f - 1)));
-    return { date: p.date, value: clamp(Math.round(score + delta)) };
+    return { date: p.date, value: floor(Math.round(score + delta)) };
   });
 }
 
@@ -306,7 +316,7 @@ const FUNCTION_WORDS = new Set([
 // Total-attention model, calibrated 2026-09-26 against eyeballed anchors
 // (see scripts/vi-calibrate.ts). Each source's raw reading is converted to
 // YouTube-view-equivalents a week, the terms are summed over the sources
-// that answered, and one log maps the total to 0-1000. Unknown sources are
+// that answered, and one log maps the total to the level. Unknown sources are
 // absent; a known zero adds nothing. Video volume (YouTube views, TikTok
 // videos) enters sub-linearly: a passive view is cheaper attention than a
 // search or a post. `combine` sums these terms.
@@ -571,14 +581,14 @@ export function summarizeAttention(components: Components | null | undefined, ca
   };
 }
 
-// Total attention to the 0-1000 level: pointsPerDecade per tenfold,
-// through log10(1 + A/A0). Far above the zero point that is the plain
-// log; around and below it the level bends to 0 instead of cutting off,
-// so a market with a little attention reads a little (A0/10 -> ~13,
+// Total attention to the level: pointsPerDecade per tenfold, through
+// log10(1 + A/A0), no ceiling. Far above the zero point that is the
+// plain log; around and below it the level bends to 0 instead of cutting
+// off, so a market with a little attention reads a little (A0/10 -> ~13,
 // A0 -> ~98) and only nothing at all reads 0.
 export function levelFromAttention(A: number, cal: Calibration = CALIBRATION): number {
   if (A <= 0) return 0;
-  return clamp(Math.round(cal.pointsPerDecade * Math.log10(1 + A / 10 ** cal.log10ZeroPoint)));
+  return Math.round(cal.pointsPerDecade * Math.log10(1 + A / 10 ** cal.log10ZeroPoint));
 }
 
 // The momentum half of the composite, on the 0-1000 momentum axis:
