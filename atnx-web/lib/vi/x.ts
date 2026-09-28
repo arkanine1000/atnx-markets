@@ -17,7 +17,7 @@
 // cap per market, a daily tweet budget read from the samples ledger, and
 // a pause after the vendor refuses (quota, auth, rate limit). Without a
 // key the source is unknown.
-import { clamp, ratioToBaseline, type SourceComponent } from './score';
+import { clamp, median, ratioToBaseline, type SourceComponent } from './score';
 import { dailyLedger, pruneSamples, readSamples, writeSample } from './samples';
 
 const API = 'https://api.twitterapi.io/twitter/tweet/advanced_search';
@@ -111,9 +111,28 @@ export function xImpressionsPerHour(views: number, tweets: number, ratePerHour: 
   return Math.round((views * ratePerHour) / tweets);
 }
 
+// One hour every three is a thin sample of a day: MrBeast's rate read 164
+// then 45 posts an hour, Musk's impressions 5.3M then 0.8M a day. The
+// level's impressions are the median over the last day's reads (the
+// current one included); the newest read alone still drives the momentum.
+// Samples newest first, each with meta {views, tweets} and value = rate. Pure.
+export function medianImpressionsPerHour(samples: XSample[], current: number, now = Date.now()): number {
+  const vals = [current];
+  for (const s of samples) {
+    const age = now - Date.parse(s.sampled_at);
+    if (!(age > 30 * 60 * 1000 && age <= BASELINE_MS)) continue;
+    const m = s.meta ?? {};
+    const views = Number(m.views), tweets = Number(m.tweets);
+    if (!Number.isFinite(views) || !Number.isFinite(tweets)) continue;
+    vals.push(xImpressionsPerHour(views, tweets, Number(s.value)));
+  }
+  return Math.round(median(vals));
+}
+
 export interface XSample {
   sampled_at: string;
   value: number;
+  meta?: Record<string, string | number | boolean | null> | null;
 }
 
 // This read's rate against the mean of the prior samples in the last
@@ -215,11 +234,14 @@ export async function fetchXSignal({ term, aliases = [], marketId, stored }: XRe
     const rate = xRate(tweets, capped, now - X_SHIFT_S * 1000);
     const views = tweets.reduce((s, t) => s + (t.viewCount ?? 0), 0);
     const likes = tweets.reduce((s, t) => s + (t.likeCount ?? 0), 0);
-    const viewsPerHour = xImpressionsPerHour(views, tweets.length, rate);
+    const viewsPerHourRead = xImpressionsPerHour(views, tweets.length, rate);
+    let viewsPerHour = viewsPerHourRead;
     let momentum: number | null = null;
     if (marketId) {
       await writeSample(marketId, 'x', rate, { tweets: tweets.length, requests, capped, views, likes });
-      momentum = xMomentum(await readSamples(marketId, 'x', MAX_SAMPLES), rate, now);
+      const samples = await readSamples(marketId, 'x', MAX_SAMPLES);
+      momentum = xMomentum(samples, rate, now);
+      viewsPerHour = medianImpressionsPerHour(samples, viewsPerHourRead, now);
       await pruneSamples(marketId, 'x', SAMPLE_KEEP_MS);
     }
 
@@ -237,6 +259,7 @@ export async function fetchXSignal({ term, aliases = [], marketId, stored }: XRe
         views,
         likes,
         views_per_h: viewsPerHour,
+        views_per_h_read: viewsPerHourRead,
         impressions_24h: viewsPerHour * 24,
         window_until: new Date(now - X_SHIFT_S * 1000).toISOString(),
         phrases: Math.min(MAX_PHRASES, 1 + aliases.length),

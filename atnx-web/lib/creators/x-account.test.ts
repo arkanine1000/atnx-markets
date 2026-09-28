@@ -1,7 +1,7 @@
 // Run with: npm run test:vi
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { latestOwnReach, ownImpressionsPerDay, type OwnPost } from './x-account';
+import { latestOwnReach, ownImpressionsPerDay, wantsAnotherPage, type OwnPost } from './x-account';
 import type { Sample } from '../vi/samples';
 
 const NOW = Date.parse('2026-09-27T16:00:00Z');
@@ -40,4 +40,14 @@ test('latestOwnReach takes the newest fresh sample of the handle', () => {
   assert.deepEqual(latestOwnReach(samples, 'elonmusk', NOW), { perDay: 20_000_000, posts: 3, readAt: samples[0].sampled_at });
   assert.equal(latestOwnReach([s(60, 'elonmusk', 1)], 'elonmusk', NOW), null, 'older than two days');
   assert.equal(latestOwnReach(samples, 'nobody', NOW), null);
+});
+
+test('a second page is wanted only for a retweet-heavy page still inside the week', () => {
+  const mostlyRts = [post(1, 1e6), post(2, 1e6, true), post(3, 1e6, true), post(4, 1e6, true), post(5, 1e6, true)];
+  assert.equal(wantsAnotherPage(mostlyRts, NOW), true);
+  const enoughOwn = Array.from({ length: 5 }, (_, i) => post(i + 1, 1e6));
+  assert.equal(wantsAnotherPage(enoughOwn, NOW), false);
+  const oldPage = [post(1, 1e6), post(24 * 9, 1e6, true)];
+  assert.equal(wantsAnotherPage(oldPage, NOW), false, 'the week is already covered');
+  assert.equal(wantsAnotherPage([], NOW), false);
 });
