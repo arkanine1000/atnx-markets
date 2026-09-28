@@ -10,6 +10,9 @@
 import { createAdminClient } from './supabase/admin';
 import { normalizeName } from './retrieve';
 import type { RoutingDecision } from './route';
+import type { Json } from './supabase/database';
+import { jevMode } from './jev';
+import { gateAction, jevAdmission } from './admission-jev';
 
 const MONTHS = 'january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sept?|oct|nov|dec';
 // Only forms that cannot be a title. A bare year ("1984", "2012", "1917")
@@ -44,15 +47,28 @@ export async function blockedTerms(names: string[]): Promise<string[]> {
 }
 
 // A proposal to create a market, checked. Returns the decision to use:
-// the original, or a rejection with what was blocked.
-export async function guardProposal(decision: RoutingDecision): Promise<RoutingDecision> {
+// the original, or a rejection with what was blocked. Jev's admission
+// verdict (lib/admission-jev.ts) is asked for every proposal and
+// attached; it changes the outcome only with JEV_GATE=on.
+export async function guardProposal(decision: RoutingDecision, ctx: { captureText?: string | null } = {}): Promise<RoutingDecision> {
   if (decision.outcome !== 'created' && decision.outcome !== 'created_review') return decision;
-  const names = [decision.newMarket.name, ...decision.newMarket.aliases];
+  const { newMarket } = decision;
+  const names = [newMarket.name, ...newMarket.aliases];
+  const mode = jevMode(process.env.JEV_GATE);
+  const verdict = mode === 'off' ? null : await jevAdmission({ name: newMarket.name, entityType: newMarket.entityType, category: newMarket.category, aliases: newMarket.aliases, captureText: ctx.captureText });
+  const jev: Json | undefined = verdict ? ({ gate: { ...verdict, mode } } as unknown as Json) : undefined;
+  const withJev = <T extends RoutingDecision>(d: T): T => (jev ? { ...d, jev } : d);
+
   const generic = names.find(isGenericPhrase);
-  if (generic) return { outcome: 'rejected', reason: 'not_cultural_content', blocked: `generic phrase: ${generic}` };
+  if (generic) return withJev({ outcome: 'rejected', reason: 'not_cultural_content', blocked: `generic phrase: ${generic}` });
   const hits = await blockedTerms(names);
-  if (hits.length) return { outcome: 'rejected', reason: 'policy', blocked: `retired: ${hits.join(', ')}` };
-  return decision;
+  if (hits.length) return withJev({ outcome: 'rejected', reason: 'policy', blocked: `retired: ${hits.join(', ')}` });
+  if (mode === 'on' && verdict) {
+    const action = gateAction(verdict.pGeneric);
+    if (action === 'reject') return withJev({ outcome: 'rejected', reason: 'not_cultural_content', blocked: `jev: ${verdict.kind} ${verdict.pGeneric}` });
+    if (action === 'review' && decision.outcome === 'created') return withJev({ ...decision, outcome: 'created_review' });
+  }
+  return withJev(decision);
 }
 
 // Blocks a retired market's name and aliases (the dashboard's Retire).

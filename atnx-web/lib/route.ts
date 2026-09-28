@@ -26,12 +26,17 @@ export interface NewMarketSpec {
   embedding: string | null; // pgvector string
 }
 
-export type RoutingDecision =
+export type RoutingDecision = (
   // `blocked` names what the blocklist guard (lib/blocklist.ts) refused.
   | { outcome: 'rejected'; reason: RejectReason; blocked?: string }
   | { outcome: 'matched'; marketId: string; similarity: number; matched: CandidateMarket }
   | { outcome: 'linked'; marketId: string; similarity: number; matched: ScoredCandidate }
-  | { outcome: 'created' | 'created_review'; newMarket: NewMarketSpec };
+  | { outcome: 'created' | 'created_review'; newMarket: NewMarketSpec }
+) & {
+  // Jev's admission verdict on a proposal (lib/admission-jev.ts), recorded
+  // into submission_decisions.model_response for the shadow pilot.
+  jev?: Json;
+};
 
 export function routeSubmission(input: {
   submission: SubmissionAnalysis;
