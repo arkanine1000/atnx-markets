@@ -21,8 +21,12 @@ export function jevMode(flag: string | undefined): JevMode {
   return v === 'off' || v === 'on' ? v : 'shadow';
 }
 
+// On Vercel the gateway authenticates with the deployment's OIDC token
+// and no key variable exists (the VLM calls work the same way); locally
+// the key is set in .env.local. Either is enough; an unauthenticated call
+// fails open with a logged error like any other failure.
 export function jevConfigured(): boolean {
-  return !!process.env.AI_GATEWAY_API_KEY;
+  return !!(process.env.AI_GATEWAY_API_KEY || process.env.VERCEL_OIDC_TOKEN || process.env.VERCEL);
 }
 
 export type JevAnswers<Q extends Record<string, Question>> = Awaited<ReturnType<typeof evaluate<Q>>>['answers'];
