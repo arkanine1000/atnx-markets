@@ -207,6 +207,7 @@ async function budgetLeft(): Promise<number> {
 export interface XRequest {
   entityType?: string | null;
   category?: string | null;
+  description?: string | null;
   term: string;
   aliases?: string[];
   marketId?: string | null;
@@ -222,7 +223,7 @@ export function xReadingCurrent(stored: SourceComponent | null | undefined, now 
   return Number.isFinite(at) && now - at < INTERVAL_MS - INTERVAL_SLACK_MS;
 }
 
-export async function fetchXSignal({ term, aliases = [], marketId, stored, entityType, category }: XRequest): Promise<SourceComponent | null> {
+export async function fetchXSignal({ term, aliases = [], marketId, stored, entityType, category, description }: XRequest): Promise<SourceComponent | null> {
   const key = `${marketId ?? ''}|${term.toLowerCase()}`;
   const hit = cache.get(key);
   if (hit && Date.now() < hit.expiry) return hit.data;
@@ -277,7 +278,7 @@ export async function fetchXSignal({ term, aliases = [], marketId, stored, entit
     const mode = jevMode(process.env.JEV_TWEETS);
     if (mode !== 'off' && tweets.length > 0) {
       const jv = await jevTweetVerdicts(
-        { name: term, aliases, entityType, category },
+        { name: term, aliases, entityType, category, description },
         tweets.map((t) => ({ id: t.id, text: t.text ?? '', lang: t.lang, author: t.author?.userName, isReply: t.isReply }))
       );
       if (jv) {

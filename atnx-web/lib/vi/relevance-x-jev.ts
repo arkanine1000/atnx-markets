@@ -19,6 +19,10 @@ export interface XSubject {
   aliases?: string[];
   entityType?: string | null;
   category?: string | null;
+  // What the name refers to (markets.description), when known. Without
+  // it a post about the Resident Evil film's record read 0.42 for the
+  // market "Zach Cregger Resident Evil" and dropped 26k of 34k views.
+  description?: string | null;
 }
 
 export interface TweetForJudging {
@@ -54,9 +58,10 @@ export function judgeableText(text: string): string {
     .trim();
 }
 
-function subjectLine(s: XSubject): string {
+export function subjectLine(s: XSubject): string {
   const aliases = (s.aliases ?? []).map((a) => a.trim()).filter(Boolean);
-  return [s.name, s.entityType ? `(${s.entityType}${s.category ? `, ${s.category}` : ''})` : '', aliases.length ? `also known as ${aliases.join(', ')}` : ''].filter(Boolean).join(' ');
+  const about = (s.description ?? '').replace(/\s+/g, ' ').trim().slice(0, 300);
+  return [s.name, s.entityType ? `(${s.entityType}${s.category ? `, ${s.category}` : ''})` : '', aliases.length ? `also known as ${aliases.join(', ')}` : '', about ? `: ${about}` : ''].filter(Boolean).join(' ');
 }
 
 export async function jevTweetVerdicts(subject: XSubject, tweets: TweetForJudging[]): Promise<TweetVerdicts | null> {

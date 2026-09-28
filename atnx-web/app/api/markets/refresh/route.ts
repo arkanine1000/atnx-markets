@@ -79,6 +79,7 @@ interface MarketRow {
   entity_type: string | null;
   category: string | null;
   aliases: string[] | null;
+  description: string | null;
   vi_components: Components | null;
   current_vi: number | null;
 }
@@ -90,6 +91,7 @@ function toRequest(m: MarketRow, handle?: CreatorHandle, x?: XHandle): ScoreRequ
     stored: m.vi_components ?? null,
     entityType: m.entity_type,
     category: m.category,
+    description: m.description,
     marketId: m.id,
     creator: creatorOf(handle, x),
   };
@@ -100,7 +102,7 @@ export async function refreshScores(cadence: 'fast' | 'slow', { dryRun = false, 
   const supabase = createAdminClient();
   const { data, error } = await supabase
     .from('markets')
-    .select('id, entity_name, entity_type, category, aliases, vi_components, current_vi')
+    .select('id, entity_name, entity_type, category, aliases, description, vi_components, current_vi')
     .is('deleted_at', null);
   if (error) throw new Error(error.message);
   let markets = (data ?? []) as unknown as MarketRow[];

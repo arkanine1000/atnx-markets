@@ -187,9 +187,10 @@ export interface YoutubeRequest {
   // For the title relevance check (lib/vi/relevance.ts).
   entityType?: string | null;
   category?: string | null;
+  description?: string | null;
 }
 
-export async function fetchYoutubeSignal({ term, aliases = [], marketId, stored, entityType, category }: YoutubeRequest): Promise<SourceComponent> {
+export async function fetchYoutubeSignal({ term, aliases = [], marketId, stored, entityType, category, description }: YoutubeRequest): Promise<SourceComponent> {
   const key = `${marketId ?? ''}|${term.toLowerCase()}`;
   const hit = cache.get(key);
   if (hit && Date.now() < hit.expiry) return hit.data;
@@ -228,7 +229,7 @@ export async function fetchYoutubeSignal({ term, aliases = [], marketId, stored,
     let filteredOut: number | null = typeof stored?.meta?.filtered_out === 'number' ? stored.meta.filtered_out : null;
     let jevTitles: Record<string, string | number | null> = {};
     if (checkTitles && videos.length > 0) {
-      const subject = { name: term, aliases, entityType, category };
+      const subject = { name: term, aliases, entityType, category, description };
       const all = videos;
       const verdict = await filterRelevantTitles(subject, all);
       titleFilter = verdict.status;

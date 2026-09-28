@@ -47,6 +47,10 @@ export interface ScoreRequest {
   // markets.category. Some sources only see part of the world and are
   // asked about the categories they cover (see APPLIES).
   category?: string | null;
+  // markets.description, when the thumbnail job has filled it: what the
+  // name refers to, for the relevance judges ("Zach Cregger Resident
+  // Evil" is the film, so a post about the film's record is about it).
+  description?: string | null;
   // markets.id, for sources that keep their own sample series.
   marketId?: string | null;
   // Verified own accounts (market_handles), for creator reach: the YouTube
@@ -171,12 +175,12 @@ export async function scoreTerms(
         want.has('gdelt') && applies('gdelt', request) ? readGdeltSignal(req.marketId).catch(() => null) : null,
         want.has('wikipedia') ? fetchWikipediaSignal(term, aliases, { corporate, aliasCandidates }).catch(() => null) : null,
         want.has('youtube')
-          ? fetchYoutubeSignal({ term, aliases, marketId: req.marketId, stored: stored?.youtube ?? null, entityType: req.entityType, category: req.category }).catch(() => null)
+          ? fetchYoutubeSignal({ term, aliases, marketId: req.marketId, stored: stored?.youtube ?? null, entityType: req.entityType, category: req.category, description: req.description }).catch(() => null)
           : null,
         want.has('hn') && applies('hn', request) ? fetchHnSignal(term).catch(() => null) : null,
         want.has('dex') && applies('dex', request) ? fetchDexSignal(term, req.aliases ?? []).catch(() => null) : null,
         want.has('x')
-          ? fetchXSignal({ term, aliases, marketId: req.marketId, stored: stored?.x ?? null, entityType: req.entityType, category: req.category }).catch(() => null)
+          ? fetchXSignal({ term, aliases, marketId: req.marketId, stored: stored?.x ?? null, entityType: req.entityType, category: req.category, description: req.description }).catch(() => null)
           : null,
         want.has('tiktok') && applies('tiktok', request)
           ? fetchTiktokSignal({ term, aliases: req.aliases ?? [], marketId: req.marketId, stored: stored?.tiktok ?? null }).catch(() => null)

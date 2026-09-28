@@ -988,6 +988,7 @@ async function scoreNewMarket(ctx: ScoringContext): Promise<void> {
       aliases: ctx.aliases ?? ((market.aliases as string[] | null) ?? []),
       entityType: (market.entity_type as string | null) ?? null,
       category: (market.category as string | null) ?? null,
+      description: ((market as { description?: string | null }).description ?? null),
       marketId: ctx.marketId,
       stored: (market.vi_components as Components | null) ?? null,
       creator: creatorOf(handle, xHandle),

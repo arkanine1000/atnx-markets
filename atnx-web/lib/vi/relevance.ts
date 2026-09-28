@@ -17,6 +17,8 @@ export interface RelevanceSubject {
   aliases?: string[];
   entityType?: string | null;
   category?: string | null;
+  // What the name refers to (markets.description), when known.
+  description?: string | null;
 }
 
 export interface RelevanceVideo {

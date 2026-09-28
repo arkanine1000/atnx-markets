@@ -19,7 +19,8 @@ export interface TitleVerdicts {
 
 function subjectLine(s: RelevanceSubject): string {
   const aliases = (s.aliases ?? []).map((a) => a.trim()).filter(Boolean);
-  return [s.name, s.entityType ? `(${s.entityType}${s.category ? `, ${s.category}` : ''})` : '', aliases.length ? `also known as ${aliases.join(', ')}` : ''].filter(Boolean).join(' ');
+  const about = (s.description ?? '').replace(/\s+/g, ' ').trim().slice(0, 300);
+  return [s.name, s.entityType ? `(${s.entityType}${s.category ? `, ${s.category}` : ''})` : '', aliases.length ? `also known as ${aliases.join(', ')}` : '', about ? `: ${about}` : ''].filter(Boolean).join(' ');
 }
 
 export async function jevTitleVerdicts(subject: RelevanceSubject, videos: RelevanceVideo[]): Promise<TitleVerdicts | null> {
