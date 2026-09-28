@@ -175,7 +175,9 @@ export async function scoreTerms(
           : null,
         want.has('hn') && applies('hn', request) ? fetchHnSignal(term).catch(() => null) : null,
         want.has('dex') && applies('dex', request) ? fetchDexSignal(term, req.aliases ?? []).catch(() => null) : null,
-        want.has('x') ? fetchXSignal({ term, aliases, marketId: req.marketId, stored: stored?.x ?? null }).catch(() => null) : null,
+        want.has('x')
+          ? fetchXSignal({ term, aliases, marketId: req.marketId, stored: stored?.x ?? null, entityType: req.entityType, category: req.category }).catch(() => null)
+          : null,
         want.has('tiktok') && applies('tiktok', request)
           ? fetchTiktokSignal({ term, aliases: req.aliases ?? [], marketId: req.marketId, stored: stored?.tiktok ?? null }).catch(() => null)
           : null,
