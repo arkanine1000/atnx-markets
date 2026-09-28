@@ -224,7 +224,7 @@ export function tiktokReading(samples: Sample[], now = Date.now()): TiktokReadin
   if (now / 3600_000 - run[run.length - 1].h > MAX_GAP_H) return none;
 
   const videos = runRate(run.map((p) => ({ h: p.h, v: p.v })));
-  const viewsRun = run.filter((p): p is { h: number; v: number; w: number } => p.w !== null).map((p) => ({ h: p.h, v: p.w }));
+  const viewsRun = consistentViews(run);
   // The view series needs the newest read too, else its trend is stale.
   const views = viewsRun.length >= 2 && viewsRun[viewsRun.length - 1].h === run[run.length - 1].h ? runRate(viewsRun) : null;
   return {
@@ -233,6 +233,20 @@ export function tiktokReading(samples: Sample[], now = Date.now()): TiktokReadin
     videosPerHour: Number(videos.rate.toFixed(2)),
     viewsPerHour: views ? Math.round(views.rate) : null,
   };
+}
+
+// The vendor's view total for a tag flips between unrelated values from
+// read to read (#captainsparklez: 201M, 92.7M, 201M; #mrbeast: 139.8B,
+// 4.1B), while its video count never does. A real read keeps a steady
+// ratio of views to videos (the tag's lifetime views per video), so reads
+// whose ratio strays from the series' median by more than VIEW_RATIO_TOL
+// are dropped before the trend. Pure.
+export const VIEW_RATIO_TOL = 0.25;
+export function consistentViews(run: { h: number; v: number; w: number | null }[]): { h: number; v: number }[] {
+  const pts = run.filter((p): p is { h: number; v: number; w: number } => p.w !== null && p.v > 0).map((p) => ({ h: p.h, v: p.w, ratio: p.w / p.v }));
+  if (pts.length < 2) return pts.map(({ h, v }) => ({ h, v }));
+  const mid = median(pts.map((p) => p.ratio));
+  return pts.filter((p) => mid > 0 && Math.abs(p.ratio / mid - 1) <= VIEW_RATIO_TOL).map(({ h, v }) => ({ h, v }));
 }
 
 // Rate and momentum of one cumulative series (oldest first, the newest

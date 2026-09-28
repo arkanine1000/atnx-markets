@@ -37,8 +37,8 @@ export interface OwnReach {
   windowDays: number;
 }
 
-// Views on the account's own posts of the last week, per day. The page is
-// the newest twenty posts; when they cover less than a week the window is
+// Views on the account's own posts of the last week, per day. The pages
+// are the newest posts; when they cover less than a week the window is
 // the span they cover (at least a day), so a prolific account is not
 // undercounted. Retweets carry the original's views and are not the
 // account's own reach. Pure.
@@ -56,8 +56,14 @@ export function ownImpressionsPerDay(posts: OwnPost[], now = Date.now()): OwnRea
   return { perDay: Math.round(views / windowDays), posts: own.length, windowDays: Number(windowDays.toFixed(2)) };
 }
 
-async function fetchOwnPosts(userName: string): Promise<OwnPost[] | null> {
-  const res = await fetch(`${API}?${new URLSearchParams({ userName })}`, {
+// An account that mostly retweets (Musk: 17 of 20) leaves a thin sample of
+// its own posts on one page; a second page is fetched when fewer than
+// MIN_OWN_POSTS own posts came back and the week is not yet covered.
+const MIN_OWN_POSTS = 5;
+const MAX_PAGES = 2;
+
+async function fetchPage(userName: string, cursor: string): Promise<{ tweets: OwnPost[]; next: string | null } | null> {
+  const res = await fetch(`${API}?${new URLSearchParams(cursor ? { userName, cursor } : { userName })}`, {
     headers: { 'X-API-Key': process.env.TWITTERAPI_IO_KEY ?? '', Accept: 'application/json' },
     cache: 'no-store',
     signal: AbortSignal.timeout(15_000),
@@ -66,9 +72,31 @@ async function fetchOwnPosts(userName: string): Promise<OwnPost[] | null> {
     console.error(`[creators:x] last_tweets ${res.status} for ${userName}: ${(await res.text()).slice(0, 120)}`);
     return null;
   }
-  const body = (await res.json()) as { status?: string; data?: { tweets?: OwnPost[] }; tweets?: OwnPost[] };
+  const body = (await res.json()) as { status?: string; data?: { tweets?: OwnPost[] }; tweets?: OwnPost[]; has_next_page?: boolean; next_cursor?: string };
   if (body.status && body.status !== 'success') return null;
-  return body.data?.tweets ?? body.tweets ?? [];
+  return { tweets: body.data?.tweets ?? body.tweets ?? [], next: body.has_next_page && body.next_cursor ? body.next_cursor : null };
+}
+
+// Whether another page is worth its cost: few own posts so far, and the
+// oldest post fetched is still inside the week. Pure.
+export function wantsAnotherPage(posts: OwnPost[], now = Date.now()): boolean {
+  const own = posts.filter((p) => !p.retweeted_tweet).length;
+  if (own >= MIN_OWN_POSTS || posts.length === 0) return false;
+  const oldest = Math.min(...posts.map((p) => Date.parse(p.createdAt)).filter(Number.isFinite));
+  return Number.isFinite(oldest) && now - oldest < WINDOW_DAYS * DAY;
+}
+
+async function fetchOwnPosts(userName: string, now = Date.now()): Promise<OwnPost[] | null> {
+  const posts: OwnPost[] = [];
+  let cursor = '';
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const r = await fetchPage(userName, cursor);
+    if (!r) return page === 0 ? null : posts;
+    posts.push(...r.tweets);
+    if (!r.next || !wantsAnotherPage(posts, now)) break;
+    cursor = r.next;
+  }
+  return posts;
 }
 
 export interface XHandle {
@@ -114,7 +142,7 @@ export async function runXAccountJob(now = Date.now(), marketIds?: string[]): Pr
     const samples = await readSamples(h.market_id, X_ACCOUNT_SOURCE, 5);
     const last = samples.find((s) => s.meta?.handle === h.handle);
     if (last && now - Date.parse(last.sampled_at) < READ_EVERY_MS - READ_SLACK_MS) continue;
-    const posts = await fetchOwnPosts(h.handle);
+    const posts = await fetchOwnPosts(h.handle, now);
     if (posts === null) continue;
     const reach = ownImpressionsPerDay(posts, now);
     summary.reads++;

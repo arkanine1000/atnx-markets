@@ -1,7 +1,7 @@
 // Run with: npm run test:vi
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { tiktokLevel, tiktokReading, trendFit } from './tiktok';
+import { consistentViews, tiktokLevel, tiktokReading, trendFit } from './tiktok';
 import type { Sample } from './samples';
 
 const T0 = Date.parse('2026-09-25T00:09:00Z');
@@ -157,4 +157,20 @@ test('the view totals give a views-per-hour trend beside the video counts', () =
   // A view total missing on the newest read leaves the views trend stale: null.
   const staleNewest = withViews.map((smp, i) => (i === 0 ? { ...smp, meta: { ...smp.meta, view_count: null } } : smp));
   assert.equal(tiktokReading(staleNewest, now).viewsPerHour, null);
+});
+
+test('view totals that flip to an unrelated value are dropped before the views trend', () => {
+  // #captainsparklez: video count flat at 10,070; views alternate 201M / 92.7M.
+  const videos = [10069, 10069, 10069, 10070, 10070, 10070, 10070, 10070];
+  const views = [201_157_148, 201_162_230, 201_168_849, 201_176_789, 92_662_276, 201_191_938, 92_673_639, 201_206_447];
+  const { samples, now } = series(videos);
+  const withViews = samples.map((smp, i) => ({ ...smp, meta: { ...smp.meta, view_count: views[views.length - 1 - i] } }));
+  const r = tiktokReading(withViews, now);
+  assert.ok(r.viewsPerHour !== null && r.viewsPerHour < 5_000, `views/h ${r.viewsPerHour} should be the few thousand real ones, not 36M`);
+  // With the newest read itself an outlier there is no views trend at all.
+  const flipped = [...views.slice(0, 7), 92_680_000];
+  const bad = samples.map((smp, i) => ({ ...smp, meta: { ...smp.meta, view_count: flipped[flipped.length - 1 - i] } }));
+  assert.equal(tiktokReading(bad, now).viewsPerHour, null);
+  const run = videos.map((v, i) => ({ h: i * 3, v, w: views[i] }));
+  assert.equal(consistentViews(run).length, 6, 'two flipped reads dropped');
 });
