@@ -115,7 +115,7 @@ function rejectMessage(reason: RejectReason): string {
     case 'policy':
       return "This content isn't allowed on ATNX.";
     default:
-      return "Couldn't find a meme, trend, person, or brand in this. Try a post about something people are talking about.";
+      return "Couldn't match this to a meme, trend, person, or brand. Fully custom submissions aren't live in the current beta.";
   }
 }
 

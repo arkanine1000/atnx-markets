@@ -225,8 +225,7 @@ export function ViChart({
   height?: number;
   entryVi?: number;
   entryType?: "long" | "short";
-  // The market is still on its first pass over the sources: there is no
-  // history because there is no score yet, not because the range is narrow.
+  /** The market has no VI yet; the empty chart says so instead of blaming the range. */
   scoring?: boolean;
 }) {
   const { isLiveMode } = useDemoContext();
@@ -271,9 +270,7 @@ export function ViChart({
             <span className="font-mono uppercase tracking-[0.12em] text-secondary animate-pulse">
               Scoring…
             </span>
-            <span className="text-[11px]">
-              Reading the sources for the first time. The chart starts with the first score.
-            </span>
+            <span className="text-[11px]">The chart starts with the first score.</span>
           </>
         ) : (
           <>

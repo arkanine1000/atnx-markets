@@ -64,8 +64,9 @@ function Row({ row, me }: { row: LeaderboardRow; me: boolean }) {
     >
       <Rank rank={row.rank} />
       <Identicon seed={row.userId} size={32} className="border border-surface" />
-      <div className="min-w-0 flex-1 text-sm font-bold text-primary truncate flex items-center gap-2">
-        <span className="truncate">@{row.handle}</span>
+      <div className="min-w-0 flex-1 text-sm font-bold text-primary flex items-center gap-2">
+        {/* Phones scroll the board sideways instead of cutting the handle. */}
+        <span className="whitespace-nowrap sm:truncate">@{row.handle}</span>
         {me && (
           <span className="rounded-md border border-atnx-cyan/30 bg-atnx-cyan/10 px-1.5 py-0.5 text-[10px] font-bold font-mono uppercase tracking-wider text-atnx-cyan light:text-atnx-cyan-light">
             you
@@ -152,27 +153,31 @@ export function LeaderboardView({ rows }: { rows: LeaderboardRow[] }) {
           }
         />
       ) : (
-        <div>
-          <div className="flex items-center gap-3 px-3 py-1.5 text-[11px] font-mono uppercase tracking-wider text-tertiary">
-            <span className="w-7 text-right shrink-0">#</span>
-            <span className="w-8 shrink-0" />
-            <span className="flex-1">Trader</span>
-            <span className={COL_FEES}>Fees</span>
-            <span className={`${COL_PNL} shrink-0`}>PnL</span>
+        // On phones the board is as wide as its longest handle and scrolls
+        // sideways; the bleed keeps the card flush with the page edge.
+        <div className="overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0 sm:overflow-visible">
+          <div className="w-max min-w-full sm:w-auto">
+            <div className="flex items-center gap-3 px-3 py-1.5 text-[11px] font-mono uppercase tracking-wider text-tertiary">
+              <span className="w-7 text-right shrink-0">#</span>
+              <span className="w-8 shrink-0" />
+              <span className="flex-1">Trader</span>
+              <span className={COL_FEES}>Fees</span>
+              <span className={`${COL_PNL} shrink-0`}>PnL</span>
+            </div>
+            <Card className="overflow-hidden divide-y divide-(--color-dark-border) light:divide-(--color-light-border)">
+              {top.map((r) => (
+                <Row key={r.userId} row={r} me={r.userId === user?.id} />
+              ))}
+              {pinned && (
+                <>
+                  <div className="text-center text-[11px] text-tertiary py-1" aria-hidden="true">
+                    ···
+                  </div>
+                  <Row row={pinned} me />
+                </>
+              )}
+            </Card>
           </div>
-          <Card className="overflow-hidden divide-y divide-(--color-dark-border) light:divide-(--color-light-border)">
-            {top.map((r) => (
-              <Row key={r.userId} row={r} me={r.userId === user?.id} />
-            ))}
-            {pinned && (
-              <>
-                <div className="text-center text-[11px] text-tertiary py-1" aria-hidden="true">
-                  ···
-                </div>
-                <Row row={pinned} me />
-              </>
-            )}
-          </Card>
         </div>
       )}
 
