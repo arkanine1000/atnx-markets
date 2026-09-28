@@ -19,6 +19,8 @@
 // key the source is unknown.
 import { clamp, median, ratioToBaseline, type SourceComponent } from './score';
 import { dailyLedger, pruneSamples, readSamples, writeSample } from './samples';
+import { jevMode } from '../jev';
+import { jevTweetVerdicts } from './relevance-x-jev';
 
 const API = 'https://api.twitterapi.io/twitter/tweet/advanced_search';
 const WINDOW_S = 3600;
@@ -70,14 +72,43 @@ export function xLevel(posts24h: number): number {
   return clamp(Math.round(100 + 200 * Math.log10(Math.max(posts24h, 10) / 10)));
 }
 
-interface Tweet {
+export interface Tweet {
   id: string;
   createdAt: string;
+  text?: string;
+  lang?: string;
+  isReply?: boolean;
+  author?: { userName?: string; name?: string };
   viewCount?: number;
   likeCount?: number;
   retweetCount?: number;
   replyCount?: number;
   retweeted_tweet?: unknown;
+}
+
+// The read a keep-set would give: the kept posts, their share of the
+// fetched ones, and the rate and views they carry. Under the cap the kept
+// count is the hour's rate; at the cap the read's rate scales by the kept
+// share, since the fetched posts sample the hour. Pure.
+export function applyTweetVerdicts(tweets: Tweet[], keep: Set<string>, rate: number, capped: boolean) {
+  const kept = tweets.filter((t) => keep.has(t.id));
+  const share = tweets.length === 0 ? 0 : kept.length / tweets.length;
+  return {
+    kept,
+    share,
+    rate: capped ? rate * share : kept.length,
+    views: kept.reduce((s, t) => s + (t.viewCount ?? 0), 0),
+    likes: kept.reduce((s, t) => s + (t.likeCount ?? 0), 0),
+  };
+}
+
+// Once reads are filtered (JEV_TWEETS=on) the earlier unfiltered ones
+// carry the noise the filter removes, so a filtered read compares itself
+// only with filtered samples: the day's impressions median and the
+// momentum baseline restart from the switch. An unfiltered read (the
+// judge failed) keeps comparing with everything. Pure.
+export function comparableSamples(samples: XSample[], filtered: boolean): XSample[] {
+  return filtered ? samples.filter((s) => Number(s.meta?.filtered) === 1) : samples;
 }
 
 // A full cap (60 tweets) inside this span is as fast as the estimate
@@ -174,6 +205,8 @@ async function budgetLeft(): Promise<number> {
 }
 
 export interface XRequest {
+  entityType?: string | null;
+  category?: string | null;
   term: string;
   aliases?: string[];
   marketId?: string | null;
@@ -189,7 +222,7 @@ export function xReadingCurrent(stored: SourceComponent | null | undefined, now 
   return Number.isFinite(at) && now - at < INTERVAL_MS - INTERVAL_SLACK_MS;
 }
 
-export async function fetchXSignal({ term, aliases = [], marketId, stored }: XRequest): Promise<SourceComponent | null> {
+export async function fetchXSignal({ term, aliases = [], marketId, stored, entityType, category }: XRequest): Promise<SourceComponent | null> {
   const key = `${marketId ?? ''}|${term.toLowerCase()}`;
   const hit = cache.get(key);
   if (hit && Date.now() < hit.expiry) return hit.data;
@@ -231,15 +264,68 @@ export async function fetchXSignal({ term, aliases = [], marketId, stored }: XRe
     }
     spentThisProcess += tweets.length;
 
-    const rate = xRate(tweets, capped, now - X_SHIFT_S * 1000);
-    const views = tweets.reduce((s, t) => s + (t.viewCount ?? 0), 0);
-    const likes = tweets.reduce((s, t) => s + (t.likeCount ?? 0), 0);
-    const viewsPerHourRead = xImpressionsPerHour(views, tweets.length, rate);
+    let counted = tweets;
+    let rate = xRate(tweets, capped, now - X_SHIFT_S * 1000);
+    let views = tweets.reduce((s, t) => s + (t.viewCount ?? 0), 0);
+    let likes = tweets.reduce((s, t) => s + (t.likeCount ?? 0), 0);
+    // Shadow pilot: Jev judges each fetched post; the verdict and the
+    // reading it would give are kept beside the unfiltered numbers
+    // (component meta, vi_samples x_tweet_shadow). JEV_TWEETS=on makes the
+    // kept posts the ones that count.
+    let filtered = false;
+    let jevMeta: Record<string, string | number | null> = {};
+    const mode = jevMode(process.env.JEV_TWEETS);
+    if (mode !== 'off' && tweets.length > 0) {
+      const jv = await jevTweetVerdicts(
+        { name: term, aliases, entityType, category },
+        tweets.map((t) => ({ id: t.id, text: t.text ?? '', lang: t.lang, author: t.author?.userName, isReply: t.isReply }))
+      );
+      if (jv) {
+        const v = applyTweetVerdicts(tweets, new Set(jv.keep), rate, capped);
+        const dropped = tweets.filter((t) => !jv.keep.includes(t.id));
+        const line = (t: Tweet) => `${t.id}|${jv.probabilities[t.id]}|${t.lang ?? '-'}|${(t.text ?? '').replace(/\s+/g, ' ').slice(0, 80)}`;
+        jevMeta = {
+          jev_tweets: 'ok',
+          jev_keep: v.kept.length,
+          jev_drop: dropped.length,
+          jev_keep_share: Math.round(v.share * 1000) / 1000,
+          rate_per_h_jev: Number(v.rate.toFixed(2)),
+          views_per_h_jev: xImpressionsPerHour(v.views, v.kept.length, v.rate),
+          jev_ms: jv.latency_ms,
+          jev_model: jv.model,
+        };
+        if (marketId) {
+          await writeSample(marketId, 'x_tweet_shadow', dropped.length, {
+            tweets: tweets.length,
+            keep: v.kept.length,
+            keep_share: Math.round(v.share * 1000) / 1000,
+            capped: capped ? 1 : 0,
+            rate: Number(rate.toFixed(2)),
+            rate_jev: Number(v.rate.toFixed(2)),
+            views_all: views,
+            views_kept: v.views,
+            dropped: dropped.map(line).join(' ;; '),
+            unsure: v.kept.filter((t) => jv.probabilities[t.id] < 0.7).map(line).join(' ;; '),
+            jev_model: jv.model,
+            jev_ms: jv.latency_ms,
+          });
+        }
+        if (mode === 'on') {
+          counted = v.kept;
+          rate = v.rate;
+          views = v.views;
+          likes = v.likes;
+          filtered = true;
+        }
+      } else jevMeta = { jev_tweets: 'failed' };
+    }
+
+    const viewsPerHourRead = xImpressionsPerHour(views, counted.length, rate);
     let viewsPerHour = viewsPerHourRead;
     let momentum: number | null = null;
     if (marketId) {
-      await writeSample(marketId, 'x', rate, { tweets: tweets.length, requests, capped, views, likes });
-      const samples = await readSamples(marketId, 'x', MAX_SAMPLES);
+      await writeSample(marketId, 'x', rate, { tweets: counted.length, requests, capped, views, likes, filtered: filtered ? 1 : 0 });
+      const samples = comparableSamples(await readSamples(marketId, 'x', MAX_SAMPLES), filtered);
       momentum = xMomentum(samples, rate, now);
       viewsPerHour = medianImpressionsPerHour(samples, viewsPerHourRead, now);
       await pruneSamples(marketId, 'x', SAMPLE_KEEP_MS);
@@ -251,9 +337,9 @@ export async function fetchXSignal({ term, aliases = [], marketId, stored }: XRe
       momentum,
       fetchedAt: new Date().toISOString(),
       meta: {
-        posts_1h: capped ? `${Math.round(rate)}+` : tweets.length,
+        posts_1h: capped ? `${Math.round(rate)}+` : counted.length,
         rate_per_h: Number(rate.toFixed(2)),
-        tweets: tweets.length,
+        tweets: counted.length,
         requests,
         capped: capped ? 1 : 0,
         views,
@@ -263,6 +349,8 @@ export async function fetchXSignal({ term, aliases = [], marketId, stored }: XRe
         impressions_24h: viewsPerHour * 24,
         window_until: new Date(now - X_SHIFT_S * 1000).toISOString(),
         phrases: Math.min(MAX_PHRASES, 1 + aliases.length),
+        ...(filtered ? { filtered: 1 } : {}),
+        ...jevMeta,
       },
     };
     cache.set(key, { data: result, expiry: Date.now() + CACHE_TTL });

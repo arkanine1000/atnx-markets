@@ -1,7 +1,7 @@
 // Run with: npm run test:vi
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { medianImpressionsPerHour, xImpressionsPerHour, xQuery, xRate, X_SHIFT_S } from './x';
+import { applyTweetVerdicts, comparableSamples, medianImpressionsPerHour, xImpressionsPerHour, xQuery, xRate, X_SHIFT_S, type Tweet } from './x';
 
 const NOW = Date.parse('2026-09-26T18:00:00Z');
 const at = (secondsBeforeUntil: number) => new Date(NOW - X_SHIFT_S * 1000 - secondsBeforeUntil * 1000).toISOString();
@@ -38,4 +38,33 @@ test('the level takes the median of the last day of impression reads, the newest
   assert.equal(medianImpressionsPerHour(samples, 10_000, NOW), 65_333);
   assert.equal(medianImpressionsPerHour([], 10_000, NOW), 10_000, 'no history: the read');
   assert.equal(medianImpressionsPerHour([s(0.2, 1, 1, 1)], 10_000, NOW), 10_000, 'the just-written sample is not counted twice');
+});
+
+test('applyTweetVerdicts: kept posts set the rate under the cap and scale it at the cap', () => {
+  const tweets: Tweet[] = [
+    { id: 'a', createdAt: at(10), viewCount: 100, likeCount: 1 },
+    { id: 'b', createdAt: at(20), viewCount: 900, likeCount: 9 },
+    { id: 'c', createdAt: at(30), viewCount: 50, likeCount: 0 },
+    { id: 'd', createdAt: at(40), viewCount: 50, likeCount: 0 },
+  ];
+  const keep = new Set(['a', 'b']);
+  const under = applyTweetVerdicts(tweets, keep, 4, false);
+  assert.deepEqual(under.kept.map((t) => t.id), ['a', 'b']);
+  assert.equal(under.share, 0.5);
+  assert.equal(under.rate, 2, 'under the cap the kept count is the rate');
+  assert.equal(under.views, 1000);
+  assert.equal(under.likes, 10);
+  const capped = applyTweetVerdicts(tweets, keep, 720, true);
+  assert.equal(capped.rate, 360, 'at the cap the read rate scales by the kept share');
+  assert.equal(applyTweetVerdicts([], keep, 0, false).share, 0);
+});
+
+test('comparableSamples: a filtered read compares only with filtered samples', () => {
+  const samples = [
+    { sampled_at: at(3600), value: 10, meta: { filtered: 1 } },
+    { sampled_at: at(7200), value: 30, meta: { filtered: 0 } },
+    { sampled_at: at(10800), value: 40, meta: null },
+  ];
+  assert.deepEqual(comparableSamples(samples, true).map((s) => s.value), [10]);
+  assert.deepEqual(comparableSamples(samples, false).map((s) => s.value), [10, 30, 40]);
 });
