@@ -9,7 +9,7 @@ upload with `node package.mjs` (writes `dist/atnx-capture-v<version>.zip`).
    $5 registration). Verify the publisher email; it is shown on the listing.
 2. **Deploy the web app first.** The privacy policy lives at
    https://atnx.app/privacy and the reviewer will open it.
-3. `node package.mjs` → upload `dist/atnx-capture-v1.7.1.zip`.
+3. `node package.mjs` → upload `dist/atnx-capture-v1.7.3.zip`.
 4. Store listing tab: paste the text below; upload `store/screenshot-*.png`
    (1280×800) and `store/promo-small.png` (440×280).
 5. Privacy tab: single purpose, permission justifications, data disclosures,
