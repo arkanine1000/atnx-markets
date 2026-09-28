@@ -28,6 +28,9 @@ interface MarketRow {
   total_captures: number;
   network: "simulated" | "devnet" | "mainnet";
   parent_market_id: string | null;
+  // Where markets.description came from: wikipedia, page:<host>, model,
+  // manual; null while it has none.
+  description_source: string | null;
   deleted_at: string | null;
   created_at: string;
 }
@@ -309,6 +312,13 @@ function MarketsTab({ markets }: { markets: MarketRow[] }) {
                       {m.entity_name}
                     </Link>
                   )}
+                  {/* Where the description came from; "model" is generated and worth a look. */}
+                  <span
+                    title={m.description_source ? `description from ${m.description_source}` : "no description yet"}
+                    className={`ml-2 text-[10px] uppercase tracking-wider ${m.description_source === "model" ? "text-atnx-yellow" : "text-tertiary"}`}
+                  >
+                    {m.description_source ? m.description_source.replace(/^page:/, "") : "no desc"}
+                  </span>
                 </td>
                 <td className="py-2 px-2 text-secondary">
                   {m.entity_type ?? "\u2014"}

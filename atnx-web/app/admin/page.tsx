@@ -39,6 +39,7 @@ interface MarketRow {
   total_captures: number;
   network: "simulated" | "devnet" | "mainnet";
   parent_market_id: string | null;
+  description_source: string | null;
   deleted_at: string | null;
   created_at: string;
 }
@@ -113,7 +114,7 @@ export default async function AdminPage() {
       supabase
         .from("markets")
         .select(
-          "id, entity_name, entity_type, current_vi, total_captures, network, parent_market_id, deleted_at, created_at"
+          "id, entity_name, entity_type, current_vi, total_captures, network, parent_market_id, description_source, deleted_at, created_at"
         )
         .order("created_at", { ascending: false })
         .limit(200)

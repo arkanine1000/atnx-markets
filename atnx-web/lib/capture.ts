@@ -48,6 +48,7 @@ import {
 } from './review';
 import { normalizeSearchTerm } from './trends';
 import { composeVi, prefetchSlowSources, scoreTerms, creatorOf } from './signals';
+import { describeMarkets } from './describe';
 import { guardProposal } from './blocklist';
 import { runChannelJob, verifiedYoutubeHandles } from './creators/channel';
 import { runXAccountJob, verifiedXHandles } from './creators/x-account';
@@ -999,6 +1000,14 @@ async function scoreNewMarket(ctx: ScoringContext): Promise<void> {
     await recordVi(ctx.marketId, signal.score ?? 0, signal.components, signal.seedSeries, { fullPass: true });
   } catch (err) {
     console.error('[capture] new-market scoring failed', (err as Error).message);
+  }
+  // Its description, now that the Wikipedia reading says whether it owns
+  // an article (lib/describe.ts); the hourly pass catches a miss.
+  try {
+    const { log } = await describeMarkets({ marketIds: [ctx.marketId], force: true });
+    if (log.length) console.log('[describe]', log.join('; '));
+  } catch (err) {
+    console.error('[capture] new-market description failed', (err as Error).message);
   }
 }
 

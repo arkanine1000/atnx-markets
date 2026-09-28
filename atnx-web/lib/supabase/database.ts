@@ -56,6 +56,8 @@ export type Database = {
           created_at: string;
           vi_state: 'scoring' | 'live';
           vi_scoring_since: string | null;
+          // When lib/describe.ts last looked for a description (022).
+          description_checked_at: string | null;
         };
         Insert: {
           id?: string;
@@ -90,6 +92,7 @@ export type Database = {
           created_at?: string;
           vi_state?: 'scoring' | 'live';
           vi_scoring_since?: string | null;
+          description_checked_at?: string | null;
         };
         Update: {
           id?: string;
@@ -124,6 +127,7 @@ export type Database = {
           created_at?: string;
           vi_state?: 'scoring' | 'live';
           vi_scoring_since?: string | null;
+          description_checked_at?: string | null;
         };
         Relationships: EmptyRelationships;
       };

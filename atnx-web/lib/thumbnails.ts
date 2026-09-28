@@ -384,7 +384,7 @@ async function referencePageImage(market: MarketForImage): Promise<FoundImage | 
 // Know Your Meme names its entries by the title, slugified, and redirects
 // to the right section (people/, subcultures/) from the bare slug. One
 // request either lands on the entry or on a 404.
-async function knowYourMemeEntry(market: MarketForImage): Promise<FoundImage | null> {
+export async function knowYourMemeEntry(market: MarketForImage): Promise<FoundImage | null> {
   const slug = market.entity_name
     .toLowerCase()
     .replace(/['’]/g, '')
@@ -396,7 +396,7 @@ async function knowYourMemeEntry(market: MarketForImage): Promise<FoundImage | n
 
 // A page's preview image, accepted only when the page is titled with the
 // market's name ("Verity (Minecraft ARG) | Know Your Meme").
-async function pageImage(url: string, name: string): Promise<FoundImage | null> {
+export async function pageImage(url: string, name: string): Promise<FoundImage | null> {
   const image = await fetchImageFromUrl(url);
   if (!image.pageTitle || !pageTitleNames(image.pageTitle, name)) return null;
   const host = new URL(url).hostname.replace(/^www\./, '');

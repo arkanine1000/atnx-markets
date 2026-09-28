@@ -4,6 +4,7 @@ import { pruneComponentHistory } from '@/lib/store';
 import { runXResolverPass } from '@/lib/creators/store';
 import { runXAccountJob } from '@/lib/creators/x-account';
 import { refreshThumbnails } from '@/lib/thumbnails';
+import { describeMarkets } from '@/lib/describe';
 import { sweepExpiredDrafts } from '@/lib/review';
 import { runGdeltJob } from '@/lib/vi/gdelt';
 import { runChannelJob } from '@/lib/creators/channel';
@@ -87,7 +88,7 @@ export async function GET(request: Request) {
     xAccounts = { error: (err as Error).message };
   }
 
-  const [scores, thumbs] = await Promise.allSettled([refreshScores('slow', { limit }), refreshThumbnails()]);
+  const [scores, thumbs, described] = await Promise.allSettled([refreshScores('slow', { limit }), refreshThumbnails(), describeMarkets()]);
   // Component snapshots older than 60 days (supabase/020).
   const componentHistory = await pruneComponentHistory();
 
@@ -103,9 +104,19 @@ export async function GET(request: Request) {
     console.error('[thumbnails] pass failed:', thumbs.reason);
     thumbnails = { error: (thumbs.reason as Error).message };
   }
+  // Descriptions for markets the image job does not curate (lib/describe.ts).
+  let descriptions: Record<string, unknown>;
+  if (described.status === 'fulfilled') {
+    const { log, ...rest } = described.value;
+    if (log.length) console.log('[describe]', log.join('; '));
+    descriptions = rest;
+  } else {
+    console.error('[describe] pass failed:', described.reason);
+    descriptions = { error: (described.reason as Error).message };
+  }
 
   if (scores.status === 'rejected') {
-    return NextResponse.json({ error: (scores.reason as Error).message, gdeltJob: gdelt, channelJob: channels, xAccounts, thumbnails, drafts, componentHistory }, { status: 500 });
+    return NextResponse.json({ error: (scores.reason as Error).message, gdeltJob: gdelt, channelJob: channels, xAccounts, thumbnails, descriptions, drafts, componentHistory }, { status: 500 });
   }
-  return NextResponse.json({ ...scores.value, gdeltJob: gdelt, channelJob: channels, xAccounts, thumbnails, drafts, componentHistory });
+  return NextResponse.json({ ...scores.value, gdeltJob: gdelt, channelJob: channels, xAccounts, thumbnails, descriptions, drafts, componentHistory });
 }
