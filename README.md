@@ -38,13 +38,15 @@ atnx/
    │  commit:  attach or create → upload → audit       │    │                      │
    └───────────────┬───────────────────────────────────┘    └──────────────────────┘
                    │                                        └──────────────────────┘
-                   │ Vercel AI Gateway: Gemini Flash (vision), Cohere Embed v4 (text)
+                   │ Vercel AI Gateway: Gemini Flash (vision), Cohere Embed v4 (text),
+                   │                    Jev (typed yes/no verdicts, in shadow)
                    │
-                   │ composeVi = weighted level+momentum, 4 sources
+                   │ VI = total attention across sources, one log, × momentum
                    ▼
-   Google Trends · Bluesky · GDELT · Wikipedia
+   Google Trends · Bluesky · Wikipedia · GDELT · YouTube · Hacker News · X · TikTok
+   + the market's own YouTube channel and X account, when verified
                    ▲
-                   │ /api/markets/refresh every 5 min (Vercel Cron)
+                   │ /api/markets/refresh every 5 min, /api/markets/refresh-slow hourly (Vercel Cron)
 ```
 
 How a submission is decided, stage by stage, is in [`atnx-web/README.md`](atnx-web/README.md).
@@ -84,7 +86,7 @@ How a submission is decided, stage by stage, is in [`atnx-web/README.md`](atnx-w
 | `POST /api/positions` | Extension side panel: opens a position. JSON `{ marketId, direction, sizeUsd, leverage }`, the same checks and database call as the site's own ticket (`lib/trading.ts`); a rule the database refuses (insufficient balance, a market with no score yet) is a 400 with its message, signed out is 401 |
 | `POST /api/positions/[id]/close` | Extension side panel: closes one of the caller's open positions and answers `{ realizedPnl, exitVi, liquidated }`; a position that is not the caller's or is already closed is 404 |
 | `GET /api/markets/refresh` | Cron-only, every 5 min; re-reads the fast VI sources (Google Trends, Bluesky) for every live market, combines them with the stored slow readings, appends an EMA-smoothed point to `vi_history` |
-| `GET /api/markets/refresh-slow` | Cron-only, hourly; runs the GDELT count on BigQuery, then the same for the slow sources (GDELT, Wikipedia, YouTube, HN, X, TikTok). Then expires review drafts nobody committed, and curates images and descriptions for up to a dozen highlighted markets (see `thumbnails.ts`) |
+| `GET /api/markets/refresh-slow` | Cron-only, hourly at :07; runs the GDELT count on BigQuery, then the slow sources (GDELT, Wikipedia, YouTube, HN, X, TikTok; X and TikTok read each market every three hours), snapshots every market's breakdown into `vi_component_history`. Then the creator resolvers (a few markets a run) and the own-account reads (YouTube channels hourly, X accounts every six hours), expires review drafts nobody committed, prunes old snapshots, and curates images and descriptions for up to a dozen highlighted markets (see `thumbnails.ts`) |
 
 ### Key libraries (`atnx-web/lib/`)
 
@@ -93,13 +95,15 @@ How a submission is decided, stage by stage, is in [`atnx-web/README.md`](atnx-w
 - **`vlm.ts`** — The one model call, through Vercel AI Gateway (Gemini Flash for images, Flash-Lite for text, thinking off). Output validated against a per-request zod schema: admit / reject reason, matched candidate id, or a new market with name, up to two alternate names, type, category (ten fixed values) and aliases, plus the subject the content is about (a candidate id, or a name and type the server resolves against existing markets).
 - **`embed.ts`**, **`retrieve.ts`** — Cohere Embed v4 text embeddings (512 dims) and the two retrieval queries (cosine on `markets.embedding`, trigram on names and aliases).
 - **`route.ts`** — Deterministic routing table on the model output and retrieval scores; writes `submission_decisions`.
-- **`signals.ts`** — `scoreTerms(requests, cadence)` scores markets across four sources (a market with no stored breakdown fetches all four whatever the cadence) and combines them with `vi/score.ts`: each source gives an absolute level (0–1000) and a momentum ratio against the term's own baseline; the composite is the weighted level scaled by momentum (0.65x at a collapse, 1x steady, 1.35x at a 10x spike) over the sources that answered, times a presence multiplier (0.8 for one source up to 1.2 for all four). Sources live in `vi/trends.ts` (co-queried against a benchmark keyword so scores compare across markets), `vi/bluesky.ts`, `vi/gdelt.ts`, `vi/wikipedia.ts`. `npm run vi:probe "term"` prints the breakdown.
-- **`trends.ts`** — Google Trends (7d interest), virality score = 0.35 × current + 0.30 × momentum + 0.20 × spike + 0.15 × consistency, all × 10. `normalizeSearchTerm` strips separators so titles like `Foo / Bar` don't tank queries.
-- **`wikipedia.ts`** — OpenSearch → per-article-daily pageviews (30d, 2-day lag). Score = `log10(peak + 10) × 200 − 200`. User-Agent required by Wikimedia. 1h cache.
+- **`signals.ts`** — `scoreTerms(requests, cadence)` reads the sources due at this cadence for each market (a market with no stored breakdown reads every source), merges them with the stored breakdown, and combines them with `vi/score.ts` (see the VI section below). Some sources only cover part of the world and are asked by category: Hacker News for tech and crypto, TikTok for memes, people, music, film and TV, gaming and other, GDELT for everything but memes, DexScreener for crypto tokens. Search phrases are the name plus its multi-word aliases; a one-word alias joins only once the Wikipedia reading vouches that it redirects to the market's own article (`searchableAliases`).
+- **`vi/`** — One file per source (`trends`, `bluesky`, `wikipedia`, `gdelt` with `bigquery`, `youtube`, `hn`, `x`, `tiktok`, `dex`), the pure scoring math in `score.ts` (calibration constants, `combine`, tiers, smoothing), `samples.ts` for the per-source raw series, `relevance.ts` (the YouTube title filter) and the two Jev shadows `relevance-jev.ts` and `relevance-x-jev.ts`. `npm run vi:probe "term"` prints a breakdown.
+- **`creators/`** — A market's own accounts: `resolve.ts` and `resolve-x.ts` find the YouTube channel and the X account automatically (capture evidence, Wikidata, guessed handles), `store.ts` keeps them in `market_handles`, `channel.ts` and `x-account.ts` read the verified ones' own audience for the score.
+- **`blocklist.ts`**, **`admission-jev.ts`**, **`jev.ts`** — The two guards between "the model proposed a market" and "a market exists": generic calendar phrases are rejected, and names an admin retired (`blocked_terms`) cannot return. Jev, TypeSafe AI's typed-decision model on the gateway, gives a second opinion in shadow on that gate, on YouTube titles and on X posts; `JEV_GATE`, `JEV_TITLES` and `JEV_TWEETS` are `off | shadow | on`, default shadow.
+- **`trends.ts`** — The Google Trends interest series for the market page's seed sparkline; `normalizeSearchTerm` strips separators so titles like `Foo / Bar` don't tank queries. Scoring reads Trends through `vi/trends.ts`.
+- **`pnl.ts`**, **`trading.ts`**, **`treasury.ts`** — Position accounting shared by every view (PnL is linear in the VI against the entry, floored at the size; `liquidationVi`), the open and close calls the ticket and the extension share, and the fee treasury.
 - **`store.ts`** — `createMarket` (unique normalised name; re-selects on conflict; takes the parent pointer), `addCapture`, `recordVi`, `getCaptures`, `getMarketDetail` (with the market's parent and children). Captures display their market's category and description, not their own analysis's.
 - **`thumbnails.ts`** — The hybrid between pump.fun's user-chosen art and Polymarket's curated images. Every card starts with the newest user capture. For highlighted markets (top 24 by VI, or ≥ $1,000 traded) the hourly slow refresh finds a canonical image after the fact, copies it into the `captures` bucket under `markets/`, and writes `markets.thumbnail_url`; cards, list rows and the featured hero prefer it, the market page keeps showing the captures. The source follows the entity type: brands take the logo from Wikidata (the article must be about a company or product, so "Apple" finds "Apple Inc." and not the fruit), people the Wikipedia portrait (only when Wikidata says the article is about a human, and never for a name whose article is a disambiguation page), memes and everything else the preview image of the reference page a capture came from (Know Your Meme, fandom wikis, Wikipedia), then the Know Your Meme entry guessed from the name (its slugs are the title), then the Wikipedia lead image unless the article is about an ordinary thing sharing the name or, for a meme, not about internet culture. A page counts only when it is titled with the market's own name (a site's home or search page hands out its logo), a Wikipedia alias match never does, and an image several markets share is a placeholder and is dropped for the screenshot. Logos are drawn whole on a tile whose shade the card picks from the mark itself (`components/LogoImage.tsx`), and portraits are cropped near the top. A market with no image is retried weekly. Never overwrites a `thumbnail_url` whose source is `manual`. The same pass takes the market's description from the same place as the image (the Wikipedia intro, the reference page's summary) into `markets.description`, which the hero and the market page show instead of the newest capture's description of a post. `npm run thumbs:backfill` runs a pass now; `--redo` replaces images an earlier pass chose.
 - **`og.ts`** — Fetches a link's preview image and title for URL submissions and the share target: YouTube thumbnails directly, TikTok via oEmbed or the page's hydration JSON, everything else from `og:image` with a browser user agent first and Facebook's crawler user agent second (Facebook, Instagram and Threads are tried crawler-first). Login walls and placeholder logos count as no image.
-- **`trends-cache.ts`** — 5 min in-memory cache keyed by lowercased term.
 - **`capture-view.ts`** — UI helpers (`timeAgo`, `sentimentColor`, `viChange24h` from the VI history).
 - **`supabase/cookie-options.ts`** — Forces `SameSite=None; Secure` so the extension can attach the auth cookie on cross-origin fetches.
 
@@ -131,16 +135,29 @@ How a submission is decided, stage by stage, is in [`atnx-web/README.md`](atnx-w
 
 ## VI (Virality Index) pipeline
 
-VI is a composite score (floor 0, no ceiling; 1000 is where the giants sit) from four sources, each reporting an absolute level and a momentum ratio against the term's own baseline; the composite is the weighted level scaled by momentum over the sources that answered, times a presence multiplier (see `signals.ts` above). Nothing read off the screenshot feeds the score, so resubmitting the same image cannot move it. Each source searches the market's name and its aliases together.
+The score is total attention. Each source's raw reading is converted to YouTube-view-equivalents a week (`CALIBRATION` in `lib/vi/score.ts`: a fitted worth per unit, with passive views entering sub-linearly), the terms are summed over the sources that answered, and one log maps the total to the level: about 391 points per tenfold, floor 0, no ceiling. 1000 is where the giants sit (Google, Halloween in season), not the top of the scale. Momentum, each source's current window against the market's own 7–14 day baseline, scales the level from 0.65x at a collapse to 1.35x at a 10x spike. Six tiers label the result (Minimal, Moderate, Trending, Viral, Highly viral, Mega-viral from 851). The written score is smoothed with a two-hour half-life, and the liquidation trigger fires on every write, so a method change lands through the smoothing rather than a ramp (`RAMP_MS` is 0 while the platform is unpublished). Nothing read off a screenshot feeds the score, so resubmitting the same image cannot move it. A source that answers "unknown" is left out of the sum; a known zero counts as an answer; a market whose sources all answer unknown keeps its last value.
 
-| Source | Cadence | Notes |
+| Source | Cadence | Reading |
 | --- | --- | --- |
-| Google Trends | every 5 min | Co-queried against a benchmark keyword so scores compare across markets; quantises small terms |
-| Bluesky | every 5 min | Post counts over the last day and hour; needs `BLUESKY_*` |
-| GDELT | hourly | News coverage from GDELT's Global Knowledge Graph on BigQuery: an hourly job counts, per market and day, distinct stories (syndicated copies merged) whose extracted names or page title contain the name or an alias, as a share of the day's stories. Not the `memes` category. Needs `GCP_SA_KEY_B64` |
-| Wikipedia | hourly | Daily pageviews with a two-day lag; also the guard that lets a single-word name count on the fast sources |
+| Google Trends | every 5 min | Ratio to a benchmark keyword (`VI_TRENDS_BENCHMARK`) so terms compare across markets; unofficial scraper, quantises small terms |
+| Bluesky | every 5 min | Posts a day; needs `BLUESKY_IDENTIFIER` and `BLUESKY_APP_PASSWORD` |
+| Wikipedia | hourly | Daily pageviews (14-day median, two-day lag). A section redirect under the market's own name counts on the redirect's own views. Also the guard that lets a one-word alias into the other searches. For memes, no article reads as unknown rather than zero |
+| GDELT | hourly | Share of the day's news stories naming the market, from the Global Knowledge Graph on BigQuery (syndicated copies merged); not the `memes` category; needs `GCP_SA_KEY_B64` |
+| YouTube | views hourly, search every 1–3 days | Views in the last 7 days on the videos a name search found, after a title relevance filter (Gemini Flash-Lite, `YT_TITLE_FILTER=0` turns it off); or the verified own channel's views with Shorts discounted, whichever is larger. Needs `YOUTUBE_API_KEY`; search.list has its own bucket of 100 calls a day, so discovery is rationed per market |
+| Hacker News | hourly | Hits a day (Algolia); tech and crypto only |
+| X | every 3 h per market | Impressions a day on posts about the name: one hour of posts, read two hours later once views have matured, the day's median over reads; or the verified own account's posts' impressions times the own-channel factor, whichever is larger. twitterapi.io, paid per tweet, `X_DAILY_TWEET_BUDGET` per UTC day |
+| TikTok | every 3 h per market | Views a day gained under the market's hashtag (Apify hashtag stats; the tag is mapped from the name and aliases and re-checked weekly), a robust trend with a spike gate so vendor noise does not read as a spike; `TIKTOK_DAILY_HASHTAG_BUDGET`, `APIFY_USD_PER_HASHTAG` for the spend estimate |
+| DexScreener | hourly | Crypto tokens only; read but not calibrated, so not in the sum |
 
-A market whose sources all answer "unknown" keeps its last value. A brand-new market is scored right after its commit; if that misses, the next five-minute pass fetches every source for it.
+**Own accounts.** Every source above counts other people talking about a name; a creator's audience is the views on their own uploads, which rarely carry it. `market_handles` holds a market's YouTube channel and X account, resolved automatically and read only once verified; the admin dashboard's Handles tab reviews the rest.
+
+**Scoring state.** A new market is `scoring` (shown as "Scoring…", no trading) until its first full pass over every source, right after the commit or on the next hourly run, then `live`.
+
+**Records.** `vi_history` keeps the smoothed and raw score per write, `vi_samples` the per-source raw series the momentum needs (YouTube view totals, X and TikTok reads, own-account reads, the Jev shadow rows), `vi_component_history` a snapshot of each market's breakdown per hourly pass for sixty days, so a calibration can be refitted on any past hour.
+
+**Jev shadows.** TypeSafe AI's Jev answers typed yes/no questions on the gateway. It runs in shadow, recorded but not acting, on the admission gate (`JEV_GATE`), on YouTube titles (`JEV_TITLES`) and on X posts (`JEV_TWEETS`); each flag is `off | shadow | on`. Media-only posts are not judged and stay in.
+
+**Tuning.** `VI_CALIBRATION_JSON` overrides any calibration constant without a deploy. `npm run vi:calibrate` fits the constants against the hand anchors in `scripts/vi-anchors.ts` or a saved snapshot; `vi:compare` measures a change against the hour before it; `vi:report`, `vi:audit` and `vi:jumps` are the read-only checks (see the app README). `npm run test:vi` runs the pure-math tests.
 
 ---
 
@@ -148,11 +165,15 @@ A market whose sources all answer "unknown" keeps its last value. A brand-new ma
 
 | Table | Purpose |
 | --- | --- |
-| `markets` | One row per identified entity. `entity_type`, `category` (ten enum values), `aliases`, `embedding vector(512)`, `current_vi`, `vi_components`, `total_captures`, `total_volume_usd`, `thumbnail_url` + source, `description` + source, `parent_market_id` (the subject a meme is about, one level, display only), `created_by` (earns half of every fee), `deleted_at`. Unique on the normalised name among live rows. |
+| `markets` | One row per identified entity. `entity_type`, `category` (ten enum values), `aliases`, `embedding vector(512)`, `current_vi`, `vi_components` (the per-source breakdown), `vi_state` (`scoring` / `live`) and `vi_scoring_since`, `total_captures`, `total_volume_usd`, `thumbnail_url` + source, `description` + source, `parent_market_id` (the subject a meme is about, one level, display only), `created_by` (earns half of every fee), `deleted_at`. Unique on the normalised name among live rows. |
 | `captures` | Screenshots + model analysis. FK to `markets`. `content_hash` (unique among live rows: exact dedup), `resolution_status` (`resolved` / `review`), `confidence_score`, `deleted_at`. |
 | `submission_drafts` | The review step: one row per proposed submission with the analysis, candidates, routing decision, nudge and the bounded choices; the parked image path; status pending / committed / expired. Server-only. |
 | `submission_decisions` | Audit: one row per committed or rejected submission with outcome, market, candidates shown, similarity scores, model confidence, reject reason, latency and the full model response. Admin-readable. |
 | `vi_history` | Append-only time series of `(market_id, vi, raw_vi, recorded_at)` powering the sparklines. |
+| `vi_samples` | Per-source raw readings over time (`market_id, source, sampled_at, value, meta`): YouTube view totals, X and TikTok reads, own-account reads, the Jev shadow rows. Momentum for those sources is derived from it. Service-role only. |
+| `vi_component_history` | One snapshot of a market's breakdown, raw and smoothed score per hourly pass, kept sixty days, for refits and replays. |
+| `market_handles` | A market's own platform accounts, one row per platform, with how they were found and whether they are verified; only verified rows feed the score. |
+| `blocked_terms` | Names that may not become markets again, filled when an admin retires a market; the capture pipeline rejects a matching proposal. |
 | `user_profiles` | `id` (= auth.uid), `handle` (fixed), `email`, `role` (`user` / `moderator` / `admin`). |
 | `sim_balances` | Per-user simulated USD balance, realized PnL, trade count, fees earned and paid. |
 | `positions` | Open + closed trades: `direction`, `size_usd`, `leverage`, `entry_vi`, `exit_vi`, `realized_pnl`, `fee_usd`, `liquidated`, `status`. |
@@ -222,6 +243,9 @@ Optional overrides (model ids, link and confirm thresholds, the daily market-cre
 
 ```bash
 npm run eval:capture -- --cleanup   # 25 fixtures through the one-shot route, resubmits, then the review cases; needs a running dev server
+npm run test:vi                      # the VI math, node:test
+npm run vi:report                    # what the last hourly run did: coverage, spend, notable markets
+npm run vi:audit                     # every live market's score, breakdown, history coverage and cron health
 ```
 
 ### Seeding trending markets
@@ -285,6 +309,7 @@ by the web app at `/privacy`, so deploy the web app before submitting. Bump
 
 ## Known rough edges
 
-- `trends-cache.ts` is in-memory — in a multi-region Vercel deployment it's per-instance.
-- No test framework. `npm run eval:capture` is the regression check for the submission pipeline and the review step; everything else is manual.
-- Google Trends has no official API. Rate-limit hiccups surface as `score === 0` and the refresh cron quietly skips the market.
+- The per-source caches and the X and TikTok daily ledgers are in-memory per instance; the ledgers re-read `vi_samples` every few minutes, so a multi-instance deployment overspends by at most that window.
+- Tests cover the VI math (`npm run test:vi`, node:test through tsx). `npm run eval:capture` is the regression check for the submission pipeline and the review step; the rest is manual.
+- Google Trends has no official API. Rate-limit hiccups surface as an unknown reading and the refresh keeps the market's last value.
+- Each free source has a hard ceiling (YouTube's 100 searches a day, Apify's plan limit, the X tweet budget); when one runs out the source goes dark until its window resets and the stored reading stands in for up to two days.
