@@ -102,7 +102,7 @@ const SYSTEM_PROMPT = `You classify content that people submit to ATNX, a platfo
 Decide three things.
 
 1. admit. Admit the submission when its main subject is a piece of internet culture with a public identity: a meme, a viral trend or format, a public figure, a brand or product in the public conversation, a public event, a song, show, film, game, or crypto token that people are talking about. Reject (admit=false) with a reject_reason when:
-   - not_cultural_content: a blank, private, or purely functional screen (settings, spreadsheets, documents, chats between private individuals, receipts, code), or content with no identifiable public subject.
+   - not_cultural_content: a blank, private, or purely functional screen (settings, spreadsheets, documents, chats between private individuals, receipts, code), or content with no identifiable public subject. A generic phrase is not a subject: a calendar period ("November 2026", "2027", "Q4"), a common word or category ("memes", "football", "cats"), a platform or a format name on its own. A meme built on such a phrase is admitted under the meme's own name, never under the phrase.
    - policy: sexual content involving minors, or content whose main subject is a private individual being harassed or doxxed.
    - unreadable: the input is too small, corrupted, or garbled to read.
    When admit is false, set matched_market_id and new_market to null.

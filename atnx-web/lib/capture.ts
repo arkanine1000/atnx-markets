@@ -48,6 +48,7 @@ import {
 } from './review';
 import { normalizeSearchTerm } from './trends';
 import { composeVi, prefetchSlowSources, scoreTerms, creatorOf } from './signals';
+import { guardProposal } from './blocklist';
 import { runChannelJob, verifiedYoutubeHandles } from './creators/channel';
 import { runXAccountJob, verifiedXHandles } from './creators/x-account';
 import { runGdeltJob } from './vi/gdelt';
@@ -369,12 +370,17 @@ async function analyseAndRoute(opts: {
     }
   }
 
-  const decision = routeSubmission({
-    submission,
-    shownCandidates: candidates,
-    postRetrieval,
-    embedding,
-  });
+  // A proposal to create is checked against the generic-phrase rule and
+  // the retired names (lib/blocklist.ts) before anything is created.
+  const decision = await guardProposal(
+    routeSubmission({
+      submission,
+      shownCandidates: candidates,
+      postRetrieval,
+      embedding,
+    })
+  );
+  if (decision.outcome === 'rejected' && decision.blocked) console.log(`[capture] proposal blocked: ${decision.blocked}`);
 
   return { submission, shownCandidates: candidates, preRetrieval, postRetrieval, decision, embedding, docEmbedding };
 }

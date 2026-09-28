@@ -262,6 +262,30 @@ export type Database = {
           },
         ];
       };
+      blocked_terms: {
+        Row: {
+          term_normalized: string;
+          reason: string | null;
+          source_market_id: string | null;
+          created_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          term_normalized: string;
+          reason?: string | null;
+          source_market_id?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          term_normalized?: string;
+          reason?: string | null;
+          source_market_id?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
       vi_component_history: {
         Row: {
           id: number;

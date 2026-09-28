@@ -8,6 +8,7 @@ import { STARTING_BALANCE } from "@/lib/leaderboard";
 import type { Treasury } from "@/lib/treasury";
 import {
   softDeleteMarket,
+  retireMarket,
   restoreMarket,
   editMarketName,
   softDeleteCapture,
@@ -415,17 +416,31 @@ function MarketsTab({ markets }: { markets: MarketRow[] }) {
                       </button>
                     </>
                   ) : (
-                    <button
-                      disabled={busy}
-                      onClick={() => {
-                        const reason = promptReason("soft delete");
-                        if (reason === null) return;
-                        run(m.id, () => softDeleteMarket(m.id, reason));
-                      }}
-                      className="text-atnx-magenta hover:opacity-80 cursor-pointer disabled:opacity-40"
-                    >
-                      Delete
-                    </button>
+                    <>
+                      <button
+                        disabled={busy}
+                        onClick={() => {
+                          const reason = promptReason("soft delete");
+                          if (reason === null) return;
+                          run(m.id, () => softDeleteMarket(m.id, reason));
+                        }}
+                        className="text-atnx-magenta hover:opacity-80 cursor-pointer disabled:opacity-40"
+                      >
+                        Delete
+                      </button>
+                      <button
+                        disabled={busy}
+                        onClick={() => {
+                          const reason = promptReason("retire (delete and block the name and aliases from being submitted again)");
+                          if (reason === null) return;
+                          run(m.id, () => retireMarket(m.id, reason));
+                        }}
+                        title="Soft-delete and add the name and every alias to the blocklist, so no capture can create this market again."
+                        className="ml-3 text-atnx-magenta hover:opacity-80 cursor-pointer disabled:opacity-40"
+                      >
+                        Retire
+                      </button>
+                    </>
                   )}
                 </td>
               </tr>

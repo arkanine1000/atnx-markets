@@ -1,4 +1,5 @@
 "use server";
+import { blockMarketTerms } from "@/lib/blocklist";
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
@@ -119,6 +120,41 @@ export async function softDeleteMarket(
     market_id: marketId,
     reason: reason || null,
   });
+}
+
+// Retires a market: soft-deletes it and blocks its name and aliases so
+// the same subject cannot be proposed again (lib/blocklist.ts,
+// supabase/021). For names that should never have been markets, such as
+// the calendar phrase "November 2026".
+export async function retireMarket(marketId: string, reason: string): Promise<AdminActionResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: "Not signed in" };
+  const { data: profile } = await supabase.from("user_profiles").select("role").eq("id", user.id).maybeSingle();
+  if (!profile || !["admin", "moderator"].includes(profile.role)) return { success: false, error: "Not allowed" };
+
+  const admin = createAdminClient();
+  const { data: market, error } = await admin.from("markets").select("id, entity_name, aliases").eq("id", marketId).maybeSingle();
+  if (error || !market) return { success: false, error: error?.message ?? "Market not found" };
+  const deleted = await softDeleteMarket(marketId, reason ? `retired: ${reason}` : "retired");
+  if (!deleted.success) return deleted;
+  try {
+    const n = await blockMarketTerms(market, reason || "retired from the admin dashboard", user.id);
+    await admin.from("moderation_log").insert({
+      admin_user_id: user.id,
+      action: "retire_market",
+      target_type: "market",
+      target_id: marketId,
+      reason: reason || null,
+      metadata: { blocked_terms: n, name: market.entity_name, aliases: market.aliases ?? [] },
+    });
+  } catch (err) {
+    return { success: false, error: `soft-deleted, but blocking the name failed: ${(err as Error).message}` };
+  }
+  revalidatePath("/admin");
+  return { success: true };
 }
 
 export async function restoreMarket(
