@@ -356,13 +356,21 @@ export async function GET(request: Request) {
     const marketIds = [...new Set(openPositions.map((p) => p.market_id))];
     const now = new Date();
 
-    // "All" runs from the account's first day (or its oldest open position,
-    // whichever is earlier), never less than a day so the chart has width.
+    // "All" runs from the account's first trade, open or closed, or its
+    // first creator fee if that came earlier, never less than a day so the
+    // chart has width. Not the account's creation date: the sim balance
+    // was credited months before some accounts traded, and a flat line
+    // back to April says nothing.
     let start: Date;
     let bucketSeconds: number;
     if (range === 'all') {
-      const candidates = [new Date(user.created_at).getTime(), now.getTime() - DAY_MS];
-      for (const p of openPositions) candidates.push(new Date(p.opened_at).getTime());
+      const [{ data: firstPos }, { data: firstFee }] = await Promise.all([
+        supabase.from('positions').select('opened_at').eq('user_id', user.id).order('opened_at', { ascending: true }).limit(1).maybeSingle(),
+        supabase.from('fee_events').select('created_at').eq('creator_user_id', user.id).gt('creator_usd', 0).order('created_at', { ascending: true }).limit(1).maybeSingle(),
+      ]);
+      const candidates = [now.getTime() - DAY_MS];
+      if (firstPos?.opened_at) candidates.push(new Date(firstPos.opened_at).getTime());
+      if (firstFee?.created_at) candidates.push(new Date(firstFee.created_at).getTime());
       start = new Date(Math.min(...candidates.filter((t) => Number.isFinite(t))));
       // ~150 buckets across the span, in whole quarter-hours, at least 15 min.
       const span = now.getTime() - start.getTime();
