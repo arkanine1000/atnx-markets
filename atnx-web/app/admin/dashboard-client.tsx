@@ -28,6 +28,7 @@ interface MarketRow {
   total_captures: number;
   network: "simulated" | "devnet" | "mainnet";
   parent_market_id: string | null;
+  aliases: string[] | null;
   // Where markets.description came from: wikipedia, page:<host>, model,
   // manual; null while it has none.
   description_source: string | null;
@@ -441,9 +442,13 @@ function MarketsTab({ markets }: { markets: MarketRow[] }) {
                       <button
                         disabled={busy}
                         onClick={() => {
-                          const reason = promptReason("retire (delete and block the name and aliases from being submitted again)");
+                          const reason = promptReason("retire (delete and block the name from being submitted again)");
                           if (reason === null) return;
-                          run(m.id, () => retireMarket(m.id, reason));
+                          // A wording retirement keeps the subject creatable under a better name.
+                          const blockAliases = window.confirm(
+                            `Also block its aliases (${(m.aliases ?? []).join(", ") || "none"})?\n\nOK: the subject itself must never come back.\nCancel: only the exact name "${m.entity_name}" is blocked; the subject may be recreated under a better name.`
+                          );
+                          run(m.id, () => retireMarket(m.id, reason, { blockAliases }));
                         }}
                         title="Soft-delete and add the name and every alias to the blocklist, so no capture can create this market again."
                         className="ml-3 text-atnx-magenta hover:opacity-80 cursor-pointer disabled:opacity-40"

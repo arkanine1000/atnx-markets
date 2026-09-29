@@ -19,6 +19,8 @@
     "vi:titles": "npx --yes tsx --env-file=.env.local scripts/vi-title-probe.ts",
     "vi:compare": "npx --yes tsx --env-file=.env.local scripts/vi-compare.ts",
     "jev:backtest": "npx --yes tsx --env-file=.env.local scripts/jev-gate-backtest.ts",
+    "jev:adjudicate": "npx --yes tsx --env-file=.env.local scripts/jev-adjudicate.ts",
+    "jev:simulate-x": "npx --yes tsx --env-file=.env.local scripts/jev-x-simulate.ts",
     "test:vi": "npx --yes tsx --test lib/vi/*.test.ts lib/creators/*.test.ts lib/*.test.ts",
     "creators:resolve": "npx --yes tsx --env-file=.env.local scripts/creators-resolve.ts",
     "aliases:backfill": "npx --yes tsx --env-file=.env.local scripts/backfill-aliases.ts",

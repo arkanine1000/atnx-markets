@@ -71,9 +71,18 @@ export async function guardProposal(decision: RoutingDecision, ctx: { captureTex
   return withJev(decision);
 }
 
-// Blocks a retired market's name and aliases (the dashboard's Retire).
-export async function blockMarketTerms(market: { id: string; entity_name: string; aliases: string[] | null }, reason: string, by: string | null): Promise<number> {
-  const terms = [...new Set([market.entity_name, ...(market.aliases ?? [])].map(normalizeName).filter((n) => n.length >= 2))];
+// Blocks a retired market's name, and its aliases unless the retirement
+// is about the wording: a market retired to be recreated under a better
+// name must not have its subject blocked through an alias the model will
+// propose again ("Resident Evil Movie" blocked the film itself).
+export async function blockMarketTerms(
+  market: { id: string; entity_name: string; aliases: string[] | null },
+  reason: string,
+  by: string | null,
+  { includeAliases = true }: { includeAliases?: boolean } = {}
+): Promise<number> {
+  const names = includeAliases ? [market.entity_name, ...(market.aliases ?? [])] : [market.entity_name];
+  const terms = [...new Set(names.map(normalizeName).filter((n) => n.length >= 2))];
   if (terms.length === 0) return 0;
   const { error } = await createAdminClient()
     .from('blocked_terms')
