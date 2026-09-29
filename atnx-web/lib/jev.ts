@@ -1,11 +1,17 @@
 // Jev (TypeSafe AI) through the Vercel AI Gateway: typed decisions with
-// probabilities, no generation. Three pilots run in shadow, recording Jev's
-// verdict beside the current path without acting on it:
-//   - the admission gate for generic names (lib/admission-jev.ts, JEV_GATE)
-//   - the YouTube title relevance filter (lib/vi/relevance-jev.ts, JEV_TITLES)
-//   - per-post relevance on X (lib/vi/relevance-x-jev.ts, JEV_TWEETS)
-// Each flag is off | shadow | on; the default is shadow. Every call fails
-// open (null) on error or timeout, and the caller keeps its own decision.
+// probabilities, no generation. Three uses, each behind a flag that is
+// off | shadow (recorded beside the current path, not acting) | on, with
+// shadow as the code default:
+//   - per-post relevance on X (lib/vi/relevance-x-jev.ts, JEV_TWEETS): on
+//     in production since 2026-09-29 after an adjudication of the shadow
+//     data (scripts/jev-adjudicate.ts)
+//   - the admission gate for generic names (lib/admission-jev.ts, JEV_GATE):
+//     shadow, too few creations a day to judge
+//   - the YouTube title relevance filter (lib/vi/relevance-jev.ts,
+//     JEV_TITLES): off in production, Gemini was right on 75 % of their
+//     disagreements
+// Every call fails open (null) on error or timeout, and the caller keeps
+// its own decision.
 //
 // The gateway exposes only the moving alias `typesafe-ai/jev` (a pinned
 // `typesafe-ai/jev-1.13.0` is not found), so the model id each answer came

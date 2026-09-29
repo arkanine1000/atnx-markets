@@ -1,7 +1,9 @@
-// The YouTube title relevance filter as Jev booleans, one per title, run
-// in shadow beside the Gemini verdict (lib/vi/relevance.ts). Each read
-// records both verdicts and their disagreements so the two can be
-// compared on real titles before either replaces the other.
+// The YouTube title relevance filter as Jev booleans, one per title,
+// beside the Gemini verdict (lib/vi/relevance.ts). Each read records both
+// verdicts and their disagreements. Compared 2026-09-29 on 214 real
+// disagreements with a stronger model as the judge: Gemini was right on
+// 75 %, Jev too strict (its 0.35-0.5 band was 89 % about the subject), so
+// JEV_TITLES is off in production and this stays available for a rerun.
 import { jevEvaluate } from '../jev';
 import type { RelevanceSubject, RelevanceVideo } from './relevance';
 

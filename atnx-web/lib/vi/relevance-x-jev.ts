@@ -1,12 +1,11 @@
-// Per-tweet relevance on X as Jev booleans, one per fetched post, run in
-// shadow beside the unfiltered reading (lib/vi/x.ts). A phrase search
-// returns every post that contains the phrase, not every post about the
-// subject: "meta" is a goal in Portuguese and a game's balance, "hn" is
-// yes in romanised Urdu. Nothing filters those today, so they count in
-// full, and being steady they flatten the momentum of a real spike.
-// Each read records Jev's verdict beside the unfiltered numbers so the
-// two can be compared on real posts before the verdict counts
-// (JEV_TWEETS=on).
+// Per-tweet relevance on X as Jev booleans, one per fetched post
+// (lib/vi/x.ts). A phrase search returns every post that contains the
+// phrase, not every post about the subject: "meta" is a goal in
+// Portuguese and a game's balance, "hn" is yes in romanised Urdu. Unfiltered
+// they counted in full, and being steady they flattened the momentum of a
+// real spike. Each read records Jev's verdict beside the unfiltered
+// numbers; with JEV_TWEETS=on (production since 2026-09-29) the kept
+// posts are the ones that count.
 import { jevEvaluate } from '../jev';
 
 // Keep a post at this probability or above. Adjudicated 2026-09-29 on 294
