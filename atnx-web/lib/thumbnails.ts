@@ -413,8 +413,16 @@ export async function pageImage(url: string, name: string): Promise<FoundImage |
     buffer: Buffer.from(image.imageBase64, 'base64'),
     contentType: image.mediaType,
     source,
-    ...(summary && summary.length >= 20 ? { description: leadSentences(summary), descriptionSource: source } : {}),
+    ...(summary && summary.length >= 20 && !isSiteSlogan(summary) ? { description: leadSentences(summary), descriptionSource: source } : {}),
   };
+}
+
+// A gallery or category page carries the site's own line as its summary
+// ("See more '90s Nostalgia' images on Know Your Meme!"), which says
+// nothing about the market. Pure.
+export function isSiteSlogan(summary: string): boolean {
+  const s = summary.trim();
+  return /^(see more|browse|explore|discover|check out|read more)\b/i.test(s) || /\bon know your meme!?$/i.test(s) || /\b(sign up|log in) to\b/i.test(s);
 }
 
 // Whether a page title is about the name: the title's first segment
