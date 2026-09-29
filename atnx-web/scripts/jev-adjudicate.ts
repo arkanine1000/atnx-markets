@@ -55,22 +55,24 @@ async function adjudicate(subject: string, items: Item[]): Promise<void> {
   for (let i = 0; i < items.length; i += BATCH) {
     const batch = items.slice(i, i + BATCH);
     const list = batch.map((it, k) => `${k + 1}. [${it.kind}] ${it.text.replace(/\s+/g, ' ').slice(0, 300)}`).join('\n');
-    try {
-      const r = await generateText({
-        model: MODEL,
-        system: SYSTEM,
-        prompt: `Subject: ${subject}\n\nItems:\n${list}\n\nAnswer for every item 1 to ${batch.length}.`,
-        output: Output.object({ schema: verdictSchema }),
-        temperature: 0,
-        maxOutputTokens: 2500,
-        abortSignal: AbortSignal.timeout(60_000),
-      });
-      for (const v of r.output?.verdicts ?? []) {
-        const it = batch[v.n - 1];
-        if (it) { it.about = v.about; it.why = v.why; }
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const r = await generateText({
+          model: MODEL,
+          system: SYSTEM,
+          prompt: `Subject: ${subject}\n\nItems:\n${list}\n\nAnswer for every item 1 to ${batch.length}.`,
+          output: Output.object({ schema: verdictSchema }),
+          maxOutputTokens: 3000,
+          abortSignal: AbortSignal.timeout(90_000),
+        });
+        for (const v of r.output?.verdicts ?? []) {
+          const it = batch[v.n - 1];
+          if (it) { it.about = v.about; it.why = v.why; }
+        }
+        break;
+      } catch (err) {
+        console.error(`[adjudicate] "${subject.slice(0, 30)}" batch failed (attempt ${attempt + 1}): ${(err as Error).message.slice(0, 160)}`);
       }
-    } catch (err) {
-      console.error(`[adjudicate] "${subject.slice(0, 30)}" batch failed: ${(err as Error).message.slice(0, 160)}`);
     }
   }
 }
@@ -117,7 +119,7 @@ async function main() {
       for (const t of parseList(meta.jev_only)) items.push({ kind: 'title', market: m.entity_name, subject: subjectOf(m), text: t.text, jevP: t.p, geminiKeep: false, jevKeep: true, band: 'disagreement' });
       byMarket.set(m.id, items);
     }
-    for (const [, items] of byMarket) { await adjudicate(items[0].subject, items); all.push(...items); }
+    for (const [, items] of byMarket) { if (!items.length) continue; await adjudicate(items[0].subject, items); all.push(...items); }
     const judged = all.filter((i) => i.kind === 'title' && i.about !== undefined);
     const gRight = judged.filter((i) => i.geminiKeep === i.about).length;
     const jRight = judged.filter((i) => i.jevKeep === i.about).length;
