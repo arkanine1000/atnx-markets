@@ -152,7 +152,20 @@ The score is total attention. Each source's raw reading is converted to YouTube-
 
 **Own accounts.** Every source above counts other people talking about a name; a creator's audience is the views on their own uploads, which rarely carry it. `market_handles` holds a market's YouTube channel and X account, resolved automatically and read only once verified; the admin dashboard's Handles tab reviews the rest.
 
-**Scoring state.** A new market is `scoring` (shown as "Scoring…", no trading) until its first full pass over every source, right after the commit or on the next hourly run, then `live`.
+**Scoring state.** A new market is `scoring` (shown as "Scoring…", no trading) until its first full pass over every source, right after the commit or on the next hourly run, at most two hours, then `live`. The go-live write is the reading itself; smoothing starts from there, so nobody sees a number climbing from zero.
+
+**A new market's first day.** The level is a log of the summed attention, so a source that has not answered yet understates the level by its eventual share, and a source without a momentum yet is left out of the momentum average rather than counted as flat.
+
+| After the commit | What lands |
+| --- | --- |
+| 15–30 s | The first full pass, and the market goes live at that reading. Trends, Bluesky and Wikipedia arrive with level and momentum (their APIs return history); YouTube with its 7-day search views; X with one hour of posts through the Jev filter; GDELT with today's news count; Hacker News for tech and crypto. TikTok gets its hashtag mapped, no level yet. The description is written in the same pass, and the YouTube channel resolver runs for people and brands. |
+| next hourly run | GDELT backfills 14 days, so its momentum works. A verified own channel is read for the first time. The X account resolver runs a few markets per hour. |
+| ~3 h | TikTok's level, from its second read of the hashtag. |
+| ~4 h | YouTube momentum (three prior hourly deltas). |
+| ~12 h | X momentum (four prior three-hourly reads). |
+| ~36 h | TikTok momentum: four reads in the last 12 h against four in the same 12 h a day earlier. |
+
+For a person or brand the go-live level is usually within a few points of where it settles. For a meme, TikTok can be half the total, so the level sits about a hundred points low for the first three hours. The gap that can matter is a creator whose name nobody writes: the market reads near zero until the own channel or account is verified, automatically when the capture evidence and Wikidata agree, otherwise after the admin decides on the Handles tab.
 
 **Records.** `vi_history` keeps the smoothed and raw score per write, `vi_samples` the per-source raw series the momentum needs (YouTube view totals, X and TikTok reads, own-account reads, the Jev shadow rows), `vi_component_history` a snapshot of each market's breakdown per hourly pass for sixty days, so a calibration can be refitted on any past hour.
 
