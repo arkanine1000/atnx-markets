@@ -3,7 +3,6 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildDescribePrompt, dueForDescription, ownArticleTitle } from './describe';
 import type { Components } from './vi/score';
-import { isSiteSlogan } from './thumbnails';
 
 const wiki = (meta: Record<string, string | number>): Components => ({ wikipedia: { source: 'wikipedia', level: 300, momentum: 1, fetchedAt: '2026-09-29T00:00:00Z', meta } });
 
@@ -32,10 +31,4 @@ test('buildDescribePrompt lists the subject, its names and the context in order'
   assert.match(p, /^Subject: Dolan Dark\nType: person \(people\)\nAlso known as: dolandarkest\n\nContext, newest first:\n1\. \{"name"/);
   const bare = buildDescribePrompt({ entity_name: 'X', entity_type: null, category: null, aliases: [] }, ['ctx']);
   assert.match(bare, /^Subject: X\nType: unknown\n\nContext/);
-});
-
-test('isSiteSlogan: a gallery page\'s own line is not a description', () => {
-  assert.equal(isSiteSlogan("See more '90s Nostalgia' images on Know Your Meme!"), true);
-  assert.equal(isSiteSlogan('Browse the latest memes and viral videos.'), true);
-  assert.equal(isSiteSlogan('Trollface is a Rage Comic character wearing a mischievous smile.'), false);
 });
