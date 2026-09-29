@@ -9,7 +9,11 @@
 // (JEV_TWEETS=on).
 import { jevEvaluate } from '../jev';
 
-export const JEV_TWEET_KEEP_AT = 0.5;
+// Keep a post at this probability or above. Adjudicated 2026-09-29 on 294
+// live posts: at 0.4 no post about the subject was dropped and drop
+// precision was 100 %; at 0.5 two were (3 % of the views on posts about
+// the subject) for slightly fewer noise views kept. Set by JEV_TWEET_KEEP_AT.
+export const JEV_TWEET_KEEP_AT = (() => { const n = Number(process.env.JEV_TWEET_KEEP_AT); return Number.isFinite(n) && n > 0 && n < 1 ? n : 0.4; })();
 // The read's own cap (TWEET_CAP in x.ts); one call judges a whole read.
 const MAX_TWEETS = 60;
 const MAX_TEXT = 280;
