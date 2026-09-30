@@ -121,12 +121,13 @@ export function MarketsView({
 }) {
   const router = useRouter();
   const [data, setData] = useState<MarketsPage>(initial);
-  const [limit, setLimit] = useState(query.limit);
   // The order and filter as last clicked. They lead the URL while its
   // navigation is in flight, so a second tick builds on the first.
   const [sort, setSortState] = useState(query.sort);
   const [categories, setCategories] = useState<Category[]>(query.categories);
-  const [more, setMore] = useState<"idle" | "loading" | "error">("idle");
+  // True while "Show more" is the navigation in flight: the list keeps its
+  // full opacity then, since nothing on it is about to change.
+  const [more, setMore] = useState(false);
   const [pending, startTransition] = useTransition();
   const view = useSyncExternalStore<ViewMode>(subscribeView, readView, () => "grid");
   // Body of the last listing we rendered. A poll that returns the same
@@ -140,18 +141,12 @@ export function MarketsView({
   if (initial !== rendered) {
     setRendered(initial);
     setData(initial);
-    setLimit(query.limit);
     setSortState(query.sort);
     setCategories(query.categories);
-    setMore("idle");
+    setMore(false);
   }
-  // Which listing a "Show more" answer belongs to, checked when it lands.
-  const current = useRef(initial);
-  useEffect(() => {
-    current.current = initial;
-  }, [initial]);
 
-  const listed = { ...query, limit };
+  const limit = query.limit;
   const catsKey = query.categories.join(",");
 
   // Poll the listing while the tab is visible, backing off while the API
@@ -160,7 +155,7 @@ export function MarketsView({
   useEffect(() => {
     let live = true;
     async function fetchListing() {
-      const res = await fetch(`/api/markets${marketsHref(listed, "")}`);
+      const res = await fetch(`/api/markets${marketsHref(query, "")}`);
       if (!res.ok) throw new Error(`markets ${res.status}`);
       const body = await res.text();
       // A tick that set off before the query or limit changed is stale.
@@ -179,42 +174,29 @@ export function MarketsView({
       live = false;
       stop();
     };
-    // listed is rebuilt every render; these are what it is made of.
+    // query is rebuilt every render; these are what it is made of.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [limit, query.sort, query.q, catsKey]);
 
-  // One more page of the same listing. The API answers with the whole
-  // longer list, the one the poll then keeps fresh; the URL records the
-  // length so a reload or the back button comes back to it, without the
-  // server round trip a router navigation would make.
-  const showMore = async () => {
-    const next = { ...query, limit: Math.min(MAX_LIMIT, limit + PAGE_SIZE) };
-    const from = initial;
-    setMore("loading");
-    try {
-      const res = await fetch(`/api/markets${marketsHref(next, "")}`);
-      if (!res.ok) throw new Error(`markets ${res.status}`);
-      const body = await res.text();
-      const page = JSON.parse(body) as MarketsPage;
-      if (!Array.isArray(page.items)) throw new Error("markets: no items");
-      if (current.current !== from) return;
-      lastBody.current = body;
-      setData(page);
-      setLimit(next.limit);
-      setMore("idle");
-      window.history.replaceState(null, "", marketsHref(next));
-    } catch {
-      if (current.current === from) setMore("error");
-    }
-  };
-
-  // A new order or filter starts again from the top of the list.
   const navigate = (next: Partial<MarketsQuery>) =>
     startTransition(() =>
       router.replace(marketsHref({ sort, q: query.q, categories, ...next }), {
         scroll: false,
       }),
     );
+
+  // One more page of the same listing, as a router navigation rather than
+  // a fetch plus history.replaceState: a manual replaceState keeps the
+  // router's tree for the shorter listing, so the back button restored the
+  // first page from cache and the scroll position with it. A navigation
+  // records the longer listing in the history entry, and going back
+  // restores it, at its length, from the router cache.
+  const showMore = () => {
+    setMore(true);
+    navigate({ limit: Math.min(MAX_LIMIT, limit + PAGE_SIZE) });
+  };
+
+  // A new order or filter starts again from the top of the list.
   const setSort = (next: SortMode) => {
     setSortState(next);
     navigate({ sort: next });
@@ -326,7 +308,7 @@ export function MarketsView({
 
       <div
         aria-busy={pending}
-        className={`transition-opacity duration-200 ${pending ? "opacity-50" : ""}`}
+        className={`transition-opacity duration-200 ${pending && !more ? "opacity-50" : ""}`}
       >
         {items.length === 0 && (q || filtered) ? (
           <EmptyState
@@ -414,18 +396,14 @@ export function MarketsView({
             <button
               type="button"
               onClick={showMore}
-              disabled={more === "loading" || pending}
+              disabled={pending}
               className="inline-flex items-center gap-2 rounded-full border border-surface bg-surface hover-lift px-5 py-2.5 text-xs font-bold text-primary cursor-pointer disabled:cursor-wait disabled:opacity-60"
             >
-              {more === "loading" ? "Loading…" : "Show more"}
+              {more && pending ? "Loading…" : "Show more"}
             </button>
           )}
           <p className="text-[11px] font-mono tabular-nums text-tertiary" aria-live="polite">
-            {more === "error" ? (
-              <span className="text-atnx-magenta light:text-atnx-magenta-light">
-                Could not load more. Try again.
-              </span>
-            ) : canShowMore ? (
+            {canShowMore ? (
               <>
                 Showing {items.length} of {total}
               </>

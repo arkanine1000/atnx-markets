@@ -147,6 +147,55 @@ function RelatedMarketLink({ market }: { market: MarketRow }) {
   );
 }
 
+// The market's description, clamped to two lines with a "Show more" after
+// the ellipsis. The toggle appears only when the text overflows the clamp,
+// measured on mount and whenever the column's width changes.
+function Description({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  const [overflows, setOverflows] = useState(false);
+  const ref = useRef<HTMLParagraphElement>(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    // Measured with the clamp on, so an open paragraph does not read as
+    // fitting and lose its "Show less".
+    const measure = () => {
+      const clamped = el.classList.contains("line-clamp-2");
+      if (!clamped) el.classList.add("line-clamp-2");
+      setOverflows(el.scrollHeight > el.clientHeight + 1);
+      if (!clamped) el.classList.remove("line-clamp-2");
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [text]);
+
+  return (
+    <div className="mt-2">
+      <p
+        ref={ref}
+        className={`text-xs sm:text-sm text-secondary leading-relaxed font-sans ${
+          open ? "" : "line-clamp-2"
+        }`}
+      >
+        {text}
+      </p>
+      {overflows && (
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          className="mt-0.5 text-xs text-secondary hover:text-atnx-cyan cursor-pointer"
+        >
+          {open ? "Show less" : "Show more"}
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function MarketDetailClient({
   market,
   parent = null,
@@ -368,9 +417,7 @@ export function MarketDetailClient({
                       )}
                     </div>
                     {market.description && (
-                      <p className="mt-2 text-xs sm:text-sm text-secondary leading-relaxed font-sans line-clamp-2">
-                        {market.description}
-                      </p>
+                      <Description text={market.description} />
                     )}
                   </div>
                 </div>
