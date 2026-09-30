@@ -146,12 +146,23 @@ export function prefetchSlowSources(requests: ScoreRequest[]): { tiktokHashtags:
     requests
       .filter((r) => applies('tiktok', r))
       .map((r) => {
-        const search = searchTerms(r.term, searchableAliases(r.aliases ?? [], r.stored?.wikipedia?.meta), { wiki: r.stored?.wikipedia?.meta, entityType: r.entityType, category: r.category });
-        const dropBare = search.term !== r.term;
-        return { term: search.term, aliases: dropBare ? (r.aliases ?? []).filter((a) => a !== search.term) : (r.aliases ?? []), marketId: r.marketId, stored: r.stored?.tiktok ?? null };
+        const search = searchTerms(r.term, searchableAliases(r.aliases ?? [], r.stored?.wikipedia?.meta), { wiki: r.stored?.wikipedia?.meta, entityType: r.entityType, category: r.category, name: r.name });
+        return { term: search.term, aliases: tiktokAliases(r.term, r.aliases ?? [], search), marketId: r.marketId, stored: r.stored?.tiktok ?? null };
       })
   );
   return { tiktokHashtags };
+}
+
+// The aliases TikTok may build hashtag candidates from. Every alias as
+// written when the bare name is searched (one-word tags such as "gta6"
+// are wanted); when the search dropped the bare name, the aliases that
+// are that name again ("Cars" among the aliases of "Cars (2006 film)",
+// where the naming rule puts it) go too, and so does the alias promoted
+// to the search term, which is the term now. Pure.
+export function tiktokAliases(bareTerm: string, aliases: string[], search: { term: string; aliases: string[] }): string[] {
+  if (search.term === bareTerm) return aliases;
+  const drop = new Set([bareTerm, search.term].map((a) => a.trim().toLowerCase()));
+  return aliases.filter((a) => !drop.has(a.trim().toLowerCase()));
 }
 
 // Scores many terms at once so Trends can batch them.
@@ -211,7 +222,7 @@ export async function scoreTerms(
           ? fetchXSignal({ term: search.term, aliases: search.aliases, marketId: req.marketId, stored: stored?.x ?? null, entityType: req.entityType, category: req.category, description: req.description }).catch(() => null)
           : null,
         want.has('tiktok') && applies('tiktok', request)
-          ? fetchTiktokSignal({ term: search.term === term ? term : search.term, aliases: search.term === term ? (req.aliases ?? []) : (req.aliases ?? []).filter((a) => a !== search.term), marketId: req.marketId, stored: stored?.tiktok ?? null }).catch(() => null)
+          ? fetchTiktokSignal({ term: search.term, aliases: tiktokAliases(term, req.aliases ?? [], search), marketId: req.marketId, stored: stored?.tiktok ?? null }).catch(() => null)
           : null,
       ]);
       if (bluesky) components.bluesky = bluesky;
