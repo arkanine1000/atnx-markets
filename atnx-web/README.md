@@ -97,7 +97,11 @@ against a running app.
    (`lib/vlm.ts`). Gemini Flash for images, Flash-Lite for text. The output is
    validated against a schema: admit or reject with a reason, match a shown
    candidate, or propose a new market with a name, type, category and
-   aliases.
+   aliases. A subject whose canonical name is an everyday word or shared
+   with other well-known things is named with a qualifier, "Cars (2006
+   film)", "Wednesday (TV series)", with the bare name among the aliases;
+   the sources then search the aliases and Trends its topic, never the
+   bare word.
 4. If the model proposed a new market, embed its name and description and
    check again, name and aliases against names and aliases. A close enough
    neighbour is linked instead of created. In the band below that, the
@@ -143,6 +147,7 @@ ignores for Gemini 3.x (measured: 18 s and truncated JSON versus 2.6 s).
 | `npm run vi:titles -- "Market"` | Runs the YouTube title relevance filter on a market's stored video set and prints what it keeps and drops. |
 | `npm run jev:backtest` | Replays past create proposals and the blocklist's synthetic generics through the Jev admission gate and prints the verdicts, thresholds and latencies. |
 | `npm run jev:adjudicate [--titles] [--tweets] [--live=15] [--sample=600] [--out=dir]` | Has a stronger model on the gateway label the Jev shadows: the title disagreements the YouTube shadow stored, a sample of the posts the X shadow dropped or kept unsure, and one fresh X page per busy market judged with full text. Reports each judge's agreement with the adjudicator and, for posts, drop precision and lost views at every keep threshold; writes a 30-item spot check. Ran 2026-09-29 to set `JEV_TWEET_KEEP_AT`. |
+| `npm run vi:topic-shift -- <isoBoundary>` | What a change to the search phrases or the Trends topic did, before the smoothing: scores each market's last hourly snapshot before the boundary and its live breakdown with the same formula and prints the Trends ratio and share before and after, the raw change, the rank correlation and the tier moves. |
 | `npm run jev:simulate-x [--hours=24]` | The board with the X post filter on, from the counterfactual impressions the shadow recorded on every read, at the current calibration: rank correlation, tier changes and the largest moves. |
 | `npm run test:vi` | The pure-math tests under `lib/vi/`, `lib/creators/` and `lib/` (node:test through tsx). Run after any change to scoring. |
 | `npm run creators:resolve` | Runs the creator handle resolver over person and brand markets now, the pass the hourly run does a few markets at a time. |
