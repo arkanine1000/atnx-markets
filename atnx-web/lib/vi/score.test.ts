@@ -1,7 +1,7 @@
 // Run with: npm run test:vi
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { blendScores, combine, rescaleSeed, RAMP_MS } from './score';
+import { blendScores, combine, rescaleSeed, RAMP_MS, searchTerms } from './score';
 
 // The ramp maths, over the 48 h span it had (RAMP_MS is 0 pre-launch).
 const SPAN = 48 * 3600 * 1000;
@@ -302,4 +302,14 @@ test('xReading takes the larger of talk impressions and the own account reach, f
   const c = combine({ x: { source: 'x', level: 0, momentum: null, fetchedAt: at, meta: { own_views_per_h: 100_000 } } }, { calibration: one })!;
   assert.ok(c.level > 0);
   assert.deepEqual(c.sourcesPresent, ['x']);
+});
+
+test('searchTerms: a work named by an everyday word searches its aliases only; people, brands and exact articles keep the name', () => {
+  const qualified = { own: 1, match: 'qualified', title: 'Cars (film)' };
+  assert.deepEqual(searchTerms('Cars', ['Cars Film', 'Pixar Cars', 'Lightning McQueen'], { wiki: qualified, entityType: 'other', category: 'film_tv' }), { term: 'Cars Film', aliases: ['Pixar Cars', 'Lightning McQueen'] });
+  assert.deepEqual(searchTerms('Meta', ['Meta Platforms'], { wiki: { own: 1, match: 'qualified', title: 'Meta Platforms' }, entityType: 'brand', category: 'tech' }), { term: 'Meta', aliases: ['Meta Platforms'] }, 'a brand keeps its bare name');
+  assert.deepEqual(searchTerms('Cars', ['Pixar Cars'], { wiki: { own: 1, match: 'exact', title: 'Cars' }, entityType: 'other', category: 'film_tv' }), { term: 'Cars', aliases: ['Pixar Cars'] }, 'an exact article means the bare name is the subject');
+  assert.deepEqual(searchTerms('Cars', [], { wiki: qualified, entityType: 'other', category: 'film_tv' }), { term: 'Cars', aliases: [] }, 'nothing to fall back on');
+  assert.deepEqual(searchTerms('Cars', ['Pixar Cars'], { wiki: null, entityType: 'other', category: 'film_tv' }), { term: 'Cars', aliases: ['Pixar Cars'] }, 'no Wikipedia reading yet');
+  assert.deepEqual(searchTerms('Verity', ['Minecraft Verity'], { wiki: qualified, entityType: 'other', category: 'gaming' }), { term: 'Minecraft Verity', aliases: [] });
 });

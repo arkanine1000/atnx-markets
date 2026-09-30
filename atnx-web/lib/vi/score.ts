@@ -284,6 +284,28 @@ export function isVerifiableAlias(alias: string): boolean {
   return tokens.length === 1 && !alias.includes(',') && !FUNCTION_WORDS.has(tokens[0].toLowerCase()) && !isSearchableAlias(alias);
 }
 
+// Works whose name is an everyday word: the search sources drop the bare
+// name and read the aliases only. "Cars" the 2006 film went live at 854,
+// Mega-viral, on Trends for cars the vehicles and TikTok's #cars. The
+// stored Wikipedia reading already says the bare name is not the subject:
+// a 'qualified' match means the plain title belonged to something else
+// and the article lives at "Cars (film)". Applied only to works (films,
+// shows, games, music; never people or brands: "Meta" is also a qualified
+// title, "Meta Platforms", yet people search the bare word for the
+// company) with at least one searchable alias to fall back on. Wikipedia
+// itself keeps the bare name, which is how it found the article. Pure.
+const WORK_CATEGORIES = new Set(['film_tv', 'gaming', 'music']);
+export function searchTerms(
+  term: string,
+  aliases: string[],
+  { wiki, entityType, category }: { wiki?: SourceComponent['meta'] | null; entityType?: string | null; category?: string | null }
+): { term: string; aliases: string[] } {
+  const isWork = WORK_CATEGORIES.has(category ?? '') && entityType !== 'person' && entityType !== 'brand';
+  const bareNameIsOther = Number(wiki?.own) === 1 && wiki?.match === 'qualified';
+  if (isWork && bareNameIsOther && aliases.length > 0) return { term: aliases[0], aliases: aliases.slice(1) };
+  return { term, aliases };
+}
+
 // The aliases a source may search for. Multi-word aliases and handles
 // pass (isSearchableAlias). A one-word alias passes only when the stored
 // Wikipedia reading vouches for it: meta.alias_ok lists the aliases that

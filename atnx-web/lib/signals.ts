@@ -20,6 +20,7 @@ import {
   type Composite,
   type SourceComponent,
   type SourceName,
+  searchTerms,
 } from './vi/score';
 import { fetchTrendsSignals, type TrendsSignal } from './vi/trends';
 import { fetchBlueskySignal } from './vi/bluesky';
@@ -138,7 +139,11 @@ export function prefetchSlowSources(requests: ScoreRequest[]): { tiktokHashtags:
   const tiktokHashtags = prefetchTiktok(
     requests
       .filter((r) => applies('tiktok', r))
-      .map((r) => ({ term: r.term, aliases: (r.aliases ?? []), marketId: r.marketId, stored: r.stored?.tiktok ?? null }))
+      .map((r) => {
+        const search = searchTerms(r.term, searchableAliases(r.aliases ?? [], r.stored?.wikipedia?.meta), { wiki: r.stored?.wikipedia?.meta, entityType: r.entityType, category: r.category });
+        const dropBare = search.term !== r.term;
+        return { term: search.term, aliases: dropBare ? (r.aliases ?? []).filter((a) => a !== search.term) : (r.aliases ?? []), marketId: r.marketId, stored: r.stored?.tiktok ?? null };
+      })
   );
   return { tiktokHashtags };
 }
@@ -151,9 +156,14 @@ export async function scoreTerms(
   const fresh = new Set(FRESH_FOR[cadence]);
   const all = new Set(FRESH_FOR.all);
 
+  // What the search sources look for: the multi-word and vouched-for
+  // aliases, and the bare name unless it is an everyday word naming a work
+  // (lib/vi/score.ts searchTerms). Wikipedia keeps the bare name.
+  const searchOf = (r: ScoreRequest) =>
+    searchTerms(r.term, searchableAliases(r.aliases ?? [], r.stored?.wikipedia?.meta), { wiki: r.stored?.wikipedia?.meta, entityType: r.entityType, category: r.category });
   const trendsRequests = requests.filter((r) => fresh.has('trends') || neverScored(r));
   const trendsMap: Map<string, TrendsSignal> = trendsRequests.length
-    ? await fetchTrendsSignals(trendsRequests.map((r) => ({ term: r.term, aliases: searchableAliases(r.aliases ?? [], r.stored?.wikipedia?.meta) }))).catch(() => new Map())
+    ? await fetchTrendsSignals(trendsRequests.map((r) => searchOf(r))).catch(() => new Map())
     : new Map();
 
   return Promise.all(
@@ -166,27 +176,28 @@ export async function scoreTerms(
       // stored Wikipedia reading vouches for (they land one slow read after
       // Wikipedia verifies them, since it runs alongside X and Trends).
       const aliases = searchableAliases(req.aliases ?? [], stored?.wikipedia?.meta);
+      const search = searchOf({ term, stored, ...req });
       const aliasCandidates = (req.aliases ?? []).filter(isVerifiableAlias);
       const components: Components = { ...(stored ?? {}) };
-      const trends = trendsMap.get(term);
+      const trends = trendsMap.get(search.term);
       if (trends) components.trends = trends;
       const corporate = req.entityType === 'brand';
 
       const request = { term, stored, ...req };
       const [bluesky, gdelt, wikipedia, youtube, hn, dex, x, tiktok] = await Promise.all([
-        want.has('bluesky') ? fetchBlueskySignal(term, aliases).catch(() => null) : null,
+        want.has('bluesky') ? fetchBlueskySignal(search.term, search.aliases).catch(() => null) : null,
         want.has('gdelt') && applies('gdelt', request) ? readGdeltSignal(req.marketId).catch(() => null) : null,
         want.has('wikipedia') ? fetchWikipediaSignal(term, aliases, { corporate, aliasCandidates }).catch(() => null) : null,
         want.has('youtube')
-          ? fetchYoutubeSignal({ term, aliases, marketId: req.marketId, stored: stored?.youtube ?? null, entityType: req.entityType, category: req.category, description: req.description }).catch(() => null)
+          ? fetchYoutubeSignal({ term: search.term, aliases: search.aliases, marketId: req.marketId, stored: stored?.youtube ?? null, entityType: req.entityType, category: req.category, description: req.description }).catch(() => null)
           : null,
-        want.has('hn') && applies('hn', request) ? fetchHnSignal(term).catch(() => null) : null,
+        want.has('hn') && applies('hn', request) ? fetchHnSignal(search.term).catch(() => null) : null,
         want.has('dex') && applies('dex', request) ? fetchDexSignal(term, req.aliases ?? []).catch(() => null) : null,
         want.has('x')
-          ? fetchXSignal({ term, aliases, marketId: req.marketId, stored: stored?.x ?? null, entityType: req.entityType, category: req.category, description: req.description }).catch(() => null)
+          ? fetchXSignal({ term: search.term, aliases: search.aliases, marketId: req.marketId, stored: stored?.x ?? null, entityType: req.entityType, category: req.category, description: req.description }).catch(() => null)
           : null,
         want.has('tiktok') && applies('tiktok', request)
-          ? fetchTiktokSignal({ term, aliases: req.aliases ?? [], marketId: req.marketId, stored: stored?.tiktok ?? null }).catch(() => null)
+          ? fetchTiktokSignal({ term: search.term === term ? term : search.term, aliases: search.term === term ? (req.aliases ?? []) : (req.aliases ?? []).filter((a) => a !== search.term), marketId: req.marketId, stored: stored?.tiktok ?? null }).catch(() => null)
           : null,
       ]);
       if (bluesky) components.bluesky = bluesky;
