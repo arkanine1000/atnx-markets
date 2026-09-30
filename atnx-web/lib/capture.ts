@@ -54,7 +54,8 @@ import { runChannelJob, verifiedYoutubeHandles } from './creators/channel';
 import { runXAccountJob, verifiedXHandles } from './creators/x-account';
 import { runGdeltJob } from './vi/gdelt';
 import { hasXRow, hasYoutubeRow, resolveAndSave, resolveAndSaveX, X_ACCOUNT_TYPES } from './creators/store';
-import type { Components } from './vi/score';
+import { isVerifiableAlias, searchableAliases, type Components } from './vi/score';
+import { fetchWikipediaSignal } from './vi/wikipedia';
 import { addCapture, createMarket, DuplicateCaptureError, recordVi, type Capture } from './store';
 import { createAdminClient } from './supabase/admin';
 
@@ -984,14 +985,28 @@ async function scoreNewMarket(ctx: ScoringContext): Promise<void> {
     const now = Date.now();
     await Promise.allSettled([runGdeltJob(now, { marketIds: [ctx.marketId], backfill: false }), runChannelJob(now, [ctx.marketId]), runXAccountJob(now, [ctx.marketId])]);
     const [[handle], [xHandle]] = await Promise.all([verifiedYoutubeHandles([ctx.marketId]), verifiedXHandles([ctx.marketId])]);
+    const term = normalizeSearchTerm({ name: market.entity_name });
+    const aliases = ctx.aliases ?? ((market.aliases as string[] | null) ?? []);
+    let stored = (market.vi_components as Components | null) ?? null;
+    // Wikipedia first, on its own: the search sources decide what to look
+    // for from its reading (a work named by an everyday word searches its
+    // aliases only, lib/vi/score.ts searchTerms), and a market's first
+    // pass is the one that sets the number it goes live with.
+    if (!stored?.wikipedia) {
+      const wikipedia = await fetchWikipediaSignal(term, searchableAliases(aliases, null), {
+        corporate: market.entity_type === 'brand',
+        aliasCandidates: aliases.filter(isVerifiableAlias),
+      }).catch(() => null);
+      if (wikipedia) stored = { ...(stored ?? {}), wikipedia };
+    }
     const request = {
-      term: normalizeSearchTerm({ name: market.entity_name }),
-      aliases: ctx.aliases ?? ((market.aliases as string[] | null) ?? []),
+      term,
+      aliases,
       entityType: (market.entity_type as string | null) ?? null,
       category: (market.category as string | null) ?? null,
       description: ((market as { description?: string | null }).description ?? null),
       marketId: ctx.marketId,
-      stored: (market.vi_components as Components | null) ?? null,
+      stored,
       creator: creatorOf(handle, xHandle),
     };
     prefetchSlowSources([request]);
