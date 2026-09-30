@@ -34,6 +34,14 @@ const RUN_TIMEOUT_S = 240;
 const RETRY_TIMEOUT_S = 90;
 export const MAX_ROWS_PER_RUN = 50;
 export const INTERVAL_MS = 3 * 3600 * 1000;
+// A new market's first read gives a total, not a rate; the second read at
+// the next three-hour slot left a meme market a hundred points low for
+// three hours. Within this long of the mapping, a mapped tag with no
+// level yet is read again as soon as MIN_GAP_H has passed, by whichever
+// pass runs next (the five-minute one included), so the level lands at
+// about an hour.
+export const YOUNG_MS = 3 * 3600 * 1000;
+const EARLY_SLACK_MS = 5 * 60 * 1000;
 // A reading is written minutes into the run (:07 start, :10 write), so
 // three hours later it is still a few minutes short of the interval and
 // the read slipped to four hours. The slack lets that run take it.
@@ -295,11 +303,25 @@ export interface TiktokRequest {
 export function hashtagsWanted({ term, aliases = [], stored }: TiktokRequest, now = Date.now()): string[] {
   const fetchedAt = stored?.fetchedAt ? Date.parse(stored.fetchedAt) : 0;
   const hasMapping = typeof stored?.meta?.hashtag === 'string' && stored.meta.hashtag.length > 0;
+  if (tiktokEarlyDue(stored, now)) return [stored!.meta!.hashtag as string];
   if (stored && now - fetchedAt < INTERVAL_MS - INTERVAL_SLACK_MS && (hasMapping || stored.meta?.hashtag === null)) return [];
   const discoveredAt = typeof stored?.meta?.discovered_at === 'string' ? Date.parse(stored.meta.discovered_at) : 0;
   if (hasMapping && now - discoveredAt < DISCOVERY_TTL_MS) return [stored!.meta!.hashtag as string];
   if (stored?.meta?.hashtag === null && now - discoveredAt < NO_HASHTAG_TTL_MS) return [];
   return hashtagCandidates(term, aliases);
+}
+
+// Whether a young market's mapped tag is due its early second read: no
+// level yet, mapped within YOUNG_MS, and MIN_GAP_H past the last read.
+// Pure.
+export function tiktokEarlyDue(stored: SourceComponent | null | undefined, now = Date.now()): boolean {
+  if (!stored || stored.level !== null) return false;
+  const tag = stored.meta?.hashtag;
+  if (typeof tag !== 'string' || tag.length === 0) return false;
+  const discoveredAt = typeof stored.meta?.discovered_at === 'string' ? Date.parse(stored.meta.discovered_at) : NaN;
+  const fetchedAt = stored.fetchedAt ? Date.parse(stored.fetchedAt) : NaN;
+  if (!Number.isFinite(discoveredAt) || !Number.isFinite(fetchedAt)) return false;
+  return now - discoveredAt < YOUNG_MS && now - fetchedAt >= MIN_GAP_H * 3600_000 + EARLY_SLACK_MS;
 }
 
 // Starts the pass's one actor run for these markets' hashtags. Mapped

@@ -1,7 +1,7 @@
 // Run with: npm run test:vi
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { consistentViews, tiktokLevel, tiktokReading, trendFit } from './tiktok';
+import { consistentViews, tiktokLevel, tiktokReading, trendFit, tiktokEarlyDue } from './tiktok';
 import type { Sample } from './samples';
 
 const T0 = Date.parse('2026-09-25T00:09:00Z');
@@ -173,4 +173,16 @@ test('view totals that flip to an unrelated value are dropped before the views t
   assert.equal(tiktokReading(bad, now).viewsPerHour, null);
   const run = videos.map((v, i) => ({ h: i * 3, v, w: views[i] }));
   assert.equal(consistentViews(run).length, 6, 'two flipped reads dropped');
+});
+
+test('tiktokEarlyDue: a young mapped tag with no level is read again an hour after its first read, by any pass', () => {
+  const t0 = Date.parse('2026-09-30T12:00:00Z');
+  const mapped = { source: 'tiktok' as const, level: null, momentum: null, fetchedAt: new Date(t0).toISOString(), meta: { hashtag: 'capybara', discovered_at: new Date(t0).toISOString() } };
+  assert.equal(tiktokEarlyDue(mapped, t0 + 30 * 60_000), false, 'too soon');
+  assert.equal(tiktokEarlyDue(mapped, t0 + 66 * 60_000), true, 'an hour and the slack');
+  assert.deepEqual(hashtagsWanted({ term: 'Capybara Memes', stored: mapped }, t0 + 66 * 60_000), ['capybara'], 'wanted despite the three-hour interval');
+  assert.equal(tiktokEarlyDue({ ...mapped, level: 420 }, t0 + 66 * 60_000), false, 'has a level');
+  assert.equal(tiktokEarlyDue({ ...mapped, meta: { ...mapped.meta, discovered_at: new Date(t0 - 4 * 3600_000).toISOString() } }, t0 + 66 * 60_000), false, 'not young');
+  assert.equal(tiktokEarlyDue({ ...mapped, meta: { hashtag: null, discovered_at: mapped.meta.discovered_at } }, t0 + 66 * 60_000), false, 'no tag');
+  assert.equal(tiktokEarlyDue(null), false);
 });

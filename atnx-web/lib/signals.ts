@@ -29,7 +29,7 @@ import { fetchYoutubeSignal } from './vi/youtube';
 import { fetchHnSignal } from './vi/hn';
 import { fetchDexSignal } from './vi/dex';
 import { fetchXSignal } from './vi/x';
-import { fetchTiktokSignal, prefetchTiktok } from './vi/tiktok';
+import { fetchTiktokSignal, prefetchTiktok, tiktokEarlyDue } from './vi/tiktok';
 import { effectiveYoutube, readChannelMeta, type CreatorHandle } from './creators/channel';
 import { readXAccountMeta, type XHandle } from './creators/x-account';
 
@@ -158,7 +158,10 @@ export async function scoreTerms(
 
   return Promise.all(
     requests.map(async ({ term, stored, ...req }) => {
-      const want = neverScored({ term, stored, ...req }) ? all : fresh;
+      const want = new Set(neverScored({ term, stored, ...req }) ? all : fresh);
+      // A young market's second TikTok read comes from whichever pass runs
+      // first once an hour has passed (lib/vi/tiktok.ts tiktokEarlyDue).
+      if (tiktokEarlyDue(stored?.tiktok)) want.add('tiktok');
       // Search phrases: multi-word aliases, plus the one-word aliases the
       // stored Wikipedia reading vouches for (they land one slow read after
       // Wikipedia verifies them, since it runs alongside X and Trends).
