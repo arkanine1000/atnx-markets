@@ -35,7 +35,13 @@ import { effectiveYoutube, readChannelMeta, type CreatorHandle } from './creator
 import { readXAccountMeta, type XHandle } from './creators/x-account';
 
 export interface ScoreRequest {
+  // The name as searched: markets.entity_name with separators and any
+  // trailing "(qualifier)" removed (lib/vi/trends.ts normalizeSearchTerm).
   term: string;
+  // markets.entity_name as written. A name the model gave with a
+  // qualifier, "Cars (2006 film)", says the bare word is not the subject
+  // on its own (lib/vi/score.ts searchTerms).
+  name?: string | null;
   // Other names people use for it (markets.aliases). Sources search for
   // the name and its aliases together; a canonical meme title is rarely
   // what a post actually says.
@@ -160,10 +166,18 @@ export async function scoreTerms(
   // aliases, and the bare name unless it is an everyday word naming a work
   // (lib/vi/score.ts searchTerms). Wikipedia keeps the bare name.
   const searchOf = (r: ScoreRequest) =>
-    searchTerms(r.term, searchableAliases(r.aliases ?? [], r.stored?.wikipedia?.meta), { wiki: r.stored?.wikipedia?.meta, entityType: r.entityType, category: r.category });
+    searchTerms(r.term, searchableAliases(r.aliases ?? [], r.stored?.wikipedia?.meta), { wiki: r.stored?.wikipedia?.meta, entityType: r.entityType, category: r.category, name: r.name });
+  // Trends is asked for the article's topic when the Wikipedia reading
+  // found one (lib/vi/wikipedia.ts fetchTrendsTopic), the words otherwise.
+  const topicOf = (r: ScoreRequest) => {
+    const topic = r.stored?.wikipedia?.meta?.topic;
+    if (typeof topic !== 'string' || !topic) return null;
+    // Trends read nothing for it last time and answered by the words.
+    return r.stored?.trends?.meta?.topic_dead === topic ? null : topic;
+  };
   const trendsRequests = requests.filter((r) => fresh.has('trends') || neverScored(r));
   const trendsMap: Map<string, TrendsSignal> = trendsRequests.length
-    ? await fetchTrendsSignals(trendsRequests.map((r) => searchOf(r))).catch(() => new Map())
+    ? await fetchTrendsSignals(trendsRequests.map((r) => ({ ...searchOf(r), topic: topicOf(r) }))).catch(() => new Map())
     : new Map();
 
   return Promise.all(

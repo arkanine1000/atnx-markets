@@ -1,7 +1,7 @@
 // Run with: npm run test:vi
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { blendScores, combine, rescaleSeed, RAMP_MS, searchTerms } from './score';
+import { blendScores, combine, rescaleSeed, RAMP_MS, searchTerms, hasQualifier } from './score';
 
 // The ramp maths, over the 48 h span it had (RAMP_MS is 0 pre-launch).
 const SPAN = 48 * 3600 * 1000;
@@ -312,4 +312,15 @@ test('searchTerms: a work named by an everyday word searches its aliases only; p
   assert.deepEqual(searchTerms('Cars', [], { wiki: qualified, entityType: 'other', category: 'film_tv' }), { term: 'Cars', aliases: [] }, 'nothing to fall back on');
   assert.deepEqual(searchTerms('Cars', ['Pixar Cars'], { wiki: null, entityType: 'other', category: 'film_tv' }), { term: 'Cars', aliases: ['Pixar Cars'] }, 'no Wikipedia reading yet');
   assert.deepEqual(searchTerms('Verity', ['Minecraft Verity'], { wiki: qualified, entityType: 'other', category: 'gaming' }), { term: 'Minecraft Verity', aliases: [] });
+});
+
+test('searchTerms and hasQualifier: a name the model qualified searches its aliases whatever the type', () => {
+  assert.equal(hasQualifier('Cars (2006 film)'), true);
+  assert.equal(hasQualifier('Wednesday (TV series)'), true);
+  assert.equal(hasQualifier('Verity (Minecraft ARG)'), true);
+  assert.equal(hasQualifier('MrBeast'), false);
+  assert.equal(hasQualifier('(500) Days of Summer'), false, 'a leading parenthesis is part of the title');
+  assert.deepEqual(searchTerms('Hello', ['Hello Adele', 'Adele Hello'], { wiki: null, entityType: 'other', category: 'music', name: 'Hello (Adele song)' }), { term: 'Hello Adele', aliases: ['Adele Hello'] });
+  assert.deepEqual(searchTerms('Hello', [], { wiki: null, entityType: 'other', category: 'music', name: 'Hello (Adele song)' }), { term: 'Hello', aliases: [] }, 'no alias to fall back on');
+  assert.deepEqual(searchTerms('Drake', ['Drake rapper'], { wiki: null, entityType: 'person', category: 'music', name: 'Drake (rapper)' }), { term: 'Drake rapper', aliases: [] }, 'a person too, when the model qualified it');
 });

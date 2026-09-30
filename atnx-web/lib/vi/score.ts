@@ -298,12 +298,21 @@ const WORK_CATEGORIES = new Set(['film_tv', 'gaming', 'music']);
 export function searchTerms(
   term: string,
   aliases: string[],
-  { wiki, entityType, category }: { wiki?: SourceComponent['meta'] | null; entityType?: string | null; category?: string | null }
+  { wiki, entityType, category, name }: { wiki?: SourceComponent['meta'] | null; entityType?: string | null; category?: string | null; name?: string | null }
 ): { term: string; aliases: string[] } {
   const isWork = WORK_CATEGORIES.has(category ?? '') && entityType !== 'person' && entityType !== 'brand';
   const bareNameIsOther = Number(wiki?.own) === 1 && wiki?.match === 'qualified';
-  if (isWork && bareNameIsOther && aliases.length > 0) return { term: aliases[0], aliases: aliases.slice(1) };
+  // The model qualified the name itself ("Cars (2006 film)"): the bare
+  // word is ambiguous whatever the type, so the aliases carry the search.
+  const qualifiedByName = hasQualifier(name ?? '');
+  if ((qualifiedByName || (isWork && bareNameIsOther)) && aliases.length > 0) return { term: aliases[0], aliases: aliases.slice(1) };
   return { term, aliases };
+}
+
+// Whether a name ends in a "(qualifier)": the model's way of saying the
+// bare word alone means something else. Pure.
+export function hasQualifier(name: string): boolean {
+  return /\S\s*\([^()]{2,}\)\s*$/.test(name.trim());
 }
 
 // The aliases a source may search for. Multi-word aliases and handles

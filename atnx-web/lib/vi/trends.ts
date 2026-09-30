@@ -141,13 +141,18 @@ export function termSignal(term: string, values: number[], benchMean: number, ti
 export interface TrendsQuery {
   term: string;
   aliases?: string[];
+  // A Google Trends topic id (Freebase, from Wikidata P646 via the
+  // Wikipedia reading): the subject itself rather than the word, which
+  // Google disambiguates. A topic takes the whole slot; no aliases.
+  topic?: string | null;
 }
 
 // Trends treats "a + b" as a OR b inside one keyword slot, so the name
 // and its aliases cost one slot together. Keyword length is limited, so
-// take aliases until the slot is full.
+// take aliases until the slot is full. A topic id is the slot on its own.
 const MAX_KEYWORD = 100;
-export function trendsKeyword({ term, aliases = [] }: TrendsQuery): string {
+export function trendsKeyword({ term, aliases = [], topic }: TrendsQuery): string {
+  if (topic) return topic;
   let kw = term.trim();
   for (const a of aliases) {
     const alias = a.trim();
@@ -164,6 +169,35 @@ export function trendsKeyword({ term, aliases = [] }: TrendsQuery): string {
 // level) rather than being dropped.
 export async function fetchTrendsSignals(queries: TrendsQuery[]): Promise<Map<string, TrendsSignal>> {
   const out = new Map<string, TrendsSignal>();
+  await resolveQueries(queries, out);
+  // A topic Trends does not know reads nothing at all while the words
+  // would: those markets are asked again by their words, and the answer
+  // remembers the dead topic so the next pass does not try it.
+  const dead = queries.filter((q) => q.topic && isNothing(out.get(q.term)));
+  if (dead.length) {
+    const byWords = new Map<string, TrendsSignal>();
+    await resolveQueries(dead.map((q) => ({ ...q, topic: null })), byWords);
+    for (const q of dead) {
+      const sig = byWords.get(q.term) ?? empty();
+      out.set(q.term, { ...sig, meta: { ...(sig.meta ?? {}), topic_dead: q.topic as string } });
+    }
+  }
+  for (const q of queries) {
+    if (!q.topic || dead.includes(q)) continue;
+    const sig = out.get(q.term);
+    if (sig) out.set(q.term, { ...sig, meta: { ...(sig.meta ?? {}), topic: q.topic } });
+  }
+  return out;
+}
+
+// No level: the request failed, or the topic read below resolution (a
+// topic Trends does not know reads all zeros, as does one nobody
+// searches; either way the words are worth asking).
+function isNothing(sig: TrendsSignal | undefined): boolean {
+  return !sig || sig.level === null;
+}
+
+async function resolveQueries(queries: TrendsQuery[], out: Map<string, TrendsSignal>): Promise<void> {
   const pending: { term: string; keyword: string }[] = [];
   for (const q of queries) {
     const keyword = trendsKeyword(q);
@@ -190,7 +224,6 @@ export async function fetchTrendsSignals(queries: TrendsQuery[]): Promise<Map<st
       for (const { term } of batch) out.set(term, empty());
     }
   }
-  return out;
 }
 
 export async function fetchTrendsSignal(term: string, aliases: string[] = []): Promise<TrendsSignal> {
@@ -206,6 +239,10 @@ export async function fetchTrendsSignal(term: string, aliases: string[] = []): P
 // generic phrases ("Incidental 49A Real" for a five-word title).
 export function normalizeSearchTerm(analysis: { name?: string } | null | undefined): string {
   let term = analysis?.name || '';
+  // A trailing "(qualifier)" names the kind of thing, not what people
+  // write: "Cars (2006 film)" is searched as "Cars", and the qualifier
+  // itself tells the search sources to prefer the aliases.
+  term = term.replace(/\s*\([^()]{2,}\)\s*$/, '');
   term = term.replace(/["“”'‘’]/g, '');
   term = term.replace(/[\/|:;,\-–—•·_()\[\]]+/g, ' ');
   return term.replace(/\s+/g, ' ').trim();

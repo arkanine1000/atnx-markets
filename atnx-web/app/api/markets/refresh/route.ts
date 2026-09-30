@@ -89,6 +89,7 @@ interface MarketRow {
 function toRequest(m: MarketRow, handle?: CreatorHandle, x?: XHandle): ScoreRequest {
   return {
     term: normalizeSearchTerm({ name: m.entity_name }),
+    name: m.entity_name,
     aliases: m.aliases ?? [],
     stored: m.vi_components ?? null,
     entityType: m.entity_type,

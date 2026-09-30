@@ -1001,6 +1001,7 @@ async function scoreNewMarket(ctx: ScoringContext): Promise<void> {
     }
     const request = {
       term,
+      name: market.entity_name as string,
       aliases,
       entityType: (market.entity_type as string | null) ?? null,
       category: (market.category as string | null) ?? null,

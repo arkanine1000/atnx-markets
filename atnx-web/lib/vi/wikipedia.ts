@@ -91,7 +91,14 @@ export async function fetchWikipediaSignal(
     const title = resolved.title ?? (sectionRedirect ? resolved.redirectTitle : null);
     // One-word aliases that are this article under another name.
     const alias_ok = title && own === 1 ? (await verifiedAliases(title, aliasCandidates)).join(',') : '';
-    const base = { match: sectionRedirect ? ('section_redirect' as const) : resolved.match, from, own, alias_ok };
+    // The article's Google Trends topic: Wikidata keeps the Freebase id
+    // (P646) that Trends still uses for topics, so Trends can be asked
+    // for the subject rather than the word ("Cars" the film reads 0.57x
+    // the benchmark as a topic and 8.2x as a word, the vehicles). Only
+    // for the market's own article; a section redirect's target is
+    // something else.
+    const topic = title && own === 1 && !sectionRedirect ? await fetchTrendsTopic(title).catch(() => null) : null;
+    const base = { match: sectionRedirect ? ('section_redirect' as const) : resolved.match, from, own, alias_ok, topic };
 
     if (!title) {
       // No article is a real observation: Wikipedia has nothing on it.
@@ -514,6 +521,27 @@ function decodeEntities(s: string): string {
 // The values of one property on a Wikidata item, best rank first: item
 // ids for item-valued properties (P31 "instance of"), file names for
 // Commons media (P154 "logo image").
+// The Google Trends topic id of an article: Wikidata's Freebase id
+// (P646, /m/..., entities known before 2016) or its Google Knowledge Graph
+// id (P2671, /g/..., newer ones); null when the item has neither. A stored
+// id that Trends does not know reads 0 and the Trends adapter falls back
+// to the words (meta.topic_dead). Cached by title.
+const topicCache = new Map<string, { mid: string | null; expiry: number }>();
+const TOPIC_TTL = 24 * 3600 * 1000;
+export async function fetchTrendsTopic(title: string): Promise<string | null> {
+  const hit = topicCache.get(title);
+  if (hit && Date.now() < hit.expiry) return hit.mid;
+  const facts = await fetchArticleFacts(title);
+  let mid: string | null = null;
+  if (facts?.qid) {
+    mid = (await fetchWikidataValues(facts.qid, 'P646'))[0] ?? null;
+    if (!mid) mid = (await fetchWikidataValues(facts.qid, 'P2671'))[0] ?? null;
+  }
+  const value = typeof mid === 'string' && /^\/[mg]\/[0-9a-z_]+$/.test(mid) ? mid : null;
+  topicCache.set(title, { mid: value, expiry: Date.now() + TOPIC_TTL });
+  return value;
+}
+
 export async function fetchWikidataValues(qid: string, property: string): Promise<string[]> {
   const params = new URLSearchParams({ action: 'wbgetclaims', entity: qid, property, format: 'json' });
   const res = await fetch(`${WIKIDATA_URL}?${params}`, {
