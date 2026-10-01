@@ -19,11 +19,14 @@ import { quoteBuy, quoteSell } from '../lib/bm/fpmm';
 import { publicClientFor, keeperAccount, walletClientFor } from '../lib/bm/evm';
 
 const key = process.argv[2] ?? process.env.NEXT_PUBLIC_BM_DEFAULT_CHAIN ?? 'eip155:46630';
-const chain = chainByKey(key);
-if (!chain || !isDeployed(chain)) {
-  console.error(`chain ${key} is not deployed; known: ${Object.keys(BM_CHAINS).join(', ')}`);
-  process.exit(2);
-}
+const chain = (() => {
+  const c = chainByKey(key);
+  if (!c || !isDeployed(c)) {
+    console.error(`chain ${key} is not deployed; known: ${Object.keys(BM_CHAINS).join(', ')}`);
+    process.exit(2);
+  }
+  return c;
+})();
 
 function testerKey(): Hex {
   if (process.env.BM_TESTER_PRIVATE_KEY) return process.env.BM_TESTER_PRIVATE_KEY as Hex;
