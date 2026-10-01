@@ -97,6 +97,9 @@ export function WalletButton({ compact = false }: { compact?: boolean }) {
               {!isDeployed(c) && <span className="text-tertiary"> (not deployed)</span>}
             </button>
           ))}
+          <div className="px-3 py-1.5 text-tertiary" title="Program live on devnet; wallet support in the web app is next">
+            ○ Solana devnet <span className="text-tertiary">(program live, wallet soon)</span>
+          </div>
           <div className="border-t border-surface mt-1 pt-1">
             <button
               type="button"

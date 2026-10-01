@@ -11,6 +11,8 @@ import {
 import { useRouter } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
+import type { EIP1193Provider } from "viem";
+import { ensureWalletProfile } from "@/app/app/actions/auth";
 
 interface AuthContextType {
   user: User | null;
@@ -18,28 +20,13 @@ interface AuthContextType {
   isLoginModalOpen: boolean;
   openLoginModal: () => void;
   closeLoginModal: () => void;
-  signIn: (provider: OAuthProvider) => Promise<void>;
+  // Sign in with Ethereum through the connected wallet's provider: one
+  // signature, then a normal Supabase session.
+  signInWithWallet: (provider: EIP1193Provider, address: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
-export type OAuthProvider = "google" | "x";
-
 const AuthContext = createContext<AuthContextType | null>(null);
-
-const AFTER_LOGIN_KEY = "atnx:after-login";
-
-function afterLoginPath(): string | null {
-  let value: string | null = null;
-  try {
-    value = window.sessionStorage.getItem(AFTER_LOGIN_KEY);
-    if (value) window.sessionStorage.removeItem(AFTER_LOGIN_KEY);
-  } catch {
-    /* private mode */
-  }
-  if (!value) value = new URLSearchParams(window.location.search).get("redirect");
-  if (!value || !value.startsWith("/") || value.startsWith("//") || /[@\\]/.test(value)) return null;
-  return value;
-}
 
 export function useAuth() {
   const ctx = useContext(AuthContext);
@@ -80,26 +67,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const openLoginModal = useCallback(() => setLoginModalOpen(true), []);
   const closeLoginModal = useCallback(() => setLoginModalOpen(false), []);
 
-  const signIn = useCallback(async (provider: OAuthProvider) => {
-    const supabase = createClient();
-    // Where to land after the OAuth round-trip: a page that asked to be
-    // returned to (the share replay stores it in sessionStorage; links to
-    // "/" carry it as ?redirect=), else the app home. The callback only
-    // accepts a path on this site.
-    const after = afterLoginPath();
-    const callback = new URL("/auth/callback", window.location.origin);
-    if (after) callback.searchParams.set("redirect", after);
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider,
-      options: {
-        redirectTo: callback.toString(),
-      },
-    });
-    if (error) {
-      console.error("Sign-in error:", error);
-      throw error;
-    }
-  }, []);
+  const signInWithWallet = useCallback(
+    async (provider: EIP1193Provider, address: string) => {
+      const supabase = createClient();
+      // Supabase wants the signing address beside the provider's request().
+      const wallet = { address, request: provider.request.bind(provider) };
+      const { data, error } = await supabase.auth.signInWithWeb3({
+        chain: "ethereum",
+        wallet: wallet as never,
+        statement: "Sign in to ATNX markets. Testnet only; tokens have no value.",
+      });
+      if (error) {
+        console.error("Wallet sign-in error:", error);
+        throw error;
+      }
+      if (data.user) setUser(data.user);
+      const r = await ensureWalletProfile(address);
+      if (!r.ok) console.error("Wallet profile:", r.error);
+      setLoginModalOpen(false);
+      router.refresh();
+    },
+    [router],
+  );
 
   // Sign out in the browser client, not a server action: the browser client
   // holds the session in memory and only a sign-out through it fires
@@ -124,7 +113,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isLoginModalOpen,
         openLoginModal,
         closeLoginModal,
-        signIn,
+        signInWithWallet,
         signOut,
       }}
     >
