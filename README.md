@@ -65,10 +65,11 @@ _Updated as the build progresses._
 - [x] Web: wallet, UP/DOWN ticket, bounds on the chart, pool price, activity from chain events
 - [x] On-chain portfolio (`/app/portfolio`)
 - [x] Extension fork (`atnx-extension/`, unpublished; rows deep-link to the market page since a side panel cannot reach an injected wallet)
-- [ ] End-to-end on Robinhood Testnet and Arbitrum Sepolia
+- [x] End-to-end on Robinhood Testnet (`npm run bm:e2e -- eip155:46630`, 2026-10-01: mint, open, buy, sell, resolve, redeem, sweep all pass; three live markets opened: Halloween, Grand Theft Auto VI, MrBeast)
+- [ ] End-to-end on Arbitrum Sepolia (needs testnet gas)
 - [ ] Solana program (Colosseum Solana track)
 
-Known limits: centralised oracle; the VI itself is computed by production ATNX; the "deemed dead" rule for markets with a lower bound of 0 is not implemented; the treasury seed is not recovered; the 50/50 opening price is a product choice (the design doc illustrates a linear price).
+Known limits: Google/X sign-in on the subdomain redirects to the main site, so the hackathon build identifies people by wallet (opening a market needs a connected wallet, no account) and new subjects are captured on https://atnx.app, which the fork lists within minutes; centralised oracle; the VI itself is computed by production ATNX; the "deemed dead" rule for markets with a lower bound of 0 is not implemented; the treasury seed is not recovered; the 50/50 opening price is a product choice (the design doc illustrates a linear price).
 
 ### Demo script (3 minutes)
 
@@ -76,7 +77,7 @@ Use a fresh browser profile with MetaMask (or any injected wallet) and the Robin
 
 1. **Markets** (`/app`): the live ATNX listing. Tiles with a cyan `UP/DOWN lower–upper` badge already have a bounded market. (0:00–0:20)
 2. **Connect**: wallet button in the header → Connect → wallet menu → *Mint 1,000 mock USDG*. (0:20–0:40)
-3. **Open a market**: pick a tile without a badge, sign in with Google or X, press *Open UP/DOWN market*. The ticket shows the bounds computed from the current VI; the treasury seeds the pool on chain; the chart draws the two bound lines. (0:40–1:10)
+3. **Open a market**: pick a tile without a badge and press *Open UP/DOWN market* (the connected wallet is the identity; no sign-in). The ticket shows the bounds computed from the current VI; the treasury seeds the pool on chain; the chart draws the two bound lines. (0:40–1:10)
 4. **Buy UP**: 100 USDG. Approve once, then buy. Read the quote aloud: shares, average price, what it pays if right, fee, price before → after. The UP/DOWN cents in the header move. (1:10–1:40)
 5. **Sell half**: switch to *Sell*, 50 %, confirm. Show the *Activity* tab: both trades straight from the contract's events, with explorer links. (1:40–2:05)
 6. **Portfolio** (`/app/portfolio`): the position marked at what a sell pays now. (2:05–2:20)
@@ -100,6 +101,8 @@ The keeper's next tick marks it resolved in the registry and rolls a new market.
 - Tests: `cd contracts && forge test`; `cd atnx-web && npm run test:bm`.
 - Deploy contracts: `contracts/deploy.sh robinhood_testnet` and `contracts/deploy.sh arbitrum_sepolia`; paste the printed `NEXT_PUBLIC_BM_*` lines into the Vercel env (and `atnx-web/.env.local`), then `cd atnx-web && vercel deploy --prod`.
 - Keeper by hand, locally: `cd atnx-web && npm run bm:keeper:dry` (add `-- --live` for a real tick).
+- Open a market from the keeper: `npm run bm:open` lists candidates, `npm run bm:open -- "Name"` opens one.
+- Keeper rule of thumb: a market's cursor starts at the newest VI print when it opens; only prints made while it is open can resolve it.
 - Vercel: project `atnx-markets`, root `atnx-web`, cron `/api/bm/keeper` every 5 minutes on the production deployment. Logs: Vercel → Logs, filter the path.
 
 ### Colosseum Crypto World's Fair
