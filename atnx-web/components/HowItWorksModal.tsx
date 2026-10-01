@@ -19,14 +19,14 @@ const STEPS = [
   },
   {
     n: 2,
-    title: "Long or Short",
-    body: "Every market has a Virality Index. Think attention is about to climb? Go long. Think it's peaked? Go short. Pick a size and you're in.",
+    title: "UP or DOWN",
+    body: "Every market has a Virality Index and two lines, one above and one below. Think attention climbs to the top line first? Buy UP. Think it falls to the bottom line first? Buy DOWN. Pick an amount and you're in.",
     tone: "magenta" as const,
   },
   {
     n: 3,
-    title: "Profit for being right",
-    body: "As the index moves, so does your position. Call it before the crowd and the difference is yours.",
+    title: "Paid for being right",
+    body: "Your shares trade as the index moves, so you can sell any time. Hold until the index touches your line and every share pays a full USDG.",
     tone: "yellow" as const,
   },
 ];
@@ -777,7 +777,7 @@ function SceneTrade() {
             fontWeight="700"
             fill="#999"
           >
-            {"↗"} Long
+            {"↗"} UP
           </text>
         </g>
         <g transform="translate(144,60)">
@@ -796,7 +796,7 @@ function SceneTrade() {
             fontWeight="700"
             fill="#999"
           >
-            {"↘"} Short
+            {"↘"} DOWN
           </text>
         </g>
 
@@ -809,16 +809,13 @@ function SceneTrade() {
             fill="#1e1e1e"
             stroke="#2a2a2a"
           />
-          <text x="12" y="23" fontSize="16" fontWeight="700" fill="#666">
-            $
-          </text>
-          <text x="26" y="23" fontSize="16" fontWeight="700" fill="#f0f0f0">
+          <text x="14" y="23" fontSize="16" fontWeight="700" fill="#f0f0f0">
             <tspan className="hiw-amt hiw-amt-1">1</tspan>
             <tspan className="hiw-amt hiw-amt-2">0</tspan>
             <tspan className="hiw-amt hiw-amt-3">0</tspan>
           </text>
           <text x="240" y="22" textAnchor="end" fontSize="8" fill="#777">
-            USDC
+            USDG
           </text>
         </g>
 
@@ -834,7 +831,7 @@ function SceneTrade() {
               fontWeight="700"
               fill="#000"
             >
-              Open Long {"·"} $100
+              Buy UP {"·"} 100 USDG
             </text>
           </g>
         </g>
@@ -879,7 +876,7 @@ function SceneTrade() {
             fontWeight="700"
             fill="#00D4FF"
           >
-            Long opened
+            Bought UP
           </text>
         </g>
       </g>
@@ -990,6 +987,12 @@ function SceneProfit() {
           <line key={y} x1="14" x2="266" y1={y} y2={y} stroke="#232323" />
         ))}
 
+        {/* the UP line: where the market pays out, which the index reaches */}
+        <line x1="14" x2="266" y1="44" y2="44" stroke="#00D4FF" strokeOpacity="0.7" strokeDasharray="4 3" />
+        <text x="16" y="40" fontSize="7.5" fontWeight="700" fill="#00D4FF" letterSpacing="0.5">
+          UP PAYS HERE
+        </text>
+
         {/* area + line, revealed left to right */}
         <g clipPath="url(#hiw-reveal-clip)">
           <path d={`${line} L 266 150 L 14 150 Z`} fill="url(#hiw-area)" />
@@ -1060,7 +1063,7 @@ function SceneProfit() {
               fontWeight="700"
               fill="#00D4FF"
             >
-              +$212.40
+              +100 USDG
             </text>
           </g>
           <circle
