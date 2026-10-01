@@ -5,6 +5,7 @@ import {
   Area,
   AreaChart,
   CartesianGrid,
+  ReferenceDot,
   ReferenceLine,
   Tooltip,
   XAxis,
@@ -213,6 +214,7 @@ export function ViChart({
   range,
   height = 280,
   bounds,
+  marks = [],
   scoring = false,
 }: {
   dataPoints: ViPoint[];
@@ -220,10 +222,34 @@ export function ViChart({
   height?: number;
   /** Bounds of the open bounded market: UP pays at `upper`, DOWN at `lower`. */
   bounds?: { lower: number; upper: number } | null;
+  /** The viewer's own trades, drawn as dots at the nearest VI print. */
+  marks?: Array<{ time: number; side: "up" | "down"; kind: "buy" | "sell" }>;
   /** The market has no VI yet; the empty chart says so instead of blaming the range. */
   scoring?: boolean;
 }) {
   const data = useMemo(() => sliceRange(dataPoints, range), [dataPoints, range]);
+  // Each trade lands on the visible print closest to its block time; trades
+  // outside the visible range are left out.
+  const markDots = useMemo(() => {
+    if (!marks.length || data.length < 2) return [];
+    const times = data.map((p) => new Date(p.date).getTime());
+    const first = times[0];
+    const last = times[times.length - 1];
+    return marks
+      .filter((m) => m.time >= first - 300_000 && m.time <= last + 300_000)
+      .map((m, i) => {
+        let best = 0;
+        let bestDist = Infinity;
+        times.forEach((tt, j) => {
+          const d = Math.abs(tt - m.time);
+          if (d < bestDist) {
+            bestDist = d;
+            best = j;
+          }
+        });
+        return { key: `${m.time}-${i}`, x: data[best].date, y: data[best].value, side: m.side, kind: m.kind };
+      });
+  }, [marks, data]);
   const t = useChartTheme();
   const { ref, w, h, ready } = useSize();
   const gradId = useId();
@@ -372,6 +398,18 @@ export function ViChart({
               }}
             />
           )}
+          {markDots.map((m) => (
+            <ReferenceDot
+              key={m.key}
+              x={m.x}
+              y={m.y}
+              r={4.5}
+              fill={m.kind === "buy" ? (m.side === "up" ? UP : DOWN) : t.surface}
+              stroke={m.side === "up" ? UP : DOWN}
+              strokeWidth={2}
+              ifOverflow="visible"
+            />
+          ))}
           {bounds && bounds.lower > 0 && (
             <ReferenceLine
               y={bounds.lower}

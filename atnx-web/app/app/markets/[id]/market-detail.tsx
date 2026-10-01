@@ -15,6 +15,7 @@ import { TradeDock } from "@/components/TradeDock";
 import { BoundedTicket } from "@/components/bm/BoundedTicket";
 import { ChainTradeLog } from "@/components/bm/ChainTradeLog";
 import { PriceChip } from "@/components/bm/PriceChip";
+import { useMyTrades } from "@/components/bm/useMyTrades";
 import { ShareButton } from "@/components/ShareButton";
 import {
   ViChart,
@@ -199,6 +200,7 @@ export function MarketDetailClient({
   neighbors,
 }: Props) {
   const router = useRouter();
+  const myTrades = useMyTrades(bounded);
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [range, setRange] = useState<Range>("ALL");
   const [tab, setTab] = useState<Tab>("pulse");
@@ -459,8 +461,16 @@ export function MarketDetailClient({
                       ? { lower: liveBounded.lower_bound, upper: liveBounded.upper_bound }
                       : null
                   }
+                  marks={myTrades}
                   scoring={scoring}
                 />
+                {myTrades.length > 0 && (
+                  <div className="px-2 mt-1 flex items-center gap-3 text-[10px] text-tertiary">
+                    <span className="inline-flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-atnx-cyan" /> UP buy</span>
+                    <span className="inline-flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-atnx-magenta" /> DOWN buy</span>
+                    <span className="inline-flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full border-2 border-atnx-cyan" /> sell</span>
+                  </div>
+                )}
               </div>
             </Card>
 
