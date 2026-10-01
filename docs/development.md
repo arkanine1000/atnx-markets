@@ -1,0 +1,85 @@
+# Local development
+
+## Web app
+
+```bash
+cd atnx-web
+npm install
+cp .env.local.example .env.local   # fill in the Supabase / CRON values below
+npm run dev                        # http://localhost:3000
+```
+
+Env vars:
+
+| Name | Where | Notes |
+| --- | --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL` | client + server | Supabase project URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | client + server | Anon key for browser auth |
+| `SUPABASE_SERVICE_ROLE_KEY` | server only | Admin client, bypasses RLS |
+| `AI_GATEWAY_API_KEY` | server only, local | Vercel AI Gateway. Not needed on Vercel itself (OIDC) |
+| `CRON_SECRET` | server only | Bearer token Vercel sends to `/api/markets/refresh` and `/refresh-slow` |
+| `CORS_ALLOWED_ORIGINS` | server only | Comma-separated extra origins allowed to call the cookie-authenticated API (the extension's `chrome-extension://<id>`); the app's own hosts are always allowed |
+| `BLUESKY_IDENTIFIER` | server only | Bluesky handle for the post-search VI source (source is skipped when unset) |
+| `BLUESKY_APP_PASSWORD` | server only | App password for that account |
+| `VI_TRENDS_BENCHMARK` | server only | Optional; anchor keyword for Google Trends, default `sudoku` |
+
+Optional overrides (model ids, link and confirm thresholds, the daily market-creation cap and its exemptions) and the `EVAL_*` variables for the eval script are listed in `atnx-web/.env.local.example`.
+
+## Checking the pipeline
+
+```bash
+npm run eval:capture -- --cleanup   # 25 fixtures through the one-shot route, resubmits, then the review cases; needs a running dev server
+npm run test:vi                      # the VI math, node:test
+npm run vi:report                    # what the last hourly run did: coverage, spend, notable markets
+npm run vi:audit                     # every live market's score, breakdown, history coverage and cron health
+```
+
+## Seeding trending markets
+
+A fresh database renders the empty state until someone captures something. To fill it with a curated set of currently-trending memes and moments:
+
+```bash
+npm run seed:trending              # creates ~10 markets (needs SUPABASE_SERVICE_ROLE_KEY in .env.local)
+npm run seed:trending -- --dry-run # fetches the images and writes previews to .seed-preview/, touches nothing
+npm run seed:trending -- --user <auth uuid>   # attribute the captures to a user instead of leaving user_id null
+```
+
+Each item becomes a `markets` row, one `captures` row (image is the source page's og:image, uploaded to the `captures` bucket, with a generated card as fallback) and a 7-day `vi_history` series shaped to its trend. Markets whose name already exists are skipped, so re-running is safe. The VI refresh cron takes over scoring from there. The list lives in `scripts/seed-trending.mjs`; edit `TRENDING` to swap in whatever is hot.
+
+## Extension
+
+1. `chrome://extensions` → enable **Developer Mode** → **Load unpacked** → select `atnx-extension/`.
+2. Click the toolbar icon to open the side panel, open the gear, and set **Web App URL** to `http://localhost:3000` while developing locally. Chrome will ask to grant the extension access to that origin — accept, or captures can't attach the auth cookie. The field shows only to admins and moderators, so sign in at www.atnx.app with a staff account first (once a local URL is saved it stays visible). Only `*.atnx.app` and `localhost` / `127.0.0.1` are accepted.
+3. Sign in at your web app URL first so the Supabase auth cookie exists. Then `Ctrl+Shift+X` / `Cmd+Shift+X` to capture.
+
+Change the hotkey at `chrome://extensions/shortcuts`.
+
+## Releasing the extension to the Chrome Web Store
+
+```bash
+cd atnx-extension
+node package.mjs                 # → dist/atnx-capture-v<version>.zip (only the files the manifest needs)
+node ../scripts/store-assets.mjs # regenerates store/screenshot-*.png + promo-small.png (needs Playwright)
+```
+
+Then follow `atnx-extension/store/LISTING.md`: it has the listing text, the
+per-permission justifications, the data-usage disclosures, and the checklist
+for the Developer Dashboard. The privacy policy the listing links to is served
+by the web app at `/privacy`, so deploy the web app before submitting. Bump
+`version` in `manifest.json` for every upload.
+
+---
+
+# Deployment
+
+- Hosted on **Vercel**, domain `atnx.app`.
+- `vercel.json` schedules `/api/markets/refresh` every 5 min (`*/5 * * * *`) and `/api/markets/refresh-slow` hourly.
+- `next.config.ts` is intentionally empty — all routing/CORS lives in `proxy.ts` and route handlers.
+- The extension defaults to `https://atnx.app`; no rebuild needed to switch friends between prod and local.
+
+# Known rough edges
+
+- The per-source caches and the X and TikTok daily ledgers are in-memory per instance; the ledgers re-read `vi_samples` every few minutes, so a multi-instance deployment overspends by at most that window.
+- Tests cover the VI math (`npm run test:vi`, node:test through tsx). `npm run eval:capture` is the regression check for the submission pipeline and the review step; the rest is manual.
+- Google Trends has no official API. Rate-limit hiccups surface as an unknown reading and the refresh keeps the market's last value.
+- Each free source has a hard ceiling (YouTube's 100 searches a day, Apify's plan limit, the X tweet budget); when one runs out the source goes dark until its window resets and the stored reading stands in for up to two days.
