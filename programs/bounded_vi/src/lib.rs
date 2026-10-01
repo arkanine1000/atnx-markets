@@ -17,7 +17,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Mint, MintTo, Token, TokenAccount, Transfer};
 
-declare_id!("BViM111111111111111111111111111111111111111");
+declare_id!("5xdrKVQPYpCJ4YkzDysTmV3XPQN5vVwHV1RhAQ2xvABG");
 
 pub const BPS: u128 = 10_000;
 pub const MAX_FEE_BPS: u16 = 500;

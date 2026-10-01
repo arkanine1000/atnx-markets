@@ -60,6 +60,9 @@ jobs:
         run: |
           solana --version
           solana-keygen new --no-bip39-passphrase --silent --outfile ~/.config/solana/id.json
+          # The committed devnet program keypair, so the built program's
+          # declare_id matches the address it is deployed to.
+          mkdir -p target/deploy && cp programs/keys/bounded_vi-keypair.json target/deploy/
           anchor build
           anchor keys list
           ls -la target/deploy target/idl

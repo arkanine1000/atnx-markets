@@ -6,10 +6,10 @@ resolution = true
 skip-lint = false
 
 [programs.devnet]
-bounded_vi = "BViM111111111111111111111111111111111111111"
+bounded_vi = "5xdrKVQPYpCJ4YkzDysTmV3XPQN5vVwHV1RhAQ2xvABG"
 
 [programs.localnet]
-bounded_vi = "BViM111111111111111111111111111111111111111"
+bounded_vi = "5xdrKVQPYpCJ4YkzDysTmV3XPQN5vVwHV1RhAQ2xvABG"
 
 [registry]
 url = "https://api.apr.dev"
