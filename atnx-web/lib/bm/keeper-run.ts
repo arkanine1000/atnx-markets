@@ -42,12 +42,15 @@ export interface KeeperReport {
   notes: string[];
 }
 
-async function printsSince(atnxMarketId: string, cursor: number, limit = 500): Promise<Print[]> {
+// Prints after the cursor and after the row was created: a market only
+// ever resolves on what the VI did while it was open.
+async function printsSince(atnxMarketId: string, cursor: number, since: string, limit = 500): Promise<Print[]> {
   const { data, error } = await createAdminClient()
     .from('vi_history')
     .select('id, vi')
     .eq('market_id', atnxMarketId)
     .gt('id', cursor)
+    .gte('recorded_at', since)
     .order('id', { ascending: true })
     .limit(limit);
   if (error) throw error;
@@ -119,7 +122,7 @@ export async function runKeeper(opts: { dry?: boolean } = {}): Promise<KeeperRep
   for (const row of await registry.listByState(['open'])) {
     rep.checked++;
     try {
-      const prints = await printsSince(row.atnx_market_id, row.keeper_cursor);
+      const prints = await printsSince(row.atnx_market_id, row.keeper_cursor, row.created_at);
       if (prints.length === 0) continue;
       const result = applyPrints(
         { cursor: row.keeper_cursor, streakSide: row.streak_side, streakCount: row.streak_count },

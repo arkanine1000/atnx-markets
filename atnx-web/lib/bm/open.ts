@@ -33,6 +33,7 @@ export interface OpenInput {
   atnxMarketId: string;
   chainKey: string;
   openedBy?: string | null;
+  openedByWallet?: string | null;
   rolledFrom?: string | null;
   roll?: number;
   dry?: boolean;
@@ -54,6 +55,22 @@ export async function readLiveVi(atnxMarketId: string): Promise<ViSnapshot | nul
   if (error) throw error;
   if (!data) return null;
   return { vi: Number(data.current_vi ?? 0), state: String(data.vi_state ?? 'live'), updatedAt: data.vi_last_updated };
+}
+
+// The newest VI print on record. A bounded market's keeper cursor starts
+// here, so the touch rule only ever sees prints made after the market
+// opened; replaying the history (which can start at a seed of 0) would
+// resolve a fresh market on its first tick.
+export async function latestPrintId(atnxMarketId: string): Promise<number> {
+  const { data, error } = await createAdminClient()
+    .from('vi_history')
+    .select('id')
+    .eq('market_id', atnxMarketId)
+    .order('id', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return Number(data?.id ?? 0);
 }
 
 // The guard that keeps a stale VI (atnx.app's cron down) from opening a
@@ -82,7 +99,10 @@ export async function openBoundedMarket(input: OpenInput): Promise<OpenResult> {
 
   const b = bounds(snap.vi);
   const roll = input.roll ?? 0;
+  const keeperCursor = await latestPrintId(input.atnxMarketId);
   const row = await registry.claimPending({
+    keeperCursor,
+    openedByWallet: input.openedByWallet ?? null,
     atnxMarketId: input.atnxMarketId,
     chain: chain.key,
     contractAddress: chain.markets,

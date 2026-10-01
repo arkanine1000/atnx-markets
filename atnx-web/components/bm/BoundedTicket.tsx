@@ -7,7 +7,6 @@ import { useAccount, useConfig, useConnect, useReadContract, useSwitchChain, use
 import { waitForTransactionReceipt } from "wagmi/actions";
 import { openBoundedMarketAction } from "@/app/app/actions/bm";
 import { Card, Segmented } from "@/components/ui";
-import { useAuth } from "@/context/AuthContext";
 import { boundedViMarketsAbi, mockUsdgAbi } from "@/lib/bm/abi";
 import { bounds } from "@/lib/bm/bounds";
 import { isDeployed, txUrl } from "@/lib/bm/chains";
@@ -43,7 +42,6 @@ export function BoundedTicket({ atnxMarketId, name, score, scoring = false, boun
   const { switchChain, isPending: switching } = useSwitchChain();
   const { writeContractAsync } = useWriteContract();
   const config = useConfig();
-  const { user, loading: authLoading, openLoginModal } = useAuth();
 
   const row = liveRow(bounded, chain.key);
   const resolved = resolvedRows(bounded, chain.key);
@@ -154,7 +152,7 @@ export function BoundedTicket({ atnxMarketId, name, score, scoring = false, boun
   function openMarket() {
     setError(null);
     startOpening(async () => {
-      const r = await openBoundedMarketAction(atnxMarketId, chain.key);
+      const r = await openBoundedMarketAction(atnxMarketId, chain.key, address ?? "");
       if (!r.ok) setError(r.error);
       else router.refresh();
     });
@@ -237,20 +235,14 @@ export function BoundedTicket({ atnxMarketId, name, score, scoring = false, boun
               UP pays at <span className="text-atnx-cyan font-mono">{b.upper}</span>, DOWN pays at <span className="text-atnx-magenta font-mono">{b.lower}</span>.
               The treasury seeds the pool.
             </p>
-            {authLoading ? null : user ? (
-              <button
-                type="button"
-                onClick={openMarket}
-                disabled={opening}
-                className="btn-cyan w-full h-11 rounded-xl font-bold text-sm cursor-pointer disabled:opacity-50"
-              >
-                {opening ? "Opening on chain…" : "Open UP/DOWN market"}
-              </button>
-            ) : (
-              <button type="button" onClick={openLoginModal} className="btn-magenta w-full h-11 rounded-xl font-bold text-sm cursor-pointer">
-                Sign in to open a market
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={openMarket}
+              disabled={opening}
+              className="btn-cyan w-full h-11 rounded-xl font-bold text-sm cursor-pointer disabled:opacity-50"
+            >
+              {opening ? "Opening on chain…" : "Open UP/DOWN market"}
+            </button>
           </>
         ) : (
           <p className="text-xs text-secondary">This market has no score yet.</p>

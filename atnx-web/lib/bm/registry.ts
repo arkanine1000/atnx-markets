@@ -70,8 +70,11 @@ export interface ClaimInput {
   seedUsdg: number;
   initialUpBps?: number;
   openedBy?: string | null;
+  openedByWallet?: string | null;
   rolledFrom?: string | null;
   roll?: number;
+  // The latest vi_history.id at opening: prints before it never count.
+  keeperCursor: number;
 }
 
 // Reserves the one live slot for (atnx market, chain) by inserting a
@@ -90,8 +93,10 @@ export async function claimPending(input: ClaimInput): Promise<BmMarketRow | nul
       seed_usdg: input.seedUsdg,
       initial_up_bps: input.initialUpBps ?? 5000,
       opened_by: input.openedBy ?? null,
+      opened_by_wallet: input.openedByWallet ?? null,
       rolled_from: input.rolledFrom ?? null,
       roll: input.roll ?? 0,
+      keeper_cursor: input.keeperCursor,
       state: 'pending',
     })
     .select('*')

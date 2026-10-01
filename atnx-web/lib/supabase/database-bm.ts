@@ -31,6 +31,7 @@ export interface BmMarketRow {
   streak_side: BmSide | null;
   streak_count: number;
   opened_by: string | null;
+  opened_by_wallet: string | null;
   rolled_from: string | null;
   roll: number;
   error: string | null;
