@@ -32,6 +32,7 @@ This repository is the hackathon fork of ATNX for the **Arbitrum / Robinhood Cha
 |---|---|---|---|
 | Robinhood Testnet (46630) | [`0x0cDab5681546b887bA8772290869ef9001B2d47C`](https://explorer.testnet.chain.robinhood.com/address/0x0cDab5681546b887bA8772290869ef9001B2d47C) | [`0x3cCAADFa951Cd18fd68c2575402ee28E390Bf641`](https://explorer.testnet.chain.robinhood.com/address/0x3cCAADFa951Cd18fd68c2575402ee28E390Bf641) | deployed 2026-10-01, block 127197452 |
 | Arbitrum Sepolia (421614) | _pending_ | _pending_ | https://sepolia.arbiscan.io |
+| Solana devnet (Anchor program) | [`5xdrKVQPYpCJ4YkzDysTmV3XPQN5vVwHV1RhAQ2xvABG`](https://explorer.solana.com/address/5xdrKVQPYpCJ4YkzDysTmV3XPQN5vVwHV1RhAQ2xvABG?cluster=devnet) | mint [`9cgEJ7nexdmx2n4cDFaC93jvJnfreSNnTjkAXGZtxLEd`](https://explorer.solana.com/address/9cgEJ7nexdmx2n4cDFaC93jvJnfreSNnTjkAXGZtxLEd?cluster=devnet) | deployed 2026-10-01; config PDA `4HuF4aigjHakgQxtfL7S9BmnDxMx1B9sBa1WRavGCQf1` |
 
 ### How it works
 
@@ -67,7 +68,7 @@ _Updated as the build progresses._
 - [x] Extension fork (`atnx-extension/`, unpublished; rows deep-link to the market page since a side panel cannot reach an injected wallet)
 - [x] End-to-end on Robinhood Testnet (`npm run bm:e2e -- eip155:46630`, 2026-10-01: mint, open, buy, sell, resolve, redeem, sweep all pass; three live markets opened: Halloween, Grand Theft Auto VI, MrBeast)
 - [ ] End-to-end on Arbitrum Sepolia (needs testnet gas)
-- [ ] Solana program (Colosseum Solana track)
+- [x] Solana program (Colosseum Solana track): `programs/bounded_vi`, built on GitHub Actions, deployed to devnet, scripted end-to-end passes with the same numbers as the EVM run (`npm run bm:sol -- e2e`). Not yet wired into the web app's chain switch (scripts only).
 
 Known limits: Google/X sign-in on the subdomain redirects to the main site, so the hackathon build identifies people by wallet (opening a market needs a connected wallet, no account) and new subjects are captured on https://atnx.app, which the fork lists within minutes; centralised oracle; the VI itself is computed by production ATNX; the "deemed dead" rule for markets with a lower bound of 0 is not implemented; the treasury seed is not recovered; the 50/50 opening price is a product choice (the design doc illustrates a linear price).
 
@@ -107,7 +108,7 @@ The keeper's next tick marks it resolved in the registry and rolls a new market.
 
 ### Colosseum Crypto World's Fair
 
-**Tracks:** Robinhood Chain, Arbitrum (both from the same deploy), Solana once `programs/` lands.
+**Tracks:** Robinhood Chain, Arbitrum (both from the same deploy), Solana (the Anchor port on devnet, `programs/`).
 
 **One-line pitch.** ATNX turns any screenshot into a market on how much attention something is getting, and lets anyone take the UP or DOWN side of that attention without leverage, liquidations or a house.
 

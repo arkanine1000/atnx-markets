@@ -13,5 +13,5 @@ anchor build
 anchor deploy --provider.cluster devnet
 ```
 
-Status: builds on GitHub Actions (`.github/workflows/solana-build.yml`, artifact `bounded_vi`); the devnet program keypair is committed under `keys/` (testnet only, no value). The web app's chain switch
+Deployed on devnet 2026-10-01: program `5xdrKVQPYpCJ4YkzDysTmV3XPQN5vVwHV1RhAQ2xvABG`, mock USDG mint `9cgEJ7nexdmx2n4cDFaC93jvJnfreSNnTjkAXGZtxLEd`, authority/operator/oracle = the local devnet wallet. `atnx-web/scripts/bm-sol.ts` runs the faucet, a market, trades, resolution and redeem against it (`npm run bm:sol -- e2e`). Builds on GitHub Actions (`.github/workflows/solana-build.yml`, artifact `bounded_vi`); the devnet program keypair is committed under `keys/` (testnet only, no value). The web app's chain switch
 does not include Solana yet (`atnx-web/lib/bm/chains.ts` is EVM-only).
