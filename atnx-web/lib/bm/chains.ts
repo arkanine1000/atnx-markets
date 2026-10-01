@@ -40,9 +40,10 @@ export const BM_CHAINS: Record<ChainKey, BmChain> = {
     viemChain: robinhoodTestnet,
     rpcUrl: process.env.NEXT_PUBLIC_BM_RPC_46630 ?? 'https://rpc.testnet.chain.robinhood.com',
     explorer: 'https://explorer.testnet.chain.robinhood.com',
-    markets: addr('NEXT_PUBLIC_BM_MARKETS_46630', ZERO),
-    usdg: addr('NEXT_PUBLIC_BM_USDG_46630', ZERO),
-    deployBlock: BigInt(process.env.NEXT_PUBLIC_BM_DEPLOY_BLOCK_46630 ?? '0'),
+    // Deployed 2026-10-01 (contracts/broadcast/Deploy.s.sol/46630).
+    markets: addr('NEXT_PUBLIC_BM_MARKETS_46630', '0x0cDab5681546b887bA8772290869ef9001B2d47C'),
+    usdg: addr('NEXT_PUBLIC_BM_USDG_46630', '0x3cCAADFa951Cd18fd68c2575402ee28E390Bf641'),
+    deployBlock: BigInt(process.env.NEXT_PUBLIC_BM_DEPLOY_BLOCK_46630 ?? '127197452'),
   },
   'eip155:421614': {
     key: 'eip155:421614',

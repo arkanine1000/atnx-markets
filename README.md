@@ -30,7 +30,7 @@ This repository is the hackathon fork of ATNX for the **Arbitrum / Robinhood Cha
 
 | Chain | BoundedVIMarkets | MockUSDG | Explorer |
 |---|---|---|---|
-| Robinhood Testnet (46630) | _pending_ | _pending_ | https://explorer.testnet.chain.robinhood.com |
+| Robinhood Testnet (46630) | [`0x0cDab5681546b887bA8772290869ef9001B2d47C`](https://explorer.testnet.chain.robinhood.com/address/0x0cDab5681546b887bA8772290869ef9001B2d47C) | [`0x3cCAADFa951Cd18fd68c2575402ee28E390Bf641`](https://explorer.testnet.chain.robinhood.com/address/0x3cCAADFa951Cd18fd68c2575402ee28E390Bf641) | deployed 2026-10-01, block 127197452 |
 | Arbitrum Sepolia (421614) | _pending_ | _pending_ | https://sepolia.arbiscan.io |
 
 ### How it works
@@ -59,7 +59,8 @@ _Updated as the build progresses._
 
 - [x] Fork, tag, registry schema (`atnx-web/supabase/bm/`), bounds function with tests
 - [x] Contracts with Foundry tests (`contracts/`, 19 tests incl. fuzz and invariants)
-- [ ] Contracts deployed on both chains (needs testnet gas on the keeper wallet)
+- [x] Contracts deployed on Robinhood Testnet
+- [ ] Contracts deployed on Arbitrum Sepolia (needs testnet gas on the keeper wallet)
 - [x] Keeper (resolution + auto-roll) and the open-market flow (`atnx-web/lib/bm/`, `/api/bm/keeper`)
 - [x] Web: wallet, UP/DOWN ticket, bounds on the chart, pool price, activity from chain events
 - [x] On-chain portfolio (`/app/portfolio`)
