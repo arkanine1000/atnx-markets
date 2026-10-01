@@ -4,7 +4,7 @@ import Link from "next/link";
 import { ViSparkline, deltaColor } from "@/components/charts/ViArea";
 import { LogoImage } from "@/components/LogoImage";
 import { Chip, DeltaChip, ScoreBadge } from "@/components/ui";
-import { BoundsBadge } from "@/components/bm/BoundsBadge";
+import { BoundsRail } from "@/components/bm/BoundsRail";
 import { viChange24h } from "@/lib/capture-view";
 import type { Capture } from "@/lib/store";
 
@@ -87,7 +87,6 @@ export function MarketCard({ capture, captureCount, rank, compact, bounds }: Pro
           #{rank}
         </span>
         <div className="absolute top-2 right-2 flex items-center gap-1">
-          {bounds && <BoundsBadge lower={bounds.lower} upper={bounds.upper} />}
           {captureCount > 1 && (
             <Chip tone="magenta" className="backdrop-blur bg-black/50">
               {captureCount} captures
@@ -104,6 +103,17 @@ export function MarketCard({ capture, captureCount, rank, compact, bounds }: Pro
         </div>
       </div>
 
+      {/* The open UP/DOWN market, as a rail from the lower bound to the
+          upper with the VI's position on it. */}
+      {bounds && (
+        <BoundsRail
+          lower={bounds.lower}
+          upper={bounds.upper}
+          vi={viralityScore}
+          compact={compact}
+          className={`${compact ? "px-3" : "px-3.5"} pt-2.5 -mb-1`}
+        />
+      )}
       <div className={`flex items-start gap-3 ${compact ? "p-3" : "p-3.5"}`}>
         <div className="min-w-0 flex-1">
           <div
@@ -170,13 +180,6 @@ export function MarketRow({ capture, captureCount, rank, bounds }: Props) {
       <div className="min-w-0 flex-1">
         <div className="text-sm font-bold text-primary truncate flex items-center gap-2">
           <span className="truncate">{analysis.name || "Untitled"}</span>
-          {bounds && (
-            <Chip tone="cyan">
-              <span className="font-mono tabular-nums">
-                {bounds.lower}–{bounds.upper}
-              </span>
-            </Chip>
-          )}
           {captureCount > 1 && (
             <Chip tone="magenta">{captureCount} captures</Chip>
           )}
@@ -185,6 +188,9 @@ export function MarketRow({ capture, captureCount, rank, bounds }: Props) {
         <div className="text-xs text-tertiary truncate">
           {analysis.category || "—"}
         </div>
+        {bounds && (
+          <BoundsRail lower={bounds.lower} upper={bounds.upper} vi={viralityScore} compact className="mt-1 max-w-[14rem]" />
+        )}
       </div>
       <div className="hidden sm:block w-28 shrink-0">
         <ViSparkline
