@@ -2,6 +2,9 @@ import type { Metadata, Viewport } from "next";
 import { Archivo, Instrument_Sans, Martian_Mono } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import { AuthProvider } from "@/context/AuthContext";
+import { headers } from "next/headers";
+import { cookieToInitialState } from "wagmi";
+import { wagmiConfig } from "@/lib/bm/wagmi";
 import { Web3Providers } from "@/components/bm/Web3Providers";
 import { AutoWalletSignIn } from "@/components/bm/AutoWalletSignIn";
 import { LoginModal } from "@/components/LoginModal";
@@ -53,11 +56,14 @@ export const viewport: Viewport = {
   viewportFit: "cover",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // The wallet connection wagmi stored in its cookie, so the first paint
+  // already knows it (see lib/bm/wagmi.ts).
+  const wagmiState = cookieToInitialState(wagmiConfig, (await headers()).get("cookie"));
   return (
     <html
       lang="en"
@@ -66,7 +72,7 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col font-sans">
         <ThemeProvider attribute="class" defaultTheme="dark" themes={["dark", "light"]}>
-          <Web3Providers>
+          <Web3Providers initialState={wagmiState}>
             <AuthProvider>
               {children}
               <LoginModal />

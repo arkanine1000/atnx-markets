@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useConnect } from "wagmi";
+import { useAccount, useConnect } from "wagmi";
 
 // Connect, with the wallets found in the browser listed by name when
 // there is more than one (Brave Wallet and MetaMask side by side is the
@@ -10,6 +10,9 @@ import { useConnect } from "wagmi";
 // like a dead button; a visible error and a named choice avoid that.
 export function ConnectButton({ className = "", label = "Connect wallet", compact = false }: { className?: string; label?: string; compact?: boolean }) {
   const { connect, connectors, isPending, error, reset } = useConnect();
+  const { status } = useAccount();
+  // The page is still re-establishing last time's connection.
+  const reconnecting = status === "reconnecting" || status === "connecting";
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -45,7 +48,7 @@ export function ConnectButton({ className = "", label = "Connect wallet", compac
           if (choices.length === 1) pick(choices[0].uid);
           else setOpen((v) => !v);
         }}
-        disabled={choices.length === 0 || isPending}
+        disabled={choices.length === 0 || isPending || reconnecting}
         title={choices.length === 0 ? "No wallet extension found in this browser" : undefined}
         className={
           compact
@@ -53,7 +56,7 @@ export function ConnectButton({ className = "", label = "Connect wallet", compac
             : "btn-cyan w-full h-11 rounded-xl font-bold text-sm cursor-pointer disabled:opacity-50"
         }
       >
-        {isPending ? "Check your wallet…" : choices.length === 0 ? "No wallet found" : label}
+        {reconnecting ? "Reconnecting…" : isPending ? "Check your wallet…" : choices.length === 0 ? "No wallet found" : label}
       </button>
       {open && (
         <div role="menu" className="absolute right-0 mt-1 min-w-48 bg-elevated border border-surface rounded-md shadow-lg z-50 py-1 text-xs">

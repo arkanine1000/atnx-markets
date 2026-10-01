@@ -1,4 +1,4 @@
-import { createConfig, http } from 'wagmi';
+import { cookieStorage, createConfig, createStorage, http } from 'wagmi';
 import { injected, walletConnect } from 'wagmi/connectors';
 import { BM_CHAINS, DEFAULT_CHAIN } from './chains';
 
@@ -34,6 +34,10 @@ export const wagmiConfig = createConfig({
       : []),
   ],
   transports: Object.fromEntries(ordered.map((c) => [c.chainId, http(c.rpcUrl)])),
+  // The connection is kept in a cookie so a server render already knows
+  // the wallet; without it every refresh hydrated as "disconnected" and
+  // showed a connect button during the reconnect.
+  storage: createStorage({ storage: cookieStorage }),
   ssr: true,
 });
 
