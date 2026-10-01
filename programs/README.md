@@ -13,5 +13,5 @@ anchor build
 anchor deploy --provider.cluster devnet
 ```
 
-Status: builds on GitHub Actions (`.github/workflows/solana-build.yml`, artifact `bounded_vi`); the devnet program keypair is committed under `programs/keys/` (testnet only, no value). The web app's chain switch
+Status: builds on GitHub Actions (`.github/workflows/solana-build.yml`, artifact `bounded_vi`); the devnet program keypair is committed under `keys/` (testnet only, no value). The web app's chain switch
 does not include Solana yet (`atnx-web/lib/bm/chains.ts` is EVM-only).

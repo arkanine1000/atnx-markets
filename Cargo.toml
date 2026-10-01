@@ -1,5 +1,5 @@
 [workspace]
-members = ["programs/bounded_vi"]
+members = ["programs/*"]
 resolver = "2"
 
 [profile.release]

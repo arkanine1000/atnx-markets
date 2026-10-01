@@ -16,8 +16,8 @@ gh run download --repo arkanine1000/atnx-markets "$RID" --name bounded_vi --dir 
 find "$OUT" -type f | sed 's/^/  /'
 SO=$(find "$OUT" -name bounded_vi.so | head -1)
 IDL=$(find "$OUT" -name bounded_vi.json | head -1)
-PID=$(solana-keygen pubkey programs/keys/bounded_vi-keypair.json)
+PID=$(solana-keygen pubkey keys/bounded_vi-keypair.json)
 echo "program id $PID; payer $(solana-keygen pubkey "$PAYER") balance $(solana balance -k "$PAYER" -u devnet)"
-solana program deploy "$SO" --program-id programs/keys/bounded_vi-keypair.json -k "$PAYER" -u devnet --with-compute-unit-price 1000
+solana program deploy "$SO" --program-id keys/bounded_vi-keypair.json -k "$PAYER" -u devnet --with-compute-unit-price 1000
 cp "$IDL" programs/bounded_vi.idl.json
 echo "deployed: https://explorer.solana.com/address/$PID?cluster=devnet"
