@@ -16,6 +16,7 @@ import { BoundedTicket } from "@/components/bm/BoundedTicket";
 import { ChainTradeLog } from "@/components/bm/ChainTradeLog";
 import { PriceChip } from "@/components/bm/PriceChip";
 import { useMyTrades } from "@/components/bm/useMyTrades";
+import { fmtUsdg } from "@/components/bm/format";
 import { ShareButton } from "@/components/ShareButton";
 import {
   ViChart,
@@ -201,6 +202,16 @@ export function MarketDetailClient({
 }: Props) {
   const router = useRouter();
   const myTrades = useMyTrades(bounded);
+  const tradeMarks = useMemo(
+    () =>
+      myTrades.map((m) => ({
+        time: m.time,
+        side: m.side,
+        kind: m.kind,
+        label: `${m.kind === "buy" ? "Bought" : "Sold"} ${fmtUsdg(m.shares)} ${m.side.toUpperCase()} ${m.kind === "buy" ? "for" : "for"} ${fmtUsdg(m.usdg)} USDG · ${new Date(m.time).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}`,
+      })),
+    [myTrades],
+  );
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [range, setRange] = useState<Range>("ALL");
   const [tab, setTab] = useState<Tab>("pulse");
@@ -461,7 +472,7 @@ export function MarketDetailClient({
                       ? { lower: liveBounded.lower_bound, upper: liveBounded.upper_bound }
                       : null
                   }
-                  marks={myTrades}
+                  marks={tradeMarks}
                   scoring={scoring}
                 />
                 {myTrades.length > 0 && (

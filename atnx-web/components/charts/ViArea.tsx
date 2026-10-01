@@ -222,8 +222,8 @@ export function ViChart({
   height?: number;
   /** Bounds of the open bounded market: UP pays at `upper`, DOWN at `lower`. */
   bounds?: { lower: number; upper: number } | null;
-  /** The viewer's own trades, drawn as dots at the nearest VI print. */
-  marks?: Array<{ time: number; side: "up" | "down"; kind: "buy" | "sell" }>;
+  /** The viewer's own trades, drawn as dots at the nearest VI print; `label` is the hover text. */
+  marks?: Array<{ time: number; side: "up" | "down"; kind: "buy" | "sell"; label?: string }>;
   /** The market has no VI yet; the empty chart says so instead of blaming the range. */
   scoring?: boolean;
 }) {
@@ -247,9 +247,12 @@ export function ViChart({
             best = j;
           }
         });
-        return { key: `${m.time}-${i}`, x: data[best].date, y: data[best].value, side: m.side, kind: m.kind };
+        return { key: `${m.time}-${i}`, x: data[best].date, y: data[best].value, side: m.side, kind: m.kind, label: m.label };
       });
   }, [marks, data]);
+  // The hovered trade dot: its pixel position and text, for the tooltip
+  // drawn over the chart (recharts' own tooltip follows the series only).
+  const [hover, setHover] = useState<{ cx: number; cy: number; text: string } | null>(null);
   const t = useChartTheme();
   const { ref, w, h, ready } = useSize();
   const gradId = useId();
@@ -279,7 +282,21 @@ export function ViChart({
   }
 
   return (
-    <div ref={ref} style={{ height }} className="w-full">
+    <div ref={ref} style={{ height }} className="w-full relative">
+      {hover && (
+        <div
+          className="absolute z-10 pointer-events-none rounded-lg px-2.5 py-1.5 text-[11px] font-sans shadow-lg whitespace-nowrap -translate-x-1/2"
+          style={{
+            left: hover.cx,
+            top: Math.max(0, hover.cy - 44),
+            background: t.tooltipBg,
+            border: `1px solid ${t.tooltipBorder}`,
+            color: t.ink,
+          }}
+        >
+          {hover.text}
+        </div>
+      )}
       {ready && (
         <AreaChart
           width={w}
@@ -398,18 +415,40 @@ export function ViChart({
               }}
             />
           )}
-          {markDots.map((m) => (
-            <ReferenceDot
-              key={m.key}
-              x={m.x}
-              y={m.y}
-              r={4.5}
-              fill={m.kind === "buy" ? (m.side === "up" ? UP : DOWN) : t.surface}
-              stroke={m.side === "up" ? UP : DOWN}
-              strokeWidth={2}
-              ifOverflow="visible"
-            />
-          ))}
+          {markDots.map((m) => {
+            const color = m.side === "up" ? UP : DOWN;
+            const fill = m.kind === "buy" ? color : t.surface;
+            const text = m.label ?? `${m.kind === "buy" ? "Bought" : "Sold"} ${m.side.toUpperCase()}`;
+            return (
+              <ReferenceDot
+                key={m.key}
+                x={m.x}
+                y={m.y}
+                r={4.5}
+                ifOverflow="visible"
+                shape={(props: { cx?: number; cy?: number }) => {
+                  const cx = props.cx ?? 0;
+                  const cy = props.cy ?? 0;
+                  return (
+                    <circle
+                      cx={cx}
+                      cy={cy}
+                      r={5}
+                      fill={fill}
+                      stroke={color}
+                      strokeWidth={2}
+                      style={{ cursor: "pointer" }}
+                      onMouseEnter={() => setHover({ cx, cy, text })}
+                      onMouseLeave={() => setHover(null)}
+                      onTouchStart={() => setHover({ cx, cy, text })}
+                    >
+                      <title>{text}</title>
+                    </circle>
+                  );
+                }}
+              />
+            );
+          })}
           {bounds && bounds.lower > 0 && (
             <ReferenceLine
               y={bounds.lower}
