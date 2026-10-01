@@ -71,13 +71,51 @@ Known limits: centralised oracle; the VI itself is computed by production ATNX; 
 
 ### Demo script (3 minutes)
 
-_To be finalised with the deployed addresses._
+Use a fresh browser profile with MetaMask (or any injected wallet) and the Robinhood Testnet added (chain id 46630, RPC `https://rpc.testnet.chain.robinhood.com`). Get a little test ETH from https://faucet.testnet.chain.robinhood.com first.
+
+1. **Markets** (`/app`): the live ATNX listing. Tiles with a cyan `UP/DOWN lower–upper` badge already have a bounded market. (0:00–0:20)
+2. **Connect**: wallet button in the header → Connect → wallet menu → *Mint 1,000 mock USDG*. (0:20–0:40)
+3. **Open a market**: pick a tile without a badge, sign in with Google or X, press *Open UP/DOWN market*. The ticket shows the bounds computed from the current VI; the treasury seeds the pool on chain; the chart draws the two bound lines. (0:40–1:10)
+4. **Buy UP**: 100 USDG. Approve once, then buy. Read the quote aloud: shares, average price, what it pays if right, fee, price before → after. The UP/DOWN cents in the header move. (1:10–1:40)
+5. **Sell half**: switch to *Sell*, 50 %, confirm. Show the *Activity* tab: both trades straight from the contract's events, with explorer links. (1:40–2:05)
+6. **Portfolio** (`/app/portfolio`): the position marked at what a sell pays now. (2:05–2:20)
+7. **Resolution**: open a market the keeper already resolved (see *Resolved fixture* below), show the winner, press *Redeem*, and the market that auto-rolled from it with new bounds. Admin → *Bounded* tab shows the keeper log. (2:20–2:50)
+8. **Close**: the contract on the explorer, the compare link for the hackathon diff. (2:50–3:00)
+
+**Resolved fixture.** Before recording, resolve one throwaway market by hand so step 7 has something to show. From a machine with the keeper key:
+
+```
+cd contracts
+cast send <BoundedVIMarkets> "resolve(uint256,uint8,uint64)" <onchainMarketId> 0 <upperE2> \
+  --rpc-url https://rpc.testnet.chain.robinhood.com --private-key $PRIVATE_KEY
+```
+
+The keeper's next tick marks it resolved in the registry and rolls a new market.
 
 ### Operations
 
 - Env vars: see `atnx-web/.env.local.example` plus `CRON_SECRET`, `BM_KEEPER_PRIVATE_KEY`, `NEXT_PUBLIC_BM_DEFAULT_CHAIN`, `BM_SEED_USDG`, `BM_TOUCH_PRINTS`, `BM_MAX_VI_AGE_MIN`, `BM_AUTO_ROLL`.
 - Run the keeper by hand: `curl -H "Authorization: Bearer $CRON_SECRET" https://markets.atnx.app/api/bm/keeper?dry=1`.
 - Tests: `cd contracts && forge test`; `cd atnx-web && npm run test:bm`.
+- Deploy contracts: `contracts/deploy.sh robinhood_testnet` and `contracts/deploy.sh arbitrum_sepolia`; paste the printed `NEXT_PUBLIC_BM_*` lines into the Vercel env (and `atnx-web/.env.local`), then `cd atnx-web && vercel deploy --prod`.
+- Keeper by hand, locally: `cd atnx-web && npm run bm:keeper:dry` (add `-- --live` for a real tick).
+- Vercel: project `atnx-markets`, root `atnx-web`, cron `/api/bm/keeper` every 5 minutes on the production deployment. Logs: Vercel → Logs, filter the path.
+
+### Colosseum Crypto World's Fair
+
+**Tracks:** Robinhood Chain, Arbitrum (both from the same deploy), Solana once `programs/` lands.
+
+**One-line pitch.** ATNX turns any screenshot into a market on how much attention something is getting, and lets anyone take the UP or DOWN side of that attention without leverage, liquidations or a house.
+
+**The insight.** Attention markets fail in two ways: perps liquidate correct calls on a noisy index, and house pools lose to the people who spotted the trend first. A market bounded on both sides fixes both: the bounds are the only way it ends, payouts are funded by the shares themselves, and the pool's only exposure is its seed.
+
+**What is proprietary.** The Virality Index: eight sources (Google Trends, Bluesky, Wikipedia, GDELT, YouTube, Hacker News, X, TikTok) converted to one unit and summed, with momentum against each subject's own baseline. Six months of pipeline work sit under the five days of hackathon code.
+
+**Go-to-market.** The Chrome extension is already on the Web Store: capture is the funnel, markets are the product. First users are the people who screenshot memes anyway; the first partners are the creators whose own channels and accounts feed the index (their reach is counted when verified).
+
+**Demand evidence.** Trendle and Noise prove the category; Polymarket proves the two-outcome instrument. ATNX's capture layer is what neither has.
+
+**Pitch video (2–3 min):** problem (30 s) → the bounded market on one chart (45 s) → live demo cut from the demo script (60 s) → the VI and the capture funnel (30 s) → ask (15 s).
 
 ---
 
