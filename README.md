@@ -1,6 +1,6 @@
 # ATNX — Attention Exchange
 
-**Live at [atnx.app](https://atnx.app).**
+**Live at [markets.atnx.app](https://markets.atnx.app).**
 
 A Chrome extension + Next.js web app for capturing any content on the internet, identifying it with a vision model, and trading a simulated Virality Index (VI) on what you capture. Your friends' screenshots become markets; markets have a live VI; you can go long or short.
 
