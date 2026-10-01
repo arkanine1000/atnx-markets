@@ -14,6 +14,7 @@ import { DemoToast } from "@/components/Toast";
 import { TradeDock } from "@/components/TradeDock";
 import { BoundedTicket } from "@/components/bm/BoundedTicket";
 import { ChainTradeLog } from "@/components/bm/ChainTradeLog";
+import { OrderBook } from "@/components/bm/OrderBook";
 import { PriceChip } from "@/components/bm/PriceChip";
 import { useMyTrades } from "@/components/bm/useMyTrades";
 import { fmtUsdg } from "@/components/bm/format";
@@ -53,7 +54,7 @@ interface Props {
   bounded: BmMarketRow[];
 }
 
-type Tab = "pulse" | "activity" | "overview";
+type Tab = "book" | "pulse" | "activity" | "overview";
 
 // The swipe between markets. A touch has to move this far sideways, and
 // more sideways than up, before the page starts following the finger; on
@@ -214,7 +215,7 @@ export function MarketDetailClient({
   );
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [range, setRange] = useState<Range>("ALL");
-  const [tab, setTab] = useState<Tab>("pulse");
+  const [tab, setTab] = useState<Tab>("book");
   const [showRaw, setShowRaw] = useState(false);
   const [toast, setToast] = useState<{
     message: string;
@@ -521,6 +522,7 @@ export function MarketDetailClient({
               >
                 {(
                   [
+                    ["book", "Order book"],
                     ["pulse", `Pulse (${captures.length})`],
                     ["activity", "Activity"],
                     ["overview", "Overview"],
@@ -556,6 +558,8 @@ export function MarketDetailClient({
               </div>
 
               <div className="p-4 sm:p-5">
+                {tab === "book" && <OrderBook bounded={bounded} />}
+
                 {tab === "pulse" && (
                   <ul className="space-y-2">
                     {captures.map((c, i) => {
