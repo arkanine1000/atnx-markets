@@ -168,7 +168,7 @@ function Intro({ onDismiss }: { onDismiss: () => void }) {
         onClick={onDismiss}
         aria-label="Hide this introduction"
         title="Hide"
-        className="lg:hidden absolute top-3 right-3 z-10 h-8 w-8 rounded-full inline-flex items-center justify-center text-secondary hover:text-primary hover:bg-elevated cursor-pointer transition-colors"
+        className="lg:hidden absolute top-3 right-3 z-10 h-8 w-8 rounded-full inline-flex items-center justify-center text-secondary link-quiet hover-lift cursor-pointer transition-colors"
       >
         {"✕"}
       </button>
@@ -393,7 +393,7 @@ function Showcase({ items }: { items: Capture[] }) {
                 type="button"
                 aria-label="Previous"
                 onClick={() => go(safeIdx - 1)}
-                className="h-8 w-8 rounded-full border border-surface bg-elevated text-secondary hover:text-primary hover:border-atnx-cyan/50 cursor-pointer transition-colors"
+                className="h-8 w-8 rounded-full border border-surface bg-elevated text-secondary btn-quiet cursor-pointer transition-colors"
               >
                 {"‹"}
               </button>
@@ -401,7 +401,7 @@ function Showcase({ items }: { items: Capture[] }) {
                 type="button"
                 aria-label="Next"
                 onClick={() => go(safeIdx + 1)}
-                className="h-8 w-8 rounded-full border border-surface bg-elevated text-secondary hover:text-primary hover:border-atnx-cyan/50 cursor-pointer transition-colors"
+                className="h-8 w-8 rounded-full border border-surface bg-elevated text-secondary btn-quiet cursor-pointer transition-colors"
               >
                 {"›"}
               </button>

@@ -382,7 +382,7 @@ export function MarketDetailClient({
             {prev ? (
               <Link
                 href={`/app/markets/${prev.id}`}
-                className="min-w-0 inline-flex items-center gap-1 hover:text-primary transition-colors"
+                className="min-w-0 inline-flex items-center gap-1 link-quiet transition-colors"
               >
                 <span aria-hidden="true">{"‹"}</span>
                 <span className="truncate">{prev.name}</span>
@@ -393,7 +393,7 @@ export function MarketDetailClient({
             {next ? (
               <Link
                 href={`/app/markets/${next.id}`}
-                className="min-w-0 inline-flex items-center gap-1 text-right hover:text-primary transition-colors"
+                className="min-w-0 inline-flex items-center gap-1 text-right link-quiet transition-colors"
               >
                 <span className="truncate">{next.name}</span>
                 <span aria-hidden="true">{"›"}</span>
@@ -565,7 +565,7 @@ export function MarketDetailClient({
                       className={`px-3 sm:px-4 py-3 text-xs font-bold whitespace-nowrap -mb-px border-b-2 transition-colors cursor-pointer ${
                         active
                           ? "border-atnx-cyan text-primary"
-                          : "border-transparent text-secondary hover:text-primary"
+                          : "border-transparent text-secondary link-quiet"
                       }`}
                     >
                       {label}

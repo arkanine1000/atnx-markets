@@ -260,7 +260,7 @@ export function MarketsView({
                 {filtered && <> in {filterNames}</>}
                 <Link
                   href={clearSearch}
-                  className="text-secondary hover:text-primary underline underline-offset-2"
+                  className="text-secondary link-quiet underline underline-offset-2"
                 >
                   Clear search
                 </Link>
@@ -277,7 +277,7 @@ export function MarketsView({
                   <Link
                     href={clearFilter}
                     scroll={false}
-                    className="text-secondary hover:text-primary underline underline-offset-2"
+                    className="text-secondary link-quiet underline underline-offset-2"
                   >
                     Clear filter
                   </Link>

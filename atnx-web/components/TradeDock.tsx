@@ -97,7 +97,7 @@ export function TradeDock({
                 type="button"
                 onClick={close}
                 aria-label="Close"
-                className="absolute right-3 top-1.5 h-8 w-8 rounded-full inline-flex items-center justify-center text-secondary hover:text-primary hover:bg-elevated cursor-pointer transition-colors"
+                className="absolute right-3 top-1.5 h-8 w-8 rounded-full inline-flex items-center justify-center text-secondary link-quiet hover-lift cursor-pointer transition-colors"
               >
                 {"✕"}
               </button>

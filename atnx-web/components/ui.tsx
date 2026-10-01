@@ -60,7 +60,7 @@ export function Segmented<T extends string>({
             title={o.title}
             onClick={() => onChange(o.value)}
             className={`${pad} ${itemClassName} inline-flex items-center justify-center rounded-full font-bold whitespace-nowrap transition-colors cursor-pointer disabled:opacity-35 disabled:cursor-not-allowed ${
-              active ? activeCls : "text-secondary hover:text-primary"
+              active ? activeCls : "text-secondary link-quiet"
             }`}
           >
             {o.label}

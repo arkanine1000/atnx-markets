@@ -56,7 +56,7 @@ export function LoginModal() {
       aria-labelledby="login-modal-title"
     >
       <div className="bg-elevated border border-surface rounded-xl p-6 w-full max-w-sm mx-4 relative" onClick={(e) => e.stopPropagation()}>
-        <button onClick={closeLoginModal} aria-label="Close" className="absolute top-4 right-4 text-secondary hover:text-primary text-lg cursor-pointer">
+        <button onClick={closeLoginModal} aria-label="Close" className="absolute top-4 right-4 text-secondary link-quiet text-lg cursor-pointer">
           {"\u2715"}
         </button>
         <h2 id="login-modal-title" className="font-display text-lg font-bold text-atnx-cyan mb-1">
@@ -85,8 +85,8 @@ export function LoginModal() {
 
         <p className="text-[11px] text-tertiary mt-4 text-center">
           By continuing you agree to the{" "}
-          <a href="/terms" target="_blank" rel="noopener" className="underline hover:text-secondary">Terms</a> and{" "}
-          <a href="/privacy" target="_blank" rel="noopener" className="underline hover:text-secondary">Privacy Policy</a>.
+          <a href="/terms" target="_blank" rel="noopener" className="underline link-soft">Terms</a> and{" "}
+          <a href="/privacy" target="_blank" rel="noopener" className="underline link-soft">Privacy Policy</a>.
         </p>
 
         {(error || connectError) && (

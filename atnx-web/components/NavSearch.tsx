@@ -169,7 +169,7 @@ export function NavSearch({
           inputRef.current?.focus();
         }}
         className={`h-8 w-9 shrink-0 inline-flex items-center justify-center rounded-full transition-colors cursor-pointer ${
-          expanded ? "text-primary" : "text-secondary hover:text-primary"
+          expanded ? "text-primary" : "text-secondary link-quiet"
         }`}
       >
         <SearchIcon />
@@ -219,7 +219,7 @@ export function NavSearch({
           clear();
           inputRef.current?.focus();
         }}
-        className={`nav-search-clear h-6 shrink-0 overflow-hidden rounded-full inline-flex items-center justify-center text-tertiary hover:text-primary hover:bg-surface cursor-pointer text-xs ${
+        className={`nav-search-clear h-6 shrink-0 overflow-hidden rounded-full inline-flex items-center justify-center text-tertiary link-quiet hover-sink cursor-pointer text-xs ${
           expanded && value
             ? "w-6 mr-1 opacity-100"
             : "w-0 mr-0 opacity-0 pointer-events-none"

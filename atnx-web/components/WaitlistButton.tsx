@@ -149,7 +149,7 @@ function WaitlistDialog({
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="h-8 w-8 -mr-2 rounded-full inline-flex items-center justify-center text-secondary hover:text-primary hover:bg-elevated cursor-pointer transition-colors"
+            className="h-8 w-8 -mr-2 rounded-full inline-flex items-center justify-center text-secondary link-quiet hover-lift cursor-pointer transition-colors"
           >
             {"✕"}
           </button>
