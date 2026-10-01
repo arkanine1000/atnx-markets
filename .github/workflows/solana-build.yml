@@ -34,7 +34,9 @@ jobs:
 
       - name: Install Solana CLI
         run: |
-          sh -c "$(curl -sSfL https://release.anza.xyz/v2.3.13/install)"
+          # Latest stable Agave: its platform-tools rust understands edition 2024,
+          # which v2.3's (rust 1.84) does not and current crates require.
+          sh -c "$(curl -sSfL https://release.anza.xyz/stable/install)"
           echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
 
       - name: Install Anchor CLI
@@ -56,6 +58,7 @@ jobs:
 
       - name: Build
         run: |
+          solana --version
           solana-keygen new --no-bip39-passphrase --silent --outfile ~/.config/solana/id.json
           anchor build
           anchor keys list
