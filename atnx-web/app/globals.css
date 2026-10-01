@@ -115,6 +115,38 @@ body {
   background: var(--color-light-elevated);
 }
 
+/* Quiet bordered button (amount presets, Sell, Mint): on hover the fill
+   steps up, the edge takes a faint accent and the label goes to full ink.
+   Written as CSS because the ink helpers below are unlayered, so Tailwind
+   never generates hover: variants of them. */
+.btn-quiet {
+  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+.btn-quiet:hover:not(:disabled) {
+  background: var(--color-dark-elevated);
+  border-color: rgba(0, 212, 255, 0.45);
+  color: #F0F0F0;
+}
+.light .btn-quiet:hover:not(:disabled) {
+  background: var(--color-light-elevated);
+  border-color: rgba(0, 184, 219, 0.5);
+  color: #0A0A0A;
+}
+.btn-quiet:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+/* Quiet text button (Details, Back to buying): the label goes to full ink. */
+.link-quiet {
+  transition: color 150ms ease;
+}
+.link-quiet:hover:not(:disabled) {
+  color: #F0F0F0;
+}
+.light .link-quiet:hover:not(:disabled) {
+  color: #0A0A0A;
+}
+
 /* Interactive card: lift + cyan edge on hover */
 .card-hover {
   transition: border-color 200ms ease, transform 200ms ease, box-shadow 200ms ease;

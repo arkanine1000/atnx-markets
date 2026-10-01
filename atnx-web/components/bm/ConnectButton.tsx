@@ -54,7 +54,7 @@ export function ConnectButton({ className = "", label = "Connect wallet", compac
           pill
             ? "h-8 px-3.5 inline-flex items-center rounded-full btn-magenta text-xs font-bold cursor-pointer whitespace-nowrap disabled:opacity-60"
             : compact
-              ? "h-8 px-3 inline-flex items-center gap-1.5 rounded-full border border-surface bg-surface hover:border-atnx-cyan/50 text-xs font-bold text-primary cursor-pointer transition-colors disabled:opacity-50 whitespace-nowrap"
+              ? "h-8 px-3 inline-flex items-center gap-1.5 rounded-full border border-surface bg-surface btn-quiet text-xs font-bold text-primary cursor-pointer disabled:opacity-50 whitespace-nowrap"
               : "btn-cyan w-full h-11 rounded-xl font-bold text-sm cursor-pointer disabled:opacity-50"
         }
       >
@@ -68,7 +68,7 @@ export function ConnectButton({ className = "", label = "Connect wallet", compac
               type="button"
               role="menuitem"
               onClick={() => pick(c.uid)}
-              className="w-full text-left px-3 py-2 text-primary hover:bg-surface transition-colors cursor-pointer"
+              className="w-full text-left px-3 py-2 text-primary hover-lift cursor-pointer"
             >
               {c.name}
             </button>

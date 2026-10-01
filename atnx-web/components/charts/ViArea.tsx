@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type ComponentProps } from "react";
 import {
   Area,
   AreaChart,
@@ -253,8 +253,36 @@ export function ViChart({
   // The hovered trade dot: its pixel position and text, for the tooltip
   // drawn over the chart (recharts' own tooltip follows the series only).
   const [hover, setHover] = useState<{ cx: number; cy: number; text: string } | null>(null);
+  // Where recharts drew each dot, filled in by the shape callback below.
+  const dotPx = useRef(new Map<string, { cx: number; cy: number }>());
   const t = useChartTheme();
   const { ref, w, h, ready } = useSize();
+  // The hit test runs on the chart's own mouse move rather than on the
+  // dot's SVG events: recharts' active dot, cursor and curve sit on top
+  // of the trade marks and swallow the pointer. The target is a 40px box
+  // around each dot, not a 10px circle.
+  const HIT = 20;
+  const onChartMove: NonNullable<ComponentProps<typeof AreaChart>["onMouseMove"]> = (_state, e) => {
+    const rect = ref.current?.getBoundingClientRect();
+    if (!rect) return;
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    let found: { cx: number; cy: number; text: string } | null = null;
+    let best = Infinity;
+    for (const m of markDots) {
+      const px = dotPx.current.get(m.key);
+      if (!px) continue;
+      const dx = Math.abs(px.cx - x);
+      const dy = Math.abs(px.cy - y);
+      if (dx > HIT || dy > HIT) continue;
+      const d = dx * dx + dy * dy;
+      if (d < best) {
+        best = d;
+        found = { cx: px.cx, cy: px.cy, text: m.label ?? `${m.kind === "buy" ? "Bought" : "Sold"} ${m.side.toUpperCase()}` };
+      }
+    }
+    setHover((h) => (h?.cx === found?.cx && h?.cy === found?.cy && h?.text === found?.text ? h : found));
+  };
   const gradId = useId();
   const stroke = polarityColor(data);
 
@@ -303,8 +331,10 @@ export function ViChart({
           height={h}
           data={data}
           accessibilityLayer={false}
-          style={{ cursor: "inherit" }}
+          style={{ cursor: hover ? "pointer" : "inherit" }}
           margin={{ top: 12, right: 8, bottom: 0, left: 0 }}
+          onMouseMove={onChartMove}
+          onMouseLeave={() => setHover(null)}
         >
           <defs>
             <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
@@ -429,19 +459,10 @@ export function ViChart({
                 shape={(props: { cx?: number; cy?: number }) => {
                   const cx = props.cx ?? 0;
                   const cy = props.cy ?? 0;
+                  dotPx.current.set(m.key, { cx, cy });
+                  const lit = hover?.cx === cx && hover?.cy === cy;
                   return (
-                    <circle
-                      cx={cx}
-                      cy={cy}
-                      r={5}
-                      fill={fill}
-                      stroke={color}
-                      strokeWidth={2}
-                      style={{ cursor: "pointer" }}
-                      onMouseEnter={() => setHover({ cx, cy, text })}
-                      onMouseLeave={() => setHover(null)}
-                      onTouchStart={() => setHover({ cx, cy, text })}
-                    >
+                    <circle cx={cx} cy={cy} r={lit ? 6.5 : 5} fill={fill} stroke={color} strokeWidth={2} pointerEvents="none">
                       <title>{text}</title>
                     </circle>
                   );

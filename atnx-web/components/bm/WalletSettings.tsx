@@ -71,7 +71,7 @@ export function WalletSettings() {
                 disabled={switching || !isDeployed(c) || active}
                 onClick={() => switchChain({ chainId: c.chainId })}
                 className={`h-8 px-3 rounded-full border text-xs font-bold cursor-pointer transition-colors disabled:cursor-default ${
-                  active ? "border-atnx-cyan text-atnx-cyan" : "border-surface text-secondary hover:text-primary disabled:opacity-40"
+                  active ? "border-atnx-cyan text-atnx-cyan" : "border-surface text-secondary btn-quiet disabled:opacity-40"
                 }`}
               >
                 {c.label}
@@ -101,7 +101,7 @@ export function WalletSettings() {
       {note && <p className="text-[11px] text-secondary py-2">{note}</p>}
       <div className={row}>
         <span className="text-tertiary">Wallet</span>
-        <button type="button" onClick={() => disconnect()} className="h-8 px-3 rounded-full border border-surface text-xs font-bold text-atnx-magenta hover:bg-surface cursor-pointer">
+        <button type="button" onClick={() => disconnect()} className="h-8 px-3 rounded-full border border-surface text-xs font-bold text-atnx-magenta hover-lift cursor-pointer">
           Disconnect
         </button>
       </div>

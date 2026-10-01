@@ -256,7 +256,7 @@ export function BoundedTicket({ atnxMarketId, name, score, scoring = false, boun
           <div className="text-sm font-bold text-primary">
             Sell <span className={isUp ? "text-atnx-cyan" : "text-atnx-magenta"}>{side.toUpperCase()}</span>
           </div>
-          <button type="button" onClick={() => { setMode("buy"); setAmount("25"); }} className="text-xs text-secondary hover:text-primary cursor-pointer">
+          <button type="button" onClick={() => { setMode("buy"); setAmount("25"); }} className="text-xs text-secondary link-quiet cursor-pointer">
             Back to buying
           </button>
         </div>
@@ -285,12 +285,12 @@ export function BoundedTicket({ atnxMarketId, name, score, scoring = false, boun
       <div className="flex gap-1.5 mt-2">
         {mode === "buy"
           ? [...QUICK.map((q) => [String(q), String(q)] as const), ["Max", maxBuy] as const].map(([label, value]) => (
-              <button key={label} type="button" onClick={() => setAmount(value)} className="flex-1 h-8 rounded-lg border border-surface text-xs text-secondary hover:text-primary hover:border-atnx-cyan/40 cursor-pointer">
+              <button key={label} type="button" onClick={() => setAmount(value)} className="flex-1 h-8 rounded-lg border border-surface text-xs text-secondary btn-quiet cursor-pointer">
                 {label}
               </button>
             ))
           : [25, 50, 100].map((p) => (
-              <button key={p} type="button" onClick={() => setAmount(fmtUsdg((held * BigInt(p)) / 100n, 6).replace(/,/g, ""))} className="flex-1 h-8 rounded-lg border border-surface text-xs text-secondary hover:text-primary hover:border-atnx-cyan/40 cursor-pointer">
+              <button key={p} type="button" onClick={() => setAmount(fmtUsdg((held * BigInt(p)) / 100n, 6).replace(/,/g, ""))} className="flex-1 h-8 rounded-lg border border-surface text-xs text-secondary btn-quiet cursor-pointer">
                 {p === 100 ? "All" : `${p}%`}
               </button>
             ))}
@@ -318,7 +318,7 @@ export function BoundedTicket({ atnxMarketId, name, score, scoring = false, boun
               </span>
             </div>
           )}
-          <button type="button" onClick={() => setDetails((v) => !v)} aria-expanded={details} className="mt-1.5 text-[11px] text-tertiary hover:text-primary cursor-pointer">
+          <button type="button" onClick={() => setDetails((v) => !v)} aria-expanded={details} className="mt-1.5 text-[11px] text-tertiary link-quiet cursor-pointer">
             {details ? "▾ Hide details" : "▸ Details"}
           </button>
           {details && (
@@ -335,7 +335,7 @@ export function BoundedTicket({ atnxMarketId, name, score, scoring = false, boun
       {insufficient && mode === "buy" && (
         <div className="mt-3 flex items-center justify-between gap-3 text-xs">
           <span className="text-atnx-magenta">Not enough USDG.</span>
-          <button type="button" onClick={mint} disabled={!!busy} className="h-8 px-3 rounded-lg border border-surface text-secondary hover:text-primary cursor-pointer disabled:opacity-50">
+          <button type="button" onClick={mint} disabled={!!busy} className="h-8 px-3 rounded-lg border border-surface text-secondary btn-quiet cursor-pointer disabled:opacity-50">
             {busy === "Minting…" ? "Minting…" : "Mint 1,000 test USDG"}
           </button>
         </div>
@@ -353,7 +353,7 @@ export function BoundedTicket({ atnxMarketId, name, score, scoring = false, boun
       </button>
       {needsApproval && !busy && <p className="text-[11px] text-tertiary mt-2">First time only: your wallet asks you to let this market use your USDG, then to buy.</p>}
       {lastTx && (
-        <a href={txUrl(chain, lastTx)} target="_blank" rel="noreferrer" className="block mt-2 text-[11px] text-tertiary hover:text-atnx-cyan">
+        <a href={txUrl(chain, lastTx)} target="_blank" rel="noreferrer" className="block mt-2 text-[11px] text-tertiary link-quiet">
           View last transaction {shortHash(lastTx)} ↗
         </a>
       )}
@@ -370,7 +370,7 @@ export function BoundedTicket({ atnxMarketId, name, score, scoring = false, boun
                   You hold <span className="tabular-nums font-bold text-primary">{fmtUsdg(h)}</span> <span className={s === "up" ? "text-atnx-cyan" : "text-atnx-magenta"}>{s.toUpperCase()}</span>
                   <span className="text-tertiary"> · sells for {fmtUsdg(worth)} USDG</span>
                 </span>
-                <button type="button" onClick={() => startSelling(s)} className="h-8 px-3 rounded-lg border border-surface text-secondary hover:text-primary cursor-pointer shrink-0">
+                <button type="button" onClick={() => startSelling(s)} className="h-8 px-3 rounded-lg border border-surface text-secondary btn-quiet cursor-pointer shrink-0">
                   Sell
                 </button>
               </div>
@@ -409,7 +409,7 @@ function SideButton({ side, price, selected, onClick }: { side: Side; price: num
       aria-checked={selected}
       onClick={onClick}
       className={`h-16 rounded-xl border bg-elevated flex flex-col items-center justify-center gap-0.5 cursor-pointer transition-all ${
-        selected ? ring : "border-surface opacity-70 hover:opacity-100"
+        selected ? ring : "border-surface opacity-70 hover:opacity-100 hover:border-white/20"
       }`}
     >
       <span className={`font-display font-bold text-lg leading-none ${tone}`}>{up ? "↗ UP" : "↘ DOWN"}</span>
