@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { useAccount, useConfig, useConnect, useReadContract, useWriteContract } from "wagmi";
+import { useAccount, useConfig, useReadContract, useWriteContract } from "wagmi";
+import { ConnectButton } from "./ConnectButton";
 import { waitForTransactionReceipt } from "wagmi/actions";
 import { boundedViMarketsAbi } from "@/lib/bm/abi";
 import { isDeployed } from "@/lib/bm/chains";
@@ -18,7 +19,6 @@ import { useBmChain } from "./useBounded";
 export function OnchainPortfolio({ markets }: { markets: BmMarketListing[] }) {
   const { chain, onOurChain } = useBmChain();
   const { address, isConnected } = useAccount();
-  const { connect, connectors, isPending: connecting } = useConnect();
   const { writeContractAsync } = useWriteContract();
   const config = useConfig();
   const [busy, setBusy] = useState<string | null>(null);
@@ -79,8 +79,6 @@ export function OnchainPortfolio({ markets }: { markets: BmMarketListing[] }) {
   }, [onChain, balances.data, states.data, feeBps]);
 
   const totalWorth = rows.reduce((acc, r) => acc + r.positions.reduce((a, p) => a + p.worth, 0n), 0n);
-  const connector = connectors.find((c) => c.type === "injected") ?? connectors[0];
-
   async function redeem(id: string, key: string) {
     setBusy(key);
     try {
@@ -102,14 +100,7 @@ export function OnchainPortfolio({ markets }: { markets: BmMarketListing[] }) {
     return (
       <div className="rounded-2xl border border-surface bg-surface p-5">
         <p className="text-sm text-secondary mb-3">Your UP and DOWN shares live in your wallet. Connect it to see them.</p>
-        <button
-          type="button"
-          onClick={() => connector && connect({ connector })}
-          disabled={!connector || connecting}
-          className="btn-cyan h-10 px-5 rounded-xl font-bold text-sm cursor-pointer disabled:opacity-50"
-        >
-          {connecting ? "Connecting…" : "Connect wallet"}
-        </button>
+        <ConnectButton className="max-w-xs" />
       </div>
     );
   }

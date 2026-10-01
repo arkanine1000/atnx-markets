@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { useAccount, useConfig, useConnect, useReadContract, useSwitchChain, useWriteContract } from "wagmi";
+import { useAccount, useConfig, useReadContract, useSwitchChain, useWriteContract } from "wagmi";
+import { ConnectButton } from "./ConnectButton";
 import { waitForTransactionReceipt } from "wagmi/actions";
 import { openBoundedMarketAction } from "@/app/app/actions/bm";
 import { Card, Segmented } from "@/components/ui";
@@ -38,7 +39,6 @@ export function BoundedTicket({ atnxMarketId, name, score, scoring = false, boun
   const router = useRouter();
   const { chain, onOurChain } = useBmChain();
   const { address, isConnected } = useAccount();
-  const { connect, connectors, isPending: connecting } = useConnect();
   const { switchChain, isPending: switching } = useSwitchChain();
   const { writeContractAsync } = useWriteContract();
   const config = useConfig();
@@ -78,8 +78,6 @@ export function BoundedTicket({ atnxMarketId, name, score, scoring = false, boun
     const after = poolPrice(q.after, side);
     return { kind: "sell" as const, payout: q.payout, fee: q.fee, avg: units > 0n ? Number(q.payout) / Number(units) : 0, before, after };
   }, [oc.pools, oc.feeBps, units, side, mode]);
-
-  const connector = connectors.find((c) => c.type === "injected") ?? connectors[0];
 
   async function run(label: string, fn: () => Promise<`0x${string}`>, toast: [string, string | undefined]) {
     setBusy(label);
@@ -188,14 +186,7 @@ export function BoundedTicket({ atnxMarketId, name, score, scoring = false, boun
         {row && (
           <BoundsLine row={row} />
         )}
-        <button
-          type="button"
-          onClick={() => connector && connect({ connector })}
-          disabled={!connector || connecting}
-          className="btn-cyan w-full h-11 rounded-xl font-bold text-sm cursor-pointer disabled:opacity-50"
-        >
-          {connecting ? "Connecting…" : connector ? "Connect wallet to trade" : "No wallet extension found"}
-        </button>
+        <ConnectButton label="Connect wallet to trade" />
         <p className="text-[11px] text-tertiary mt-2">
           Testnet only. Shares settle in mock USDG, which has no value; mint it from the wallet menu.
         </p>

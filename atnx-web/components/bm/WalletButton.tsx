@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useAccount, useConnect, useDisconnect, useSwitchChain, useWriteContract, useConfig } from "wagmi";
+import { useAccount, useDisconnect, useSwitchChain, useWriteContract, useConfig } from "wagmi";
+import { ConnectButton } from "./ConnectButton";
 import { waitForTransactionReceipt } from "wagmi/actions";
 import { mockUsdgAbi } from "@/lib/bm/abi";
 import { BM_CHAINS, USDG_UNIT, chainById, isDeployed } from "@/lib/bm/chains";
@@ -12,7 +13,6 @@ import { shortAddress } from "./format";
 // account menu in the header.
 export function WalletButton({ compact = false }: { compact?: boolean }) {
   const { address, chainId, isConnected } = useAccount();
-  const { connect, connectors, isPending: connecting } = useConnect();
   const { disconnect } = useDisconnect();
   const { switchChain, isPending: switching } = useSwitchChain();
   const { writeContractAsync } = useWriteContract();
@@ -32,21 +32,9 @@ export function WalletButton({ compact = false }: { compact?: boolean }) {
   }, [open]);
 
   const chain = chainId ? chainById(chainId) : null;
-  const injected = connectors.find((c) => c.type === "injected") ?? connectors[0];
 
   if (!isConnected || !address) {
-    return (
-      <button
-        type="button"
-        onClick={() => injected && connect({ connector: injected })}
-        disabled={!injected || connecting}
-        title={injected ? "Connect a wallet" : "No wallet extension found"}
-        className="h-8 px-3 inline-flex items-center gap-1.5 rounded-full border border-surface bg-surface hover:border-atnx-cyan/50 text-xs font-bold text-primary cursor-pointer transition-colors disabled:opacity-50 whitespace-nowrap"
-      >
-        <WalletIcon />
-        {compact ? "" : connecting ? "Connecting…" : "Connect"}
-      </button>
-    );
+    return <ConnectButton compact label={compact ? "Wallet" : "Connect"} />;
   }
 
   async function mint() {
