@@ -1,6 +1,6 @@
+import { loadMarketMeta } from "@/lib/bm/market-meta";
 import { OnchainPortfolio } from "@/components/bm/OnchainPortfolio";
 import { listAll } from "@/lib/bm/registry";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { BM_CHAINS } from "@/lib/bm/chains";
 import type { BmMarketListing } from "@/lib/bm/listing";
 
@@ -13,14 +13,7 @@ async function loadListing(): Promise<BmMarketListing[]> {
   try {
     const rows = await listAll(200);
     const ids = Array.from(new Set(rows.map((r) => r.atnx_market_id)));
-    const names = new Map<string, { name: string; thumb: string | null; vi: number }>();
-    if (ids.length) {
-      const { data } = await createAdminClient()
-        .from("markets")
-        .select("id, entity_name, thumbnail_url, current_vi")
-        .in("id", ids);
-      for (const m of data ?? []) names.set(m.id, { name: m.entity_name, thumb: m.thumbnail_url, vi: Number(m.current_vi ?? 0) });
-    }
+    const names = await loadMarketMeta(ids);
     return rows.map((r) => {
       const m = names.get(r.atnx_market_id);
       return {

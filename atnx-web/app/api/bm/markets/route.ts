@@ -1,4 +1,4 @@
-import { createAdminClient } from '@/lib/supabase/admin';
+import { loadMarketMeta } from '@/lib/bm/market-meta';
 import { corsHeaders, corsPreflight } from '@/lib/cors';
 import { listAll, listLive } from '@/lib/bm/registry';
 import { BM_CHAINS } from '@/lib/bm/chains';
@@ -16,17 +16,7 @@ export async function GET(request: Request) {
   try {
     const rows = all ? await listAll(200) : await listLive();
     const ids = Array.from(new Set(rows.map((r) => r.atnx_market_id)));
-    const names = new Map<string, { name: string; thumb: string | null; vi: number }>();
-    if (ids.length) {
-      const { data, error } = await createAdminClient()
-        .from('markets')
-        .select('id, entity_name, thumbnail_url, current_vi')
-        .in('id', ids);
-      if (error) throw error;
-      for (const m of data ?? []) {
-        names.set(m.id, { name: m.entity_name, thumb: m.thumbnail_url, vi: Number(m.current_vi ?? 0) });
-      }
-    }
+    const names = await loadMarketMeta(ids);
     const items: BmMarketListing[] = rows.map((r) => {
       const m = names.get(r.atnx_market_id);
       const chain = BM_CHAINS[r.chain as keyof typeof BM_CHAINS];
