@@ -2,3 +2,4 @@ node_modules/
 # editor swap files
 *.swp
 *.swo
+programs/artifact/

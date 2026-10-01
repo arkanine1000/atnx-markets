@@ -30,9 +30,13 @@
     "test:bm": "npx --yes tsx --test lib/bm/*.test.ts",
     "bm:keeper:dry": "npx --yes tsx --env-file=.env.local scripts/bm-keeper-dry.ts",
     "bm:e2e": "npx --yes tsx --env-file=.env.local scripts/bm-e2e.ts",
-    "bm:open": "npx --yes tsx --env-file=.env.local scripts/bm-open.ts"
+    "bm:open": "npx --yes tsx --env-file=.env.local scripts/bm-open.ts",
+    "bm:sol": "npx --yes tsx scripts/bm-sol.ts"
   },
   "dependencies": {
+    "@coral-xyz/anchor": "^0.31.1",
+    "@solana/spl-token": "^0.4.15",
+    "@solana/web3.js": "^1.99.0",
     "@supabase/ssr": "^0.10.2",
     "@supabase/supabase-js": "^2.103.3",
     "@tanstack/react-query": "^5.104.0",
