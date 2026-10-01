@@ -39,7 +39,7 @@ export function tileImage(capture: Capture): { src: string; logo: boolean; portr
 // Grid tile: the market image is the hero and the VI history is drawn
 // straight over its lower half, the way pump.fun overlays a chart on the coin
 // art. Name, category, score and 24h delta sit underneath.
-export function MarketCard({ capture, captureCount, rank, compact, bounds }: Props) {
+export function MarketCard({ capture, rank, compact, bounds }: Props) {
   const { analysis, trends, viralityScore, marketId } = capture;
   const points = trends?.dataPoints ?? [];
   const change24h = viChange24h(points, viralityScore);
@@ -87,11 +87,6 @@ export function MarketCard({ capture, captureCount, rank, compact, bounds }: Pro
           #{rank}
         </span>
         <div className="absolute top-2 right-2 flex items-center gap-1">
-          {captureCount > 1 && (
-            <Chip tone="magenta" className="backdrop-blur bg-black/50">
-              {captureCount} captures
-            </Chip>
-          )}
           {pending && (
             <Chip
               tone="neutral"
@@ -150,7 +145,7 @@ export function MarketCard({ capture, captureCount, rank, compact, bounds }: Pro
 }
 
 // Compact row for the list view.
-export function MarketRow({ capture, captureCount, rank, bounds }: Props) {
+export function MarketRow({ capture, rank, bounds }: Props) {
   const { analysis, trends, viralityScore, marketId } = capture;
   const points = trends?.dataPoints ?? [];
   const change24h = viChange24h(points, viralityScore);
@@ -180,9 +175,6 @@ export function MarketRow({ capture, captureCount, rank, bounds }: Props) {
       <div className="min-w-0 flex-1">
         <div className="text-sm font-bold text-primary truncate flex items-center gap-2">
           <span className="truncate">{analysis.name || "Untitled"}</span>
-          {captureCount > 1 && (
-            <Chip tone="magenta">{captureCount} captures</Chip>
-          )}
           {pending && <Chip>processing</Chip>}
         </div>
         <div className="text-xs text-tertiary truncate">

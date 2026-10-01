@@ -390,14 +390,8 @@ export function MarketDetailClient({
                         <Chip tone="cyan">{analysis.type}</Chip>
                       )}
                       {analysis.category && <Chip>{analysis.category}</Chip>}
-                      <span className="text-[11px] text-tertiary">
-                        {market.total_captures || captures.length} capture
-                        {(market.total_captures || captures.length) === 1
-                          ? ""
-                          : "s"}
-                      </span>
-                      <PriceChip bounded={bounded} />
                     </div>
+                    <PriceChip bounded={bounded} vi={viralityScore} />
                     {market.description && (
                       <Description text={market.description} />
                     )}
