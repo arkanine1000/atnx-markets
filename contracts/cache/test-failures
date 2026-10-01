@@ -1,0 +1,1 @@
+{"version":1,"failures":[{"contract":"test/BoundedVIMarkets.t.sol:BoundedVIMarketsTest","test":"testFuzz_roundTripNeverProfits"},{"contract":"test/BoundedVIMarkets.t.sol:BoundedVIMarketsTest","test":"test_oneUnitTradeCannotExtract"}]}
