@@ -50,14 +50,14 @@ jobs:
           cargo generate-lockfile
           cargo update -p toml_edit --precise 0.22.27 || true
           cargo update -p toml_datetime --precise 0.6.11 || true
+          cargo update -p indexmap --precise 2.7.1 || true
+          cargo update -p hashbrown@0.17.1 --precise 0.15.5 || true
           grep -A1 -E 'name = "toml_(edit|datetime)"' Cargo.lock
 
       - name: Build
         run: |
           solana-keygen new --no-bip39-passphrase --silent --outfile ~/.config/solana/id.json
-          # The bundled platform-tools (rust 1.84) predate edition 2024, which
-          # current crates require; a newer tools release carries rust 1.89.
-          anchor build -- --tools-version v1.52 --force-tools-install
+          anchor build
           anchor keys list
           ls -la target/deploy target/idl
 
