@@ -14,7 +14,7 @@ export default async function SettingsPage() {
 
   const { data: profile } = await supabase
     .from("user_profiles")
-    .select("handle, email")
+    .select("handle")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -30,21 +30,13 @@ export default async function SettingsPage() {
             <div className="text-sm font-bold text-primary truncate">
               {profile?.handle ? `@${profile.handle}` : "Your account"}
             </div>
-            <div className="text-xs text-tertiary mt-0.5">
-              Your face in the header, drawn from your account in the three
-              inks. Your handle is fixed: markets you open are credited to it.
-            </div>
           </div>
         </div>
-        <SettingsForm
-          email={profile?.email ?? user.email ?? null}
-          handle={profile?.handle ?? ""}
-        />
+        <SettingsForm handle={profile?.handle ?? ""} />
       </div>
 
       <div className="bg-surface border border-surface rounded-lg p-6 mt-4">
-        <h2 className="text-sm font-bold text-primary mb-1">Wallet</h2>
-        <p className="text-xs text-tertiary mb-3">Network, mock USDG and disconnect. Shares and USDG live in the wallet, not in this account.</p>
+        <h2 className="text-sm font-bold text-primary mb-3">Wallet</h2>
         <WalletSettings />
       </div>
     </div>

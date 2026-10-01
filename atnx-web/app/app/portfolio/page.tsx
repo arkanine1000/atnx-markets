@@ -54,9 +54,6 @@ export default async function PortfolioPage() {
     <section>
       <div className="mb-5">
         <h2 className="font-display text-xl sm:text-2xl font-bold text-primary tracking-tight">Portfolio</h2>
-        <p className="text-xs text-secondary mt-1">
-          UP and DOWN shares in your wallet, per market. One share pays 1 mock USDG if its side resolves.
-        </p>
       </div>
       <OnchainPortfolio markets={markets} />
     </section>

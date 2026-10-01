@@ -88,7 +88,6 @@ export function WalletSettings() {
       <div className={row}>
         <div>
           <div className="text-primary">Mock USDG</div>
-          <div className="text-[11px] text-tertiary">Testnet token, no value. Mints on request, 1,000 at a time.</div>
         </div>
         <button
           type="button"
@@ -101,7 +100,7 @@ export function WalletSettings() {
       </div>
       {note && <p className="text-[11px] text-secondary py-2">{note}</p>}
       <div className={row}>
-        <span className="text-tertiary">Disconnect the wallet from this site</span>
+        <span className="text-tertiary">Wallet</span>
         <button type="button" onClick={() => disconnect()} className="h-8 px-3 rounded-full border border-surface text-xs font-bold text-atnx-magenta hover:bg-surface cursor-pointer">
           Disconnect
         </button>
