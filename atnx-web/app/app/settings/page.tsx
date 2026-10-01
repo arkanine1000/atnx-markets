@@ -30,9 +30,8 @@ export default async function SettingsPage() {
               {profile?.handle ? `@${profile.handle}` : "Your account"}
             </div>
             <div className="text-xs text-tertiary mt-0.5">
-              Your face on the leaderboard and in the header, drawn from your
-              account in the three inks. Your handle is fixed: the leaderboard
-              and the trade log know you by it.
+              Your face in the header, drawn from your account in the three
+              inks. Your handle is fixed: markets you open are credited to it.
             </div>
           </div>
         </div>

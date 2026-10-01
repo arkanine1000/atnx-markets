@@ -1,6 +1,7 @@
 import { getMarketsPage, type MarketsPage } from "@/lib/store";
 import { parseMarketsQuery } from "@/lib/markets-query";
-import { MarketsView } from "./MarketsView";
+import { MarketsView, type BoundsMap } from "./MarketsView";
+import { listLive } from "@/lib/bm/registry";
 
 // Rendered on the server with the listing already in it, so the first paint
 // has the hero and the grid instead of "0 live markets" and a fetch.
@@ -20,8 +21,20 @@ export default async function MarketsPage({
     limit: query.limit,
     categoryCounts: {},
   };
+  let bounded: BoundsMap = {};
   try {
-    data = await getMarketsPage(query);
+    const [page, live] = await Promise.all([
+      getMarketsPage(query),
+      listLive().catch((err) => {
+        console.error("[markets] bounded list failed", err);
+        return [];
+      }),
+    ]);
+    data = page;
+    for (const r of live) {
+      // One badge per market: the first live row wins (chains rarely differ).
+      bounded[r.atnx_market_id] ??= { lower: r.lower_bound, upper: r.upper_bound };
+    }
   } catch (err) {
     // The client poll will pick the listing up; an empty first paint is
     // better than an error page.
@@ -29,5 +42,5 @@ export default async function MarketsPage({
   }
   // Not keyed on the query: a remount would close the category filter's
   // menu on every tick. The view starts afresh from each new listing itself.
-  return <MarketsView initial={data} query={query} />;
+  return <MarketsView initial={data} query={query} bounded={bounded} />;
 }

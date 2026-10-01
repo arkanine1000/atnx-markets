@@ -110,11 +110,16 @@ const ListIcon = (
   </svg>
 );
 
+// Bounds of the live bounded market per atnx market id, for the tile badge.
+export type BoundsMap = Record<string, { lower: number; upper: number }>;
+
 export function MarketsView({
   initial,
   query,
+  bounded = {},
 }: {
   initial: MarketsPage;
+  bounded?: BoundsMap;
   // What the server rendered: order, search term (from the nav's search
   // box; empty lists everything), category filter and how many to show.
   query: MarketsQuery;
@@ -357,6 +362,7 @@ export function MarketsView({
                 capture={c}
                 captureCount={c.captureCount ?? 1}
                 rank={i + 1}
+                bounds={c.marketId ? bounded[c.marketId] : undefined}
                 compact
               />
             ))}
@@ -383,6 +389,7 @@ export function MarketsView({
                   capture={c}
                   captureCount={c.captureCount ?? 1}
                   rank={i + 1}
+                  bounds={c.marketId ? bounded[c.marketId] : undefined}
                 />
               ))}
             </div>

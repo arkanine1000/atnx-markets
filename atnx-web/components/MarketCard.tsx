@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ViSparkline, deltaColor } from "@/components/charts/ViArea";
 import { LogoImage } from "@/components/LogoImage";
 import { Chip, DeltaChip, ScoreBadge } from "@/components/ui";
+import { BoundsBadge } from "@/components/bm/BoundsBadge";
 import { viChange24h } from "@/lib/capture-view";
 import type { Capture } from "@/lib/store";
 
@@ -13,6 +14,8 @@ interface Props {
   rank: number;
   /** Denser tile for the grid under the featured row. */
   compact?: boolean;
+  /** The live UP/DOWN market's bounds, when one is open. */
+  bounds?: { lower: number; upper: number };
 }
 
 // The picture on a tile: the curated market image when the slow refresh
@@ -36,7 +39,7 @@ export function tileImage(capture: Capture): { src: string; logo: boolean; portr
 // Grid tile: the market image is the hero and the VI history is drawn
 // straight over its lower half, the way pump.fun overlays a chart on the coin
 // art. Name, category, score and 24h delta sit underneath.
-export function MarketCard({ capture, captureCount, rank, compact }: Props) {
+export function MarketCard({ capture, captureCount, rank, compact, bounds }: Props) {
   const { analysis, trends, viralityScore, marketId } = capture;
   const points = trends?.dataPoints ?? [];
   const change24h = viChange24h(points, viralityScore);
@@ -84,6 +87,7 @@ export function MarketCard({ capture, captureCount, rank, compact }: Props) {
           #{rank}
         </span>
         <div className="absolute top-2 right-2 flex items-center gap-1">
+          {bounds && <BoundsBadge lower={bounds.lower} upper={bounds.upper} />}
           {captureCount > 1 && (
             <Chip tone="magenta" className="backdrop-blur bg-black/50">
               {captureCount} captures
@@ -136,7 +140,7 @@ export function MarketCard({ capture, captureCount, rank, compact }: Props) {
 }
 
 // Compact row for the list view.
-export function MarketRow({ capture, captureCount, rank }: Props) {
+export function MarketRow({ capture, captureCount, rank, bounds }: Props) {
   const { analysis, trends, viralityScore, marketId } = capture;
   const points = trends?.dataPoints ?? [];
   const change24h = viChange24h(points, viralityScore);
@@ -166,6 +170,13 @@ export function MarketRow({ capture, captureCount, rank }: Props) {
       <div className="min-w-0 flex-1">
         <div className="text-sm font-bold text-primary truncate flex items-center gap-2">
           <span className="truncate">{analysis.name || "Untitled"}</span>
+          {bounds && (
+            <Chip tone="cyan">
+              <span className="font-mono tabular-nums">
+                {bounds.lower}–{bounds.upper}
+              </span>
+            </Chip>
+          )}
           {captureCount > 1 && (
             <Chip tone="magenta">{captureCount} captures</Chip>
           )}
