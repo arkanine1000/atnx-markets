@@ -1,6 +1,7 @@
 // Minimal Supabase Database type used to parameterize the JS clients so query
 // results aren't typed as `never`. Expand as new tables/columns get touched.
 
+import type { BmSchema } from './database-bm';
 type EmptyRelationships = [];
 
 export type Json = string | number | boolean | null | { [key: string]: Json } | Json[];
@@ -828,4 +829,5 @@ export type Database = {
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
   };
+  bm: BmSchema;
 };

@@ -13,6 +13,73 @@ Three ways in, one pipeline: the extension, the web form at `/app/submit` (scree
 
 ---
 
+## Hackathon build: bounded UP/DOWN markets on the VI
+
+This repository is the hackathon fork of ATNX for the **Arbitrum / Robinhood Chain Open House (Singapore)** and the **Colosseum Crypto World's Fair**. It replaces the simulated long/short trading with on-chain two-outcome markets on the Virality Index, and keeps everything upstream of trading (capture, identification, the VI pipeline) as it was.
+
+**Prior work disclosure.** Everything up to the tag [`pre-hackathon-2026-10-01`](https://github.com/arkanine1000/atnx-markets/releases/tag/pre-hackathon-2026-10-01) is the pre-existing ATNX product (private upstream `gptdnd/atnx`). The hackathon work is exactly this diff: [compare `pre-hackathon-2026-10-01...main`](https://github.com/arkanine1000/atnx-markets/compare/pre-hackathon-2026-10-01...main).
+
+| | |
+|---|---|
+| Live app | https://markets.atnx.app (production ATNX stays at https://atnx.app) |
+| Contracts | `contracts/` (Foundry). Addresses below once deployed. |
+| Design doc | "ATNX devnet market design: bounded VI markets", 2026-09-30 (summarised in *How it works*) |
+| Status | _updated every step; see **Built / not built** below_ |
+
+### Deployed contracts
+
+| Chain | BoundedVIMarkets | MockUSDG | Explorer |
+|---|---|---|---|
+| Robinhood Testnet (46630) | _pending_ | _pending_ | https://explorer.testnet.chain.robinhood.com |
+| Arbitrum Sepolia (421614) | _pending_ | _pending_ | https://sepolia.arbiscan.io |
+
+### How it works
+
+Each market is a two-outcome market on one subject's VI, with an **upper and a lower bound** fixed from the VI at opening (`atnx-web/lib/bm/bounds.ts`):
+
+`m = min(5, max(1.2, 1 + 4·(100/VI)^1.25))`, upper = VI·m, lower = VI/m (two significant figures; a lower bound under 5 is 0).
+
+| Start VI | Lower | Upper |
+|---|---|---|
+| 10 | 0 | 50 |
+| 100 | 20 | 500 |
+| 300 | 150 | 600 |
+| 1000 | 820 | 1200 |
+
+- **UP** and **DOWN** shares. One UP plus one DOWN always costs 1 mock USDG; the split is set by a fixed-product market maker seeded by the treasury (1,000 mock USDG per market, 50/50 start).
+- **Resolution** only when the VI touches a bound: three consecutive VI prints at or past a bound (the VI is written every five minutes, so about fifteen minutes). UP pays 1 USDG per share at the upper bound, DOWN at the lower. No end date otherwise: holders sell to take profit or cut losses.
+- **Auto-roll**: when a market resolves, the keeper opens a new one from the new VI. Winners redeem by hand; nothing moves their funds.
+- **Oracle**: the keeper wallet (a Vercel cron every five minutes) reads the VI history that production ATNX writes and posts resolutions. Centralised by design for the testnet build.
+- **Fee**: 1% on buys and sells, accrued per market.
+- **No leverage, no liquidation, no house counterparty.** Every market is fully funded by its own shares.
+
+### Built / not built
+
+_Updated as the build progresses._
+
+- [x] Fork, tag, registry schema (`atnx-web/supabase/bm/`), bounds function with tests
+- [ ] Contracts with Foundry tests, deployed on both chains
+- [ ] Keeper (resolution + auto-roll) and the open-market flow
+- [ ] Web: wallet, UP/DOWN ticket, bounds on the chart, pool price
+- [ ] End-to-end on Robinhood Testnet and Arbitrum Sepolia
+- [ ] On-chain portfolio
+- [ ] Extension fork pointed at the subdomain
+- [ ] Solana program (Colosseum Solana track)
+
+Known limits: centralised oracle; the VI itself is computed by production ATNX; the "deemed dead" rule for markets with a lower bound of 0 is not implemented; the treasury seed is not recovered; the 50/50 opening price is a product choice (the design doc illustrates a linear price).
+
+### Demo script (3 minutes)
+
+_To be finalised with the deployed addresses._
+
+### Operations
+
+- Env vars: see `atnx-web/.env.local.example` plus `CRON_SECRET`, `BM_KEEPER_PRIVATE_KEY`, `NEXT_PUBLIC_BM_DEFAULT_CHAIN`, `BM_SEED_USDG`, `BM_TOUCH_PRINTS`, `BM_MAX_VI_AGE_MIN`, `BM_AUTO_ROLL`.
+- Run the keeper by hand: `curl -H "Authorization: Bearer $CRON_SECRET" https://markets.atnx.app/api/bm/keeper?dry=1`.
+- Tests: `cd contracts && forge test`; `cd atnx-web && npm run test:bm`.
+
+---
+
 ## Repo layout
 
 ```

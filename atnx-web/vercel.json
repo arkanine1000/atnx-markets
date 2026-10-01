@@ -1,12 +1,8 @@
 {
   "crons": [
     {
-      "path": "/api/markets/refresh",
+      "path": "/api/bm/keeper",
       "schedule": "*/5 * * * *"
-    },
-    {
-      "path": "/api/markets/refresh-slow",
-      "schedule": "7 * * * *"
     }
   ]
 }

@@ -8,7 +8,7 @@
 // CORS_ALLOWED_ORIGINS names (comma-separated), which is where the
 // extension's `chrome-extension://<id>` origin goes.
 
-const OWN_ORIGINS = ['https://www.atnx.app', 'https://atnx.app'];
+const OWN_ORIGINS = ['https://www.atnx.app', 'https://atnx.app', 'https://markets.atnx.app'];
 
 function allowedOrigins(): Set<string> {
   const extra = (process.env.CORS_ALLOWED_ORIGINS ?? '')
