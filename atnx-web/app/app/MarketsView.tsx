@@ -285,7 +285,6 @@ export function MarketsView({
         <div className="flex items-center gap-2 flex-wrap">
           <Segmented
             ariaLabel="Sort markets"
-            tone="accent"
             itemClassName="w-24"
             value={sort}
             onChange={setSort}
