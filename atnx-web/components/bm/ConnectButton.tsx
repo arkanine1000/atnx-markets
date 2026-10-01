@@ -8,7 +8,7 @@ import { useAccount, useConnect } from "wagmi";
 // usual case), and the wallet's answer shown when it refuses. Brave's own
 // "which extension" prompt, once dismissed, makes a silent connect look
 // like a dead button; a visible error and a named choice avoid that.
-export function ConnectButton({ className = "", label = "Connect wallet", compact = false }: { className?: string; label?: string; compact?: boolean }) {
+export function ConnectButton({ className = "", label = "Connect wallet", compact = false, pill = false }: { className?: string; label?: string; compact?: boolean; pill?: boolean }) {
   const { connect, connectors, isPending, error, reset } = useConnect();
   const { status } = useAccount();
   // The page is still re-establishing last time's connection.
@@ -51,9 +51,11 @@ export function ConnectButton({ className = "", label = "Connect wallet", compac
         disabled={choices.length === 0 || isPending || reconnecting}
         title={choices.length === 0 ? "No wallet extension found in this browser" : undefined}
         className={
-          compact
-            ? "h-8 px-3 inline-flex items-center gap-1.5 rounded-full border border-surface bg-surface hover:border-atnx-cyan/50 text-xs font-bold text-primary cursor-pointer transition-colors disabled:opacity-50 whitespace-nowrap"
-            : "btn-cyan w-full h-11 rounded-xl font-bold text-sm cursor-pointer disabled:opacity-50"
+          pill
+            ? "h-8 px-3.5 inline-flex items-center rounded-full btn-magenta text-xs font-bold cursor-pointer whitespace-nowrap disabled:opacity-60"
+            : compact
+              ? "h-8 px-3 inline-flex items-center gap-1.5 rounded-full border border-surface bg-surface hover:border-atnx-cyan/50 text-xs font-bold text-primary cursor-pointer transition-colors disabled:opacity-50 whitespace-nowrap"
+              : "btn-cyan w-full h-11 rounded-xl font-bold text-sm cursor-pointer disabled:opacity-50"
         }
       >
         {reconnecting ? "Reconnecting…" : isPending ? "Check your wallet…" : choices.length === 0 ? "No wallet found" : label}
@@ -73,7 +75,7 @@ export function ConnectButton({ className = "", label = "Connect wallet", compac
           ))}
         </div>
       )}
-      {message && !compact && <p className="text-[11px] text-atnx-magenta mt-2">{message}</p>}
+      {message && !compact && !pill && <p className="text-[11px] text-atnx-magenta mt-2">{message}</p>}
     </div>
   );
 }

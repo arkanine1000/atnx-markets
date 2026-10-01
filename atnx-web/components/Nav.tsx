@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation";
 import { useTheme } from "next-themes";
 import { Suspense, useSyncExternalStore } from "react";
 import { UserMenu } from "@/components/UserMenu";
-import { WalletButton } from "@/components/bm/WalletButton";
 import { NavSearch, NavSearchFallback } from "@/components/NavSearch";
 import { LiveLogo } from "@/components/LiveLogo";
 
@@ -224,12 +223,6 @@ export function Nav() {
                 {activeTheme === "dark" ? "☀️" : "🌙"}
               </button>
             )}
-            <span className="hidden sm:inline-flex">
-              <WalletButton />
-            </span>
-            <span className="sm:hidden inline-flex">
-              <WalletButton compact />
-            </span>
             <UserMenu />
           </div>
         </div>

@@ -3,11 +3,19 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useAccount, useDisconnect } from "wagmi";
 import { useAuth } from "@/context/AuthContext";
 import { Identicon } from "@/components/Identicon";
+import { ConnectButton } from "@/components/bm/ConnectButton";
+import { shortAddress } from "@/components/bm/format";
 
+// The account is the wallet. Disconnected: a Connect pill where Login
+// used to be. Connected: the face and the menu (handle or address,
+// Settings with the network and mint controls, Admin, Sign out).
 export function UserMenu() {
   const { user, loading, openLoginModal, signOut } = useAuth();
+  const { address, isConnected } = useAccount();
+  const { disconnect } = useDisconnect();
   const [handle, setHandle] = useState<string | null>(null);
   const [role, setRole] = useState<"user" | "admin" | "moderator" | null>(null);
   const [open, setOpen] = useState(false);
@@ -47,21 +55,15 @@ export function UserMenu() {
 
   if (loading) return null;
 
-  if (!user) {
-    return (
-      <button
-        onClick={openLoginModal}
-        className="h-8 px-3.5 inline-flex items-center rounded-full btn-magenta text-xs font-bold cursor-pointer whitespace-nowrap"
-      >
-        Login
-      </button>
-    );
+  if (!isConnected || !address) {
+    return <ConnectButton pill label="Connect wallet" />;
   }
 
   // The generated face stands in for the handle: it is seeded by the
-  // account id, so it is ready before the profile loads and survives a
-  // rename. The handle itself heads the menu.
-  const name = handle ? `@${handle}` : "Account";
+  // account id (or the address until the signature lands), so it is
+  // ready before the profile loads and survives a rename.
+  const seed = user?.id ?? address;
+  const name = user && handle ? `@${handle}` : shortAddress(address);
   return (
     <div className="relative" ref={rootRef}>
       <button
@@ -74,7 +76,7 @@ export function UserMenu() {
           open ? "border-atnx-cyan" : "border-surface hover:border-atnx-cyan/60"
         }`}
       >
-        <Identicon seed={user.id} size={28} />
+        <Identicon seed={seed} size={28} />
       </button>
 
       {open && (
@@ -83,19 +85,33 @@ export function UserMenu() {
           role="menu"
         >
           <div className="flex items-center gap-2.5 px-3 py-2 border-b border-surface mb-1">
-            <Identicon seed={user.id} size={24} />
+            <Identicon seed={seed} size={24} />
             <span className="text-xs font-bold text-atnx-cyan light:text-atnx-cyan-light truncate">
               {name}
             </span>
           </div>
-          <Link
-            href="/app/settings"
-            onClick={() => setOpen(false)}
-            className="block px-3 py-2 text-xs text-primary hover:bg-surface transition-colors"
-          >
-            Settings
-          </Link>
-          {(role === "admin" || role === "moderator") && (
+          {!user && (
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                openLoginModal();
+              }}
+              className="w-full text-left px-3 py-2 text-xs text-atnx-cyan hover:bg-surface transition-colors cursor-pointer"
+            >
+              Sign in with this wallet
+            </button>
+          )}
+          {user && (
+            <Link
+              href="/app/settings"
+              onClick={() => setOpen(false)}
+              className="block px-3 py-2 text-xs text-primary hover:bg-surface transition-colors"
+            >
+              Settings
+            </Link>
+          )}
+          {user && (role === "admin" || role === "moderator") && (
             <Link
               href="/admin"
               onClick={() => setOpen(false)}
@@ -108,11 +124,12 @@ export function UserMenu() {
             type="button"
             onClick={() => {
               setOpen(false);
-              void signOut();
+              disconnect();
+              if (user) void signOut();
             }}
             className="w-full text-left px-3 py-2 text-xs text-atnx-magenta hover:bg-surface transition-colors cursor-pointer"
           >
-            Sign out
+            {user ? "Sign out" : "Disconnect"}
           </button>
         </div>
       )}

@@ -105,7 +105,7 @@ export function OnchainPortfolio({ markets }: { markets: BmMarketListing[] }) {
     );
   }
   if (!onOurChain) {
-    return <p className="text-sm text-secondary">Switch your wallet to {chain.label} from the wallet menu.</p>;
+    return <p className="text-sm text-secondary">Switch your wallet to {chain.label} under Settings → Wallet.</p>;
   }
 
   return (

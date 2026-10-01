@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { SettingsForm } from "./SettingsForm";
 import { Identicon } from "@/components/Identicon";
 import { redirect } from "next/navigation";
+import { WalletSettings } from "@/components/bm/WalletSettings";
 
 export default async function SettingsPage() {
   const supabase = await createClient();
@@ -39,6 +40,12 @@ export default async function SettingsPage() {
           email={profile?.email ?? user.email ?? null}
           handle={profile?.handle ?? ""}
         />
+      </div>
+
+      <div className="bg-surface border border-surface rounded-lg p-6 mt-4">
+        <h2 className="text-sm font-bold text-primary mb-1">Wallet</h2>
+        <p className="text-xs text-tertiary mb-3">Network, mock USDG and disconnect. Shares and USDG live in the wallet, not in this account.</p>
+        <WalletSettings />
       </div>
     </div>
   );

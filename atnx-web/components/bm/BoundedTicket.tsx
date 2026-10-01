@@ -188,7 +188,7 @@ export function BoundedTicket({ atnxMarketId, name, score, scoring = false, boun
         )}
         <ConnectButton label="Connect wallet to trade" />
         <p className="text-[11px] text-tertiary mt-2">
-          Testnet only. Shares settle in mock USDG, which has no value; mint it from the wallet menu.
+          Testnet only. Shares settle in mock USDG, which has no value; mint it under Settings → Wallet.
         </p>
       </Card>
     );
@@ -354,7 +354,7 @@ export function BoundedTicket({ atnxMarketId, name, score, scoring = false, boun
 
       {insufficient && (
         <p className="text-[11px] text-atnx-magenta mt-2">
-          {mode === "buy" ? "Not enough USDG. Mint some from the wallet menu." : "You do not hold that many shares."}
+          {mode === "buy" ? "Not enough USDG. Mint some under Settings → Wallet." : "You do not hold that many shares."}
         </p>
       )}
       {error && <p className="text-[11px] text-atnx-magenta mt-2 break-words">{error}</p>}
