@@ -17,7 +17,7 @@ Three ways in, one pipeline: the extension, the web form at `/app/submit` (scree
 
 This repository is the hackathon fork of ATNX for the **Arbitrum / Robinhood Chain Open House (Singapore)** and the **Colosseum Crypto World's Fair**. It replaces the simulated long/short trading with on-chain two-outcome markets on the Virality Index, and keeps everything upstream of trading (capture, identification, the VI pipeline) as it was.
 
-**Prior work disclosure.** Everything up to the tag [`pre-hackathon-2026-10-01`](https://github.com/arkanine1000/atnx-markets/releases/tag/pre-hackathon-2026-10-01) is the pre-existing ATNX product (private upstream `gptdnd/atnx`). The hackathon work is exactly this diff: [compare `pre-hackathon-2026-10-01...main`](https://github.com/arkanine1000/atnx-markets/compare/pre-hackathon-2026-10-01...main).
+**Prior work disclosure.** The hackathon windows opened on 2026-09-14 (Arbitrum Open House) and 2026-09-15 (Colosseum). The tag [`pre-hackathon`](https://github.com/arkanine1000/atnx-markets/releases/tag/pre-hackathon) marks the last commit before that date; everything after it, the capture pipeline, the Virality Index and the bounded markets alike, was built inside the window: [compare `pre-hackathon...main`](https://github.com/arkanine1000/atnx-markets/compare/pre-hackathon...main). The repository is a public copy of the private upstream `gptdnd/atnx`. The bounded-markets work specifically starts at the tag [`bounded-markets-start`](https://github.com/arkanine1000/atnx-markets/releases/tag/bounded-markets-start): [compare `bounded-markets-start...main`](https://github.com/arkanine1000/atnx-markets/compare/bounded-markets-start...main).
 
 | | |
 |---|---|
@@ -83,7 +83,7 @@ Use a fresh browser profile with MetaMask (or any injected wallet) and the Robin
 5. **Sell half**: switch to *Sell*, 50 %, confirm. Show the *Activity* tab: both trades straight from the contract's events, with explorer links. (1:40–2:05)
 6. **Portfolio** (`/app/portfolio`): the position marked at what a sell pays now. (2:05–2:20)
 7. **Resolution**: open a market the keeper already resolved (see *Resolved fixture* below), show the winner, press *Redeem*, and the market that auto-rolled from it with new bounds. Admin → *Bounded* tab shows the keeper log. (2:20–2:50)
-8. **Close**: the contract on the explorer, the compare link for the hackathon diff. (2:50–3:00)
+8. **Close**: the contract on the explorer, the `pre-hackathon...main` compare link. (2:50–3:00)
 
 **Resolved fixture.** Before recording, resolve one throwaway market by hand so step 7 has something to show. From a machine with the keeper key:
 
