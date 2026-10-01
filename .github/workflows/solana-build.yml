@@ -43,6 +43,15 @@ jobs:
           cargo install --git https://github.com/coral-xyz/anchor --tag v0.31.1 anchor-cli --locked --force
           anchor --version
 
+      - name: Pin crates the platform-tools cargo cannot parse
+        # Solana's bundled cargo predates the manifest format toml_datetime 1.x
+        # and toml_edit 0.23 use; the older pair builds fine.
+        run: |
+          cargo generate-lockfile
+          cargo update -p toml_edit --precise 0.22.27 || true
+          cargo update -p toml_datetime --precise 0.6.11 || true
+          grep -A1 -E 'name = "toml_(edit|datetime)"' Cargo.lock
+
       - name: Build
         run: |
           solana-keygen new --no-bip39-passphrase --silent --outfile ~/.config/solana/id.json
