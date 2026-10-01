@@ -21,7 +21,7 @@ export default async function MarketsPage({
     limit: query.limit,
     categoryCounts: {},
   };
-  let bounded: BoundsMap = {};
+  const bounded: BoundsMap = {};
   try {
     const [page, live] = await Promise.all([
       getMarketsPage(query),

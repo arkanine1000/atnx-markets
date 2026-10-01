@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { authorized, refreshScores } from '../refresh/route';
+import { authorized, refreshScores } from '@/lib/vi/refresh-job';
 import { pruneComponentHistory } from '@/lib/store';
 import { runXResolverPass } from '@/lib/creators/store';
 import { runXAccountJob } from '@/lib/creators/x-account';

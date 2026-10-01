@@ -7,7 +7,7 @@ import { waitForTransactionReceipt } from "wagmi/actions";
 import { boundedViMarketsAbi } from "@/lib/bm/abi";
 import { isDeployed } from "@/lib/bm/chains";
 import { quoteSell } from "@/lib/bm/fpmm";
-import type { BmMarketListing } from "@/app/api/bm/markets/route";
+import type { BmMarketListing } from "@/lib/bm/listing";
 import { fmtCents, fmtUsdg } from "./format";
 import { useBmChain } from "./useBounded";
 

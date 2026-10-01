@@ -58,12 +58,13 @@ Each market is a two-outcome market on one subject's VI, with an **upper and a l
 _Updated as the build progresses._
 
 - [x] Fork, tag, registry schema (`atnx-web/supabase/bm/`), bounds function with tests
-- [ ] Contracts with Foundry tests, deployed on both chains
-- [ ] Keeper (resolution + auto-roll) and the open-market flow
-- [ ] Web: wallet, UP/DOWN ticket, bounds on the chart, pool price
+- [x] Contracts with Foundry tests (`contracts/`, 19 tests incl. fuzz and invariants)
+- [ ] Contracts deployed on both chains (needs testnet gas on the keeper wallet)
+- [x] Keeper (resolution + auto-roll) and the open-market flow (`atnx-web/lib/bm/`, `/api/bm/keeper`)
+- [x] Web: wallet, UP/DOWN ticket, bounds on the chart, pool price, activity from chain events
+- [x] On-chain portfolio (`/app/portfolio`)
+- [x] Extension fork (`atnx-extension/`, unpublished; rows deep-link to the market page since a side panel cannot reach an injected wallet)
 - [ ] End-to-end on Robinhood Testnet and Arbitrum Sepolia
-- [ ] On-chain portfolio
-- [ ] Extension fork pointed at the subdomain
 - [ ] Solana program (Colosseum Solana track)
 
 Known limits: centralised oracle; the VI itself is computed by production ATNX; the "deemed dead" rule for markets with a lower bound of 0 is not implemented; the treasury seed is not recovered; the 50/50 opening price is a product choice (the design doc illustrates a linear price).

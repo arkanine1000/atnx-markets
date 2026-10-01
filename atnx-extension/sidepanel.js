@@ -1,7 +1,8 @@
 // Production lives on the www host (the apex domain redirects there), and
 // the manifest grants `*.atnx.app`, so either spelling works — but the
 // default skips the redirect.
-const DEFAULT_WEB_APP_URL = 'https://www.atnx.app';
+// The hackathon build: bounded UP/DOWN markets on the subdomain.
+const DEFAULT_WEB_APP_URL = 'https://markets.atnx.app';
 const STALE_STATUS_MS = 10_000;
 // A capture still "busy" after this long means the worker died mid-flight
 // (the upload itself gives up at 75 s); show the button again.
@@ -869,9 +870,6 @@ function stat(label, value, cls) {
 // shown before a trade (fee, total, liquidation VI) follow lib/pnl.ts; the
 // server is the one that decides, at the market's VI when it answers.
 
-const FEE_RATE = 0.01;
-const QUICK_SIZES = [25, 50, 100, 500];
-const LEVERAGES = [1, 2, 5, 10];
 const NOTE_MS = 7_000;
 
 const portfolioNote = $('portfolioNote');
@@ -904,21 +902,6 @@ function showNote(target, text, kind = '') {
 }
 
 // Fee on an open, in whole cents, the way open_position() rounds it.
-function tradeFee(sizeUsd) {
-  return Math.round(sizeUsd * FEE_RATE * 100) / 100;
-}
-
-// The VI at which the position is liquidated: a move of 1/leverage against it.
-function liquidationVi(entryVi, side, leverage) {
-  const move = entryVi / (leverage || 1);
-  return side === 'long' ? Math.max(0, entryVi - move) : entryVi + move;
-}
-
-// The most you can put in when the fee comes out of the same balance.
-function maxSize(balance) {
-  return Math.max(0, Math.floor(balance / (1 + FEE_RATE)));
-}
-
 function timeAgo(iso) {
   const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
   if (s < 60) return 'just now';
@@ -965,345 +948,6 @@ function rerender(container, build) {
 
 // Position row: thumbnail · name · current value / PnL %. Expands to the
 // entry and exit numbers and the close button.
-function positionRow(p, base) {
-  const wrap = el('div', 'pos');
-  const open = expandedPositionId === p.id;
-  const row = el('button', 'row');
-  row.type = 'button';
-  row.dataset.focusKey = `pos-${p.id}`;
-  row.setAttribute('aria-expanded', String(open));
-  row.title = `${p.direction === 'short' ? 'Short' : 'Long'} ${p.leverage}x · ${usd.format(p.sizeUsd)} in · VI ${p.entryVi} → ${p.currentVi}`;
-  row.addEventListener('click', () => {
-    expandedPositionId = open ? null : p.id;
-    renderPortfolio();
-  });
-
-  const badge = p.direction === 'short' ? { text: 'S', title: 'Short' } : null;
-  const dir = p.pnlPercent >= 0 ? 'up' : 'down';
-  const end = el('div', 'end');
-  end.appendChild(el('div', 'big', usd.format(p.valueUsd ?? p.sizeUsd + p.pnlUsd)));
-  end.appendChild(el('div', `small ${dir}`, p.liquidated ? 'liquidating' : `${signed(p.pnlPercent, (x) => x.toFixed(1))}%`));
-
-  row.append(thumb(p.imageUrl, p.name, badge, p.imageSource === 'wikidata:logo'), el('div', 'name', p.name), end);
-  wrap.append(row);
-  if (open) wrap.append(positionDetail(p, base));
-  return wrap;
-}
-
-function positionDetail(p, base) {
-  const box = el('div', 'row-detail');
-  box.append(el('div', 'detail-caption', `${p.direction === 'short' ? 'Short' : 'Long'} ${p.leverage}× · ${usd.format(p.sizeUsd)} in · opened ${timeAgo(p.openedAt)}`));
-
-  const up = p.pnlUsd >= 0;
-  const facts = el('dl', 'facts');
-  for (const [label, value, cls] of [
-    ['Entry', String(p.entryVi), 'yellow'],
-    ['Now', String(p.currentVi), 'yellow'],
-    ['PnL', signed(p.pnlUsd, (x) => usd.format(x)), up ? 'up' : 'down'],
-    ['Size', usd.format(p.sizeUsd), '']
-  ]) {
-    const fact = el('div', 'fact');
-    fact.append(el('dt', '', label), el('dd', cls, value));
-    facts.append(fact);
-  }
-
-  const actions = el('div', 'detail-actions');
-  const view = el('a', '', 'View market ↗');
-  view.href = '#';
-  view.addEventListener('click', (e) => {
-    e.preventDefault();
-    openTab(`${base}/app/markets/${p.marketId}`);
-  });
-  const closing = closingId === p.id;
-  const closeBtn = el('button', 'btn-small', closing ? 'Closing…' : p.liquidated ? 'Settle position' : 'Close position');
-  closeBtn.type = 'button';
-  closeBtn.dataset.focusKey = `close-${p.id}`;
-  closeBtn.disabled = closing;
-  closeBtn.addEventListener('click', () => closePosition(p, base));
-  actions.append(view, closeBtn);
-
-  box.append(facts, actions);
-  return box;
-}
-
-async function closePosition(p, base) {
-  if (closingId) return;
-  closingId = p.id;
-  renderPortfolio();
-  try {
-    const { res, body } = await postJson(base, `/api/positions/${encodeURIComponent(p.id)}/close`);
-    if (res.ok && body?.success) {
-      const pnl = Number(body.realizedPnl ?? 0);
-      const pct = p.sizeUsd > 0 ? (pnl / p.sizeUsd) * 100 : 0;
-      const exit = Number.isFinite(Number(body.exitVi)) ? Math.round(Number(body.exitVi)) : p.currentVi;
-      showNote(
-        portfolioNote,
-        body.liquidated
-          ? `${p.name} liquidated · ${signed(pnl, (x) => usd.format(x))} · nothing paid back`
-          : `Closed ${p.name} · ${signed(pnl, (x) => usd.format(x))} (${signed(pct, (x) => x.toFixed(1))}%) at VI ${exit}`,
-        pnl >= 0 && !body.liquidated ? 'up' : 'down'
-      );
-      expandedPositionId = null;
-      closingId = null;
-      portfolioCache.clear();
-      await refreshData();
-      return;
-    }
-    if (res.status === 401) {
-      setSignedOut(base);
-      return;
-    }
-    showNote(portfolioNote, tradeError(res, body, base), 'error');
-    // Closed elsewhere already (the site, or a liquidation): show the truth.
-    if (res.status === 404 && body?.error) {
-      expandedPositionId = null;
-      portfolioCache.clear();
-      refreshData();
-    }
-  } catch (e) {
-    showNote(portfolioNote, `Can't reach ${hostOf(base)}: ${e.message}`, 'error');
-  } finally {
-    closingId = null;
-    renderPortfolio();
-  }
-}
-
-// The order ticket under a top-market row: side, size, leverage, the
-// numbers, and the button. Built once per render; the controls patch the
-// numbers in place so typing never loses the field.
-function ticketEl(c, base) {
-  const t = ticket;
-  const entry = Number(c.viralityScore) || 0;
-  const box = el('div', 'ticket');
-
-  const sides = el('div', 'seg sides');
-  const sideBtns = [];
-  for (const s of ['long', 'short']) {
-    const b = el('button', `seg-btn ${s}`, s === 'long' ? '↗ Long' : '↘ Short');
-    b.type = 'button';
-    b.dataset.focusKey = `side-${s}`;
-    b.addEventListener('click', () => {
-      t.side = s;
-      update();
-    });
-    sides.append(b);
-    sideBtns.push([s, b]);
-  }
-
-  const amountHead = el('div', 'ticket-row');
-  const amountLabel = el('label', 'tile-label', 'Amount');
-  amountLabel.htmlFor = 'ticketAmount';
-  const maxBtn = el('button', 'link-btn');
-  maxBtn.type = 'button';
-  maxBtn.dataset.focusKey = 'max';
-  maxBtn.title = 'Leaves room for the 1% fee';
-  maxBtn.addEventListener('click', () => {
-    if (balanceUsd === null) return;
-    t.amount = String(maxSize(balanceUsd));
-    update();
-  });
-  amountHead.append(amountLabel, maxBtn);
-
-  const field = el('div', 'amount-field');
-  const input = document.createElement('input');
-  input.type = 'text';
-  input.inputMode = 'decimal';
-  input.id = 'ticketAmount';
-  input.className = 'ticket-amount';
-  input.autocomplete = 'off';
-  input.value = t.amount;
-  input.dataset.focusKey = 'amount';
-  input.addEventListener('input', () => {
-    t.amount = input.value;
-    update(false);
-  });
-  input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      submit.click();
-    }
-  });
-  field.append(el('span', 'currency', '$'), input, el('span', 'unit', 'USDC'));
-
-  const quick = el('div', 'quick');
-  const quickBtns = [];
-  for (const q of QUICK_SIZES) {
-    const b = el('button', 'quick-btn', `$${q}`);
-    b.type = 'button';
-    b.dataset.focusKey = `quick-${q}`;
-    b.addEventListener('click', () => {
-      t.amount = String(q);
-      update();
-    });
-    quick.append(b);
-    quickBtns.push([q, b]);
-  }
-
-  const levRow = el('div', 'ticket-row');
-  levRow.append(el('span', 'tile-label', 'Leverage'));
-  const levSeg = el('div', 'seg');
-  levSeg.setAttribute('role', 'group');
-  levSeg.setAttribute('aria-label', 'Leverage');
-  const levBtns = [];
-  for (const l of LEVERAGES) {
-    const b = el('button', 'seg-btn', `${l}×`);
-    b.type = 'button';
-    b.dataset.focusKey = `lev-${l}`;
-    b.addEventListener('click', () => {
-      t.lev = l;
-      update();
-    });
-    levSeg.append(b);
-    levBtns.push([l, b]);
-  }
-  levRow.append(levSeg);
-
-  const summary = el('dl', 'summary');
-  const line = (label, cls, title) => {
-    const row = el('div', 'summary-row');
-    const dt = el('dt', '', label);
-    if (title) dt.title = title;
-    const dd = el('dd', cls || '');
-    row.append(dt, dd);
-    summary.append(row);
-    return dd;
-  };
-  line('Entry VI', 'yellow').textContent = String(entry);
-  const ddExposure = line('Exposure');
-  const ddLiq = line('Liquidation VI', 'down');
-  const ddFee = line('Fee (1%)', '', "Half goes to whoever created this market, half to the treasury");
-  const ddTotal = line('Total', 'strong');
-  const ddAvail = signedIn ? line('Available') : null;
-
-  const note = el('div', 'status-text ticket-note');
-
-  const submit = el('button', 'btn-trade');
-  submit.type = 'button';
-  submit.dataset.focusKey = 'submit';
-  submit.addEventListener('click', () => {
-    if (!signedIn) openSignIn(base);
-    else submitTicket(c, base);
-  });
-
-  const actions = el('div', 'review-actions');
-  const view = el('a', '', 'View market ↗');
-  view.href = '#';
-  view.addEventListener('click', (e) => {
-    e.preventDefault();
-    openTab(`${base}/app/markets/${c.marketId}`);
-  });
-  const cancel = el('button', 'link-btn', 'Cancel');
-  cancel.type = 'button';
-  cancel.addEventListener('click', () => {
-    ticket = null;
-    ticketError = null;
-    renderMarkets();
-  });
-  actions.append(view, cancel);
-
-  function update(syncInput = true) {
-    const amount = parseFloat(t.amount) || 0;
-    const fee = tradeFee(amount);
-    const total = amount + fee;
-    const over = signedIn && balanceUsd !== null && total > balanceUsd;
-    const long = t.side === 'long';
-
-    for (const [s, b] of sideBtns) b.setAttribute('aria-pressed', String(t.side === s));
-    for (const [q, b] of quickBtns) b.setAttribute('aria-pressed', String(amount === q));
-    for (const [l, b] of levBtns) {
-      b.setAttribute('aria-pressed', String(t.lev === l));
-      b.title = `A ${l}× ${t.side} loses everything when the VI moves ${Math.round(100 / l)}% against it`;
-    }
-    if (syncInput) input.value = t.amount;
-    field.classList.toggle('over', over);
-    maxBtn.hidden = balanceUsd === null;
-    maxBtn.textContent = balanceUsd === null ? '' : `Max ${usd.format(maxSize(balanceUsd))}`;
-
-    ddExposure.textContent = usd.format(amount * t.lev);
-    ddLiq.textContent = String(Math.round(liquidationVi(entry, t.side, t.lev)));
-    ddFee.textContent = usd.format(fee);
-    ddTotal.textContent = usd.format(total);
-    if (ddAvail) {
-      ddAvail.textContent = usd.format(balanceUsd ?? 0);
-      ddAvail.className = over ? 'down' : '';
-    }
-
-    box.classList.toggle('short', !long);
-    if (signedIn) {
-      submit.className = `btn-trade ${t.side}`;
-      submit.textContent = ticketBusy ? 'Opening…' : `Open ${long ? 'Long' : 'Short'} · ${usd.format(amount)}`;
-      submit.disabled = ticketBusy || amount <= 0 || over;
-    } else {
-      submit.className = 'btn-trade signin';
-      submit.textContent = 'Sign in to trade';
-      submit.disabled = false;
-    }
-    note.textContent = ticketError || (over ? 'Amount plus fee exceeds your balance' : '');
-    note.classList.toggle('error', Boolean(ticketError || over));
-    lastTicket = { side: t.side, amount: t.amount, lev: t.lev };
-  }
-  update();
-
-  box.append(sides, amountHead, field, quick, levRow, summary, note, submit, actions);
-  return box;
-}
-
-function toggleTicket(c) {
-  ticket = ticket?.marketId === c.marketId ? null : { marketId: c.marketId, ...lastTicket };
-  ticketError = null;
-  renderMarkets();
-  if (ticket) {
-    const input = marketsEl.querySelector('.ticket-amount');
-    if (input) {
-      input.focus();
-      input.select();
-    }
-  }
-}
-
-async function submitTicket(c, base) {
-  const t = ticket;
-  if (!t || ticketBusy) return;
-  const amount = parseFloat(t.amount) || 0;
-  if (amount <= 0) return;
-  ticketBusy = true;
-  ticketError = null;
-  renderMarkets();
-  try {
-    const { res, body } = await postJson(base, '/api/positions', {
-      marketId: c.marketId,
-      direction: t.side,
-      sizeUsd: amount,
-      leverage: t.lev
-    });
-    if (res.ok && body?.success) {
-      const name = c.analysis?.name || 'this market';
-      ticket = null;
-      ticketBusy = false;
-      showNote(
-        marketsNote,
-        `Opened ${t.side} ${t.lev}× · ${usd.format(amount)} on ${name}`,
-        t.side === 'long' ? 'up' : 'down'
-      );
-      // The new position shows up in the portfolio list, so open it.
-      setPortfolioOpen(true);
-      portfolioCache.clear();
-      await refreshData();
-      return;
-    }
-    if (res.status === 401) {
-      setSignedOut(base);
-      return;
-    }
-    ticketError = tradeError(res, body, base);
-  } catch (e) {
-    ticketError = `Can't reach ${hostOf(base)}: ${e.message}`;
-  } finally {
-    ticketBusy = false;
-    renderMarkets();
-  }
-}
-
 function setPortfolioOpen(open) {
   portfolioOpen = open;
   chrome.storage.local.set({ portfolioOpen: open });
@@ -1369,7 +1013,7 @@ async function loadPortfolio() {
   let res;
   let base;
   try {
-    ({ res, base } = await fetchJson(`/api/portfolio?range=${range}`));
+    ({ res, base } = await fetchJson('/api/bm/me'));
   } catch {
     valueTile.hidden = true;
     portfolioEl.replaceChildren(placeholder(`Can't reach ${hostOf(await getWebAppUrl())}`));
@@ -1389,7 +1033,7 @@ async function loadPortfolio() {
   }
 
   const data = await readJson(res);
-  if (!data || !Array.isArray(data.positions)) {
+  if (!data || !data.userId) {
     valueTile.hidden = true;
     portfolioEl.replaceChildren(placeholder(`Unexpected response from ${hostOf(base)}`));
     return false;
@@ -1399,13 +1043,11 @@ async function loadPortfolio() {
   authNote.hidden = true;
   setHandle(data.handle, data.userId);
   setIsAdmin(data.isAdmin === true);
-  portfolioCache.set(range, data);
-  balanceUsd = Number(data.balanceUsd) || 0;
-  // The user switched range while this request was in flight; the newer
-  // request will draw the tile.
   if (range !== chartRange) return true;
 
-  renderTile(data);
+  // Shares live in the wallet, and injected wallets do not reach a side
+  // panel, so the portfolio is a link to the web app.
+  valueTile.hidden = true;
   lastPortfolio = { data, base };
   renderPortfolio();
   return true;
@@ -1415,39 +1057,13 @@ async function loadPortfolio() {
 // Expanded: the open positions, one of which may be expanded in turn.
 function renderPortfolio() {
   if (!lastPortfolio) return;
-  const { data, base } = lastPortfolio;
-
-  const toggle = el('button', 'stats-toggle');
-  toggle.type = 'button';
-  toggle.setAttribute('aria-expanded', String(portfolioOpen));
-  toggle.setAttribute('aria-controls', 'positions');
-  toggle.appendChild(stat('Balance', usd.format(data.balanceUsd), 'yellow'));
-  toggle.appendChild(
-    stat('Unrealized', signed(data.unrealizedPnlUsd, (x) => usd.format(x)),
-      data.unrealizedPnlUsd >= 0 ? 'up' : 'down')
-  );
-  toggle.appendChild(stat('Open', String(data.positions.length)));
-  const chev = svgEl('svg', { class: 'chevron', viewBox: '0 0 24 24', width: 16, height: 16, 'aria-hidden': 'true' });
-  chev.appendChild(svgEl('path', {
-    d: 'M6 9l6 6 6-6', fill: 'none', stroke: 'currentColor', 'stroke-width': 2.2,
-    'stroke-linecap': 'round', 'stroke-linejoin': 'round'
-  }));
-  toggle.appendChild(chev);
-  toggle.addEventListener('click', () => setPortfolioOpen(!portfolioOpen));
-
-  const list = el('div', 'positions');
-  list.id = 'positions';
-  list.hidden = !portfolioOpen;
-  if (data.positions.length === 0) {
-    list.appendChild(placeholder('No open positions', {
-      label: 'Browse markets',
-      onClick: () => openTab(`${base}/app`)
-    }));
-  } else {
-    for (const p of data.positions) list.appendChild(positionRow(p, base));
-  }
-
-  rerender(portfolioEl, () => [toggle, list]);
+  const { base } = lastPortfolio;
+  rerender(portfolioEl, () => [
+    placeholder('Your UP and DOWN shares are in your wallet.', {
+      label: 'Open portfolio',
+      onClick: () => openTab(`${base}/app/portfolio`)
+    })
+  ]);
 }
 
 // The top markets by VI: /api/markets ranks every live market in the
@@ -1465,26 +1081,30 @@ function topMarkets(captures) {
     .slice(0, TOP_MARKETS);
 }
 
-// Market row: thumbnail · name · VI. Expands to the order ticket.
+// Market row: thumbnail · name · bounds · VI. Opens the market page,
+// where the wallet and the UP/DOWN ticket are (a side panel cannot reach
+// an injected wallet).
 function marketRow(c, base, rank, heat) {
   const wrap = el('div', 'mkt');
   // 1 → 0.25 heat across the five rows; the rail on the row reads it.
   wrap.style.setProperty('--rank-heat', String(heat));
-  const open = ticket?.marketId === c.marketId;
   const row = el('button', 'row ranked');
   row.type = 'button';
   row.dataset.focusKey = `mkt-${c.marketId}`;
-  row.setAttribute('aria-expanded', String(open));
   const trend = c.trends?.trend;
+  const bounds = boundsByMarket.get(c.marketId);
   row.title = c.viScoring
     ? 'Scoring this new market'
-    : trend
-      ? `Virality Index ${c.viralityScore} · ${trend}`
-      : `Virality Index ${c.viralityScore}`;
-  row.addEventListener('click', () => toggleTicket(c));
+    : bounds
+      ? `Virality Index ${c.viralityScore} · UP pays at ${bounds.upper}, DOWN at ${bounds.lower}`
+      : trend
+        ? `Virality Index ${c.viralityScore} · ${trend}`
+        : `Virality Index ${c.viralityScore}`;
+  row.addEventListener('click', () => openTab(`${base}/app/markets/${c.marketId}`));
 
   const name = c.analysis?.name || 'Unknown';
   const end = el('div', 'end');
+  if (bounds) end.appendChild(el('div', 'detail-caption', `${bounds.lower}–${bounds.upper}`));
   end.appendChild(el('div', 'big', c.viScoring ? '…' : String(c.viralityScore)));
 
   // The market's curated image when the web app has one (the logo, the
@@ -1496,11 +1116,26 @@ function marketRow(c, base, rank, heat) {
     end
   );
   wrap.append(row);
-  if (open) wrap.append(ticketEl(c, base));
   return wrap;
 }
 
-// The top-markets list from the last answer, the open ticket included.
+// Bounds of the live bounded market per atnx market id (/api/bm/markets).
+const boundsByMarket = new Map();
+async function loadBounds() {
+  try {
+    const { res } = await fetchJson('/api/bm/markets');
+    const data = res.ok ? await readJson(res) : null;
+    if (!Array.isArray(data?.items)) return;
+    boundsByMarket.clear();
+    for (const m of data.items) {
+      if (!boundsByMarket.has(m.atnxMarketId)) boundsByMarket.set(m.atnxMarketId, { lower: m.lower, upper: m.upper });
+    }
+  } catch {
+    /* the list still renders without badges */
+  }
+}
+
+// The top-markets list from the last answer.
 function renderMarkets() {
   if (!lastMarkets) return;
   const { top, base } = lastMarkets;
@@ -1548,6 +1183,7 @@ async function loadMarkets() {
     marketsEl.replaceChildren(placeholder('No markets yet — capture something to spawn one'));
     return true;
   }
+  await loadBounds();
   lastMarkets = { top, base };
   renderMarkets();
   return true;

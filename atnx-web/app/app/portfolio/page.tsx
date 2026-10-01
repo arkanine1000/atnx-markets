@@ -2,7 +2,7 @@ import { OnchainPortfolio } from "@/components/bm/OnchainPortfolio";
 import { listAll } from "@/lib/bm/registry";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { BM_CHAINS } from "@/lib/bm/chains";
-import type { BmMarketListing } from "@/app/api/bm/markets/route";
+import type { BmMarketListing } from "@/lib/bm/listing";
 
 export const dynamic = "force-dynamic";
 

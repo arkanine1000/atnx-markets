@@ -2,30 +2,13 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { corsHeaders, corsPreflight } from '@/lib/cors';
 import { listAll, listLive } from '@/lib/bm/registry';
 import { BM_CHAINS } from '@/lib/bm/chains';
+import type { BmMarketListing } from '@/lib/bm/listing';
 
 // The bounded markets, joined with the atnx market they sit on. Public,
 // CORS-enabled: the portfolio page and the extension read it.
 //   ?state=live (default)  pending, open and resolving rows
 //   ?state=all             the last 200 rows, resolved ones included
 
-export interface BmMarketListing {
-  id: string;
-  atnxMarketId: string;
-  name: string;
-  thumbnailUrl: string | null;
-  currentVi: number;
-  chain: string;
-  chainLabel: string;
-  contractAddress: string;
-  onchainMarketId: string | null;
-  state: string;
-  startVi: number;
-  lower: number;
-  upper: number;
-  resolvedSide: string | null;
-  resolvedVi: number | null;
-  createdAt: string;
-}
 
 export async function GET(request: Request) {
   const headers = corsHeaders(request);

@@ -2,7 +2,9 @@
 // redirect target the extension held no host permission for is why v1.4
 // showed "Not signed in" to signed-in users. The manifest now grants
 // `*.atnx.app`, so both spellings work, but the default skips the hop.
-const DEFAULT_WEB_APP_URL = 'https://www.atnx.app';
+// The hackathon build lives on its own subdomain; the published extension
+// keeps talking to www.atnx.app.
+const DEFAULT_WEB_APP_URL = 'https://markets.atnx.app';
 const LEGACY_WEB_APP_URL = /^https:\/\/atnx\.app\/*$/i;
 
 // Longest edge (in device pixels) of the uploaded crop. Vision models
