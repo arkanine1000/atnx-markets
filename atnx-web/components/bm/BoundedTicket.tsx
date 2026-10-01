@@ -4,25 +4,24 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useAccount, useConfig, useReadContract, useSwitchChain, useWriteContract } from "wagmi";
-import { ConnectButton } from "./ConnectButton";
 import { waitForTransactionReceipt } from "wagmi/actions";
 import { openBoundedMarketAction } from "@/app/app/actions/bm";
-import { Card, Segmented } from "@/components/ui";
+import { Card } from "@/components/ui";
 import { boundedViMarketsAbi, mockUsdgAbi } from "@/lib/bm/abi";
 import { bounds } from "@/lib/bm/bounds";
-import { isDeployed, txUrl } from "@/lib/bm/chains";
-import { price as poolPrice, quoteBuy, quoteSell, type Side } from "@/lib/bm/fpmm";
+import { USDG_UNIT, isDeployed, txUrl } from "@/lib/bm/chains";
+import { quoteBuy, quoteSell, type Pools, type Side } from "@/lib/bm/fpmm";
 import type { BmMarketRow } from "@/lib/supabase/database-bm";
+import { ConnectButton } from "./ConnectButton";
 import { fmtCents, fmtUsdg, parseUsdg, shortHash } from "./format";
 import { liveRow, resolvedRows, useBmChain, useOnchainMarket } from "./useBounded";
 
-// The order ticket for a bounded market: UP or DOWN, an amount of mock
-// USDG, a quote from the pool, then approve (once) and buy; or sell what
-// you hold. When no bounded market is open on the wallet's chain, the
-// ticket offers to open one from the current VI. After a resolution it
-// offers the redeem.
+// The ticket, for people who have never traded: pick a side, type an
+// amount, read one line that says what you get if you are right, press
+// the button. Everything else (shares, average price, fee, price impact)
+// sits behind "Details". Selling appears only once you hold shares.
 
-const QUICK = [10, 50, 100, 500];
+const QUICK = [10, 50, 100];
 const SLIPPAGE_BPS = 100n; // 1% below the quote
 
 interface Props {
@@ -33,6 +32,13 @@ interface Props {
   bounded: BmMarketRow[];
   initialSide?: Side;
   onToast?: (message: string, detail: string | undefined, type: Side) => void;
+}
+
+function priceOf(p: Pools, side: Side): number {
+  const total = Number(p.poolUp + p.poolDown);
+  if (total === 0) return 0.5;
+  const up = Number(p.poolDown) / total;
+  return side === "up" ? up : 1 - up;
 }
 
 export function BoundedTicket({ atnxMarketId, name, score, scoring = false, bounded, initialSide = "up", onToast }: Props) {
@@ -50,6 +56,7 @@ export function BoundedTicket({ atnxMarketId, name, score, scoring = false, boun
   const [side, setSide] = useState<Side>(initialSide);
   const [mode, setMode] = useState<"buy" | "sell">("buy");
   const [amount, setAmount] = useState("25");
+  const [details, setDetails] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [lastTx, setLastTx] = useState<string | null>(null);
@@ -64,19 +71,17 @@ export function BoundedTicket({ atnxMarketId, name, score, scoring = false, boun
 
   const units = useMemo(() => parseUsdg(amount), [amount]);
   const held = side === "up" ? oc.up : oc.down;
+  const holdsAnything = oc.up > 0n || oc.down > 0n;
 
   const quote = useMemo(() => {
     if (!oc.pools || !units || units <= 0n) return null;
+    const before = priceOf(oc.pools, side);
     if (mode === "buy") {
       const q = quoteBuy(oc.pools, side, units, oc.feeBps);
-      const before = poolPrice(oc.pools, side);
-      const after = poolPrice(q.after, side);
-      return { kind: "buy" as const, shares: q.shares, fee: q.fee, avg: q.shares > 0n ? Number(units) / Number(q.shares) : 0, before, after };
+      return { kind: "buy" as const, shares: q.shares, fee: q.fee, avg: q.shares > 0n ? Number(units) / Number(q.shares) : 0, before, after: priceOf(q.after, side) };
     }
     const q = quoteSell(oc.pools, side, units, oc.feeBps);
-    const before = poolPrice(oc.pools, side);
-    const after = poolPrice(q.after, side);
-    return { kind: "sell" as const, payout: q.payout, fee: q.fee, avg: units > 0n ? Number(q.payout) / Number(units) : 0, before, after };
+    return { kind: "sell" as const, payout: q.payout, fee: q.fee, avg: units > 0n ? Number(q.payout) / Number(units) : 0, before, after: priceOf(q.after, side) };
   }, [oc.pools, oc.feeBps, units, side, mode]);
 
   async function run(label: string, fn: () => Promise<`0x${string}`>, toast: [string, string | undefined]) {
@@ -90,8 +95,7 @@ export function BoundedTicket({ atnxMarketId, name, score, scoring = false, boun
       onToast?.(toast[0], toast[1], side);
       return true;
     } catch (err) {
-      const msg = (err as Error).message ?? String(err);
-      setError(msg.split("\n")[0].slice(0, 140));
+      setError(friendly((err as Error).message ?? String(err)));
       return false;
     } finally {
       setBusy(null);
@@ -104,47 +108,40 @@ export function BoundedTicket({ atnxMarketId, name, score, scoring = false, boun
     if (quote.kind === "buy") {
       if (oc.allowance < units) {
         const ok = await run(
-          "Approving…",
-          () =>
-            writeContractAsync({
-              address: chain.usdg,
-              abi: mockUsdgAbi,
-              functionName: "approve",
-              args: [chain.markets, 2n ** 256n - 1n],
-              chainId: chain.chainId,
-            }),
-          ["USDG approved", "You can buy now"],
+          "Approving USDG…",
+          () => writeContractAsync({ address: chain.usdg, abi: mockUsdgAbi, functionName: "approve", args: [chain.markets, 2n ** 256n - 1n], chainId: chain.chainId }),
+          ["USDG approved", "One more confirmation to buy"],
         );
         if (!ok) return;
       }
       const minShares = (quote.shares * (10_000n - SLIPPAGE_BPS)) / 10_000n;
-      await run(
+      const ok = await run(
         "Buying…",
-        () =>
-          writeContractAsync({
-            address: chain.markets,
-            abi: boundedViMarketsAbi,
-            functionName: "buy",
-            args: [id, side === "up" ? 0 : 1, units, minShares],
-            chainId: chain.chainId,
-          }),
-        [`Bought ${fmtUsdg(quote.shares)} ${side.toUpperCase()}`, `${name} · ${fmtUsdg(units)} USDG`],
+        () => writeContractAsync({ address: chain.markets, abi: boundedViMarketsAbi, functionName: "buy", args: [id, side === "up" ? 0 : 1, units, minShares], chainId: chain.chainId }),
+        [`Bought ${side.toUpperCase()}`, `${fmtUsdg(quote.shares)} shares of ${name} for ${fmtUsdg(units)} USDG`],
       );
+      if (ok) setAmount("25");
     } else {
       const minReturn = (quote.payout * (10_000n - SLIPPAGE_BPS)) / 10_000n;
-      await run(
+      const ok = await run(
         "Selling…",
-        () =>
-          writeContractAsync({
-            address: chain.markets,
-            abi: boundedViMarketsAbi,
-            functionName: "sell",
-            args: [id, side === "up" ? 0 : 1, units, minReturn],
-            chainId: chain.chainId,
-          }),
-        [`Sold ${fmtUsdg(units)} ${side.toUpperCase()}`, `${name} · ${fmtUsdg(quote.payout)} USDG back`],
+        () => writeContractAsync({ address: chain.markets, abi: boundedViMarketsAbi, functionName: "sell", args: [id, side === "up" ? 0 : 1, units, minReturn], chainId: chain.chainId }),
+        [`Sold ${side.toUpperCase()}`, `${fmtUsdg(quote.payout)} USDG back`],
       );
+      if (ok) {
+        setMode("buy");
+        setAmount("25");
+      }
     }
+  }
+
+  async function mint() {
+    if (!address) return;
+    await run(
+      "Minting…",
+      () => writeContractAsync({ address: chain.usdg, abi: mockUsdgAbi, functionName: "mint", args: [address, 1_000n * USDG_UNIT], chainId: chain.chainId }),
+      ["Minted 1,000 USDG", "Testnet money, no value"],
+    );
   }
 
   function openMarket() {
@@ -156,55 +153,39 @@ export function BoundedTicket({ atnxMarketId, name, score, scoring = false, boun
     });
   }
 
-  // ---------------------------------------------------------------- render
+  function startSelling(s: Side) {
+    setSide(s);
+    setMode("sell");
+    const h = s === "up" ? oc.up : oc.down;
+    setAmount(fmtUsdg(h, 6).replace(/,/g, ""));
+    setError(null);
+  }
 
-  const header = (
-    <div className="flex items-center justify-between mb-3">
-      <div className="text-[10px] font-mono uppercase tracking-[0.15em] text-tertiary">UP / DOWN · {chain.short}</div>
-      {row && oc.priceUp !== null && (
-        <div className="text-[11px] font-mono tabular-nums flex items-center gap-2">
-          <span className="text-atnx-cyan">UP {fmtCents(oc.priceUp)}</span>
-          <span className="text-atnx-magenta">DOWN {fmtCents(1 - oc.priceUp)}</span>
-        </div>
-      )}
-    </div>
-  );
+  // ---------------------------------------------------------------- states
 
   if (!isDeployed(chain)) {
     return (
       <Card className="p-4">
-        {header}
-        <p className="text-xs text-secondary">The contracts are not deployed on {chain.label} yet.</p>
+        <p className="text-sm text-secondary">Trading is not live on {chain.label} yet.</p>
       </Card>
     );
   }
 
   if (!isConnected || !address) {
     return (
-      <Card className="p-4">
-        {header}
-        {row && (
-          <BoundsLine row={row} />
-        )}
+      <Card className="p-4 sm:p-5">
+        {row ? <Question name={name} row={row} /> : <p className="text-sm text-secondary mb-4">Connect a wallet to trade on {name}.</p>}
         <ConnectButton label="Connect wallet to trade" />
-        <p className="text-[11px] text-tertiary mt-2">
-          Testnet only. Shares settle in mock USDG, which has no value; mint it under Settings → Wallet.
-        </p>
+        <p className="text-[11px] text-tertiary mt-3">Testnet only. Everything settles in mock USDG, which has no value.</p>
       </Card>
     );
   }
 
   if (!onOurChain) {
     return (
-      <Card className="p-4">
-        {header}
-        <p className="text-xs text-secondary mb-3">Your wallet is on another network.</p>
-        <button
-          type="button"
-          onClick={() => switchChain({ chainId: chain.chainId })}
-          disabled={switching}
-          className="btn-cyan w-full h-11 rounded-xl font-bold text-sm cursor-pointer disabled:opacity-50"
-        >
+      <Card className="p-4 sm:p-5">
+        <p className="text-sm text-secondary mb-4">Your wallet is on another network.</p>
+        <button type="button" onClick={() => switchChain({ chainId: chain.chainId })} disabled={switching} className="btn-cyan w-full h-12 rounded-xl font-bold text-sm cursor-pointer disabled:opacity-50">
           {switching ? "Switching…" : `Switch to ${chain.label}`}
         </button>
       </Card>
@@ -214,190 +195,236 @@ export function BoundedTicket({ atnxMarketId, name, score, scoring = false, boun
   if (!row) {
     const b = score > 0 ? bounds(score) : null;
     return (
-      <Card className="p-4">
-        {header}
+      <Card className="p-4 sm:p-5">
         {resolved.length > 0 && <RedeemList rows={resolved} chainKey={chain.key} onDone={oc.refetch} />}
         {scoring ? (
-          <p className="text-xs text-secondary">The first score is still being computed. A market can open once it is live.</p>
+          <p className="text-sm text-secondary">The first score is still being computed. A market can open once it is live.</p>
         ) : b ? (
           <>
-            <p className="text-xs text-secondary mb-3">
-              No UP/DOWN market is open on {name} here. Open one from the current VI of <span className="text-primary font-mono">{Math.round(score)}</span>:
-              UP pays at <span className="text-atnx-cyan font-mono">{b.upper}</span>, DOWN pays at <span className="text-atnx-magenta font-mono">{b.lower}</span>.
-              The treasury seeds the pool.
+            <p className="text-sm text-primary font-bold mb-1">No market open on {name} yet.</p>
+            <p className="text-sm text-secondary mb-4">
+              Open one from today&apos;s index of {Math.round(score)}: <span className="text-atnx-cyan">UP</span> wins if it reaches{" "}
+              <span className="tabular-nums font-bold text-primary">{b.upper}</span>, <span className="text-atnx-magenta">DOWN</span> wins if it falls to{" "}
+              <span className="tabular-nums font-bold text-primary">{b.lower}</span>. The treasury seeds the pool.
             </p>
-            <button
-              type="button"
-              onClick={openMarket}
-              disabled={opening}
-              className="btn-cyan w-full h-11 rounded-xl font-bold text-sm cursor-pointer disabled:opacity-50"
-            >
-              {opening ? "Opening on chain…" : "Open UP/DOWN market"}
+            <button type="button" onClick={openMarket} disabled={opening} className="btn-cyan w-full h-12 rounded-xl font-bold text-sm cursor-pointer disabled:opacity-50">
+              {opening ? "Opening on chain…" : "Open the market"}
             </button>
           </>
         ) : (
-          <p className="text-xs text-secondary">This market has no score yet.</p>
+          <p className="text-sm text-secondary">This market has no score yet.</p>
         )}
-        {error && <p className="text-xs text-atnx-magenta mt-2">{error}</p>}
+        {error && <p className="text-xs text-atnx-magenta mt-3">{error}</p>}
       </Card>
     );
   }
 
   if (row.state !== "open" || !oc.pools) {
     return (
-      <Card className="p-4">
-        {header}
-        <BoundsLine row={row} />
-        <p className="text-xs text-secondary animate-pulse">
-          {row.state === "pending" ? "Opening on chain…" : row.state === "resolving" ? "Resolving…" : "Loading the pool…"}
-        </p>
+      <Card className="p-4 sm:p-5">
+        <Question name={name} row={row} />
+        <p className="text-sm text-secondary animate-pulse">{row.state === "pending" ? "Opening on chain…" : row.state === "resolving" ? "Resolving…" : "Loading the pool…"}</p>
         {oc.error && <p className="text-[11px] text-atnx-magenta mt-2">{oc.error.message.split("\n")[0]}</p>}
       </Card>
     );
   }
 
+  // ------------------------------------------------------------- the ticket
+
+  const isUp = side === "up";
+  const pools = oc.pools;
+  const target = isUp ? row.upper_bound : row.lower_bound;
   const insufficient = mode === "buy" ? !!units && units > oc.usdg : !!units && units > held;
   const canSubmit = !!units && units > 0n && !!quote && !insufficient && !busy && (quote.kind === "buy" ? quote.shares > 0n : quote.payout > 0n);
-  const isUp = side === "up";
+  const stake = units ?? 0n;
+  const profit = quote?.kind === "buy" ? quote.shares - stake : 0n;
+  const profitPct = quote?.kind === "buy" && stake > 0n ? (Number(profit) / Number(stake)) * 100 : 0;
+  const needsApproval = mode === "buy" && !!units && oc.allowance < units;
+  const accent = isUp ? "btn-cyan" : "btn-magenta";
+  const maxBuy = fmtUsdg((oc.usdg * 99n) / 100n, 2).replace(/,/g, "");
 
   return (
-    <Card className="p-4">
-      {header}
-      <BoundsLine row={row} />
-
-      <Segmented
-        ariaLabel="Side"
-        value={side}
-        onChange={(v) => setSide(v as Side)}
-        options={[
-          { value: "up", label: `UP ${oc.priceUp !== null ? fmtCents(oc.priceUp) : ""}` },
-          { value: "down", label: `DOWN ${oc.priceUp !== null ? fmtCents(1 - oc.priceUp) : ""}` },
-        ]}
-        className="w-full mb-3"
-      />
-
-      <div className="flex items-center justify-between text-[11px] mb-1">
-        <div className="inline-flex rounded-full border border-surface overflow-hidden">
-          {(["buy", "sell"] as const).map((m) => (
-            <button
-              key={m}
-              type="button"
-              onClick={() => {
-                setMode(m);
-                setAmount(m === "sell" ? fmtUsdg(held).replace(/,/g, "") : "25");
-              }}
-              className={`px-3 py-1 font-bold cursor-pointer transition-colors ${
-                mode === m ? "bg-elevated text-primary" : "text-tertiary hover:text-primary"
-              }`}
-            >
-              {m === "buy" ? "Buy" : "Sell"}
-            </button>
-          ))}
+    <Card className="p-4 sm:p-5">
+      {mode === "buy" ? (
+        <>
+          <Question name={name} row={row} />
+          <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Side">
+            <SideButton side="up" price={priceOf(pools, "up")} selected={isUp} onClick={() => setSide("up")} />
+            <SideButton side="down" price={priceOf(pools, "down")} selected={!isUp} onClick={() => setSide("down")} />
+          </div>
+          <p className="text-xs text-secondary mt-2 mb-4">
+            <span className={isUp ? "text-atnx-cyan" : "text-atnx-magenta"}>{side.toUpperCase()}</span> pays 1 USDG a share if the index {isUp ? "reaches" : "falls to"}{" "}
+            <span className="tabular-nums font-bold text-primary">{target}</span> first. Sell any time before.
+          </p>
+        </>
+      ) : (
+        <div className="flex items-center justify-between mb-4">
+          <div className="text-sm font-bold text-primary">
+            Sell <span className={isUp ? "text-atnx-cyan" : "text-atnx-magenta"}>{side.toUpperCase()}</span>
+          </div>
+          <button type="button" onClick={() => { setMode("buy"); setAmount("25"); }} className="text-xs text-secondary hover:text-primary cursor-pointer">
+            Back to buying
+          </button>
         </div>
-        <span className="text-tertiary font-mono tabular-nums">
-          {mode === "buy" ? `${fmtUsdg(oc.usdg)} USDG` : `${fmtUsdg(held)} ${side.toUpperCase()}`}
+      )}
+
+      <div className="flex items-center justify-between text-xs mb-1.5">
+        <span className="text-secondary">{mode === "buy" ? "Amount" : "Shares to sell"}</span>
+        <span className="text-tertiary">
+          {mode === "buy" ? (
+            <>You have <span className="tabular-nums font-bold text-secondary">{fmtUsdg(oc.usdg, 0)}</span> USDG</>
+          ) : (
+            <>You hold <span className="tabular-nums font-bold text-secondary">{fmtUsdg(held)}</span> {side.toUpperCase()}</>
+          )}
         </span>
       </div>
-
-      <div className="flex items-center gap-2 rounded-xl border border-surface bg-elevated px-3 h-11">
+      <label className="flex items-center gap-2 rounded-xl border border-surface bg-elevated px-3 h-12 focus-within:border-atnx-cyan/60">
         <input
           inputMode="decimal"
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
-          className="flex-1 bg-transparent outline-none font-mono text-base text-primary tabular-nums"
+          className="flex-1 bg-transparent outline-none font-mono text-lg text-primary tabular-nums min-w-0"
           aria-label={mode === "buy" ? "Amount of USDG" : "Shares to sell"}
         />
-        <span className="text-[11px] font-mono text-tertiary">{mode === "buy" ? "USDG" : side.toUpperCase()}</span>
-      </div>
+        <span className="text-xs text-tertiary">{mode === "buy" ? "USDG" : side.toUpperCase()}</span>
+      </label>
       <div className="flex gap-1.5 mt-2">
         {mode === "buy"
-          ? QUICK.map((q) => (
-              <button
-                key={q}
-                type="button"
-                onClick={() => setAmount(String(q))}
-                className="flex-1 h-7 rounded-lg border border-surface text-[11px] font-mono text-secondary hover:text-primary hover:border-atnx-cyan/40 cursor-pointer"
-              >
-                {q}
+          ? [...QUICK.map((q) => [String(q), String(q)] as const), ["Max", maxBuy] as const].map(([label, value]) => (
+              <button key={label} type="button" onClick={() => setAmount(value)} className="flex-1 h-8 rounded-lg border border-surface text-xs text-secondary hover:text-primary hover:border-atnx-cyan/40 cursor-pointer">
+                {label}
               </button>
             ))
           : [25, 50, 100].map((p) => (
-              <button
-                key={p}
-                type="button"
-                onClick={() => setAmount(fmtUsdg((held * BigInt(p)) / 100n, 6).replace(/,/g, ""))}
-                className="flex-1 h-7 rounded-lg border border-surface text-[11px] font-mono text-secondary hover:text-primary hover:border-atnx-cyan/40 cursor-pointer"
-              >
-                {p}%
+              <button key={p} type="button" onClick={() => setAmount(fmtUsdg((held * BigInt(p)) / 100n, 6).replace(/,/g, ""))} className="flex-1 h-8 rounded-lg border border-surface text-xs text-secondary hover:text-primary hover:border-atnx-cyan/40 cursor-pointer">
+                {p === 100 ? "All" : `${p}%`}
               </button>
             ))}
       </div>
 
       {quote && units && units > 0n && (
-        <dl className="mt-3 space-y-1 text-[11px] font-mono tabular-nums">
+        <div className="mt-4 rounded-xl bg-elevated/60 border border-surface px-3 py-2.5">
           {quote.kind === "buy" ? (
-            <>
-              <Row k="You get" v={`${fmtUsdg(quote.shares)} ${side.toUpperCase()}`} />
-              <Row k="Avg price" v={fmtCents(quote.avg)} />
-              <Row k="Pays if right" v={`${fmtUsdg(quote.shares)} USDG`} />
-            </>
+            <div className="flex items-baseline justify-between gap-3">
+              <span className="text-xs text-secondary">If {side.toUpperCase()} wins you get</span>
+              <span className="text-right">
+                <span className="font-display font-bold text-xl tabular-nums text-primary">{fmtUsdg(quote.shares)}</span>
+                <span className="text-xs text-tertiary"> USDG</span>
+                <span className={`block text-[11px] tabular-nums ${profit >= 0n ? "text-atnx-cyan" : "text-atnx-magenta"}`}>
+                  {profit >= 0n ? "+" : ""}{fmtUsdg(profit)} ({profitPct >= 0 ? "+" : ""}{profitPct.toFixed(0)}%)
+                </span>
+              </span>
+            </div>
           ) : (
-            <>
-              <Row k="You get" v={`${fmtUsdg(quote.payout)} USDG`} />
-              <Row k="Avg price" v={fmtCents(quote.avg)} />
-            </>
+            <div className="flex items-baseline justify-between gap-3">
+              <span className="text-xs text-secondary">You get back</span>
+              <span>
+                <span className="font-display font-bold text-xl tabular-nums text-primary">{fmtUsdg(quote.payout)}</span>
+                <span className="text-xs text-tertiary"> USDG</span>
+              </span>
+            </div>
           )}
-          <Row k={`Fee (${Number(oc.feeBps) / 100}%)`} v={`${fmtUsdg(quote.fee)} USDG`} />
-          <Row k="Price" v={`${fmtCents(quote.before)} → ${fmtCents(quote.after)}`} />
-        </dl>
+          <button type="button" onClick={() => setDetails((v) => !v)} aria-expanded={details} className="mt-1.5 text-[11px] text-tertiary hover:text-primary cursor-pointer">
+            {details ? "▾ Hide details" : "▸ Details"}
+          </button>
+          {details && (
+            <dl className="mt-1.5 pt-2 border-t border-surface space-y-1 text-[11px]">
+              {quote.kind === "buy" && <Row k="Shares" v={`${fmtUsdg(quote.shares)} ${side.toUpperCase()}`} />}
+              <Row k="Average price" v={`${fmtCents(quote.avg)} a share`} />
+              <Row k={`Fee (${Number(oc.feeBps) / 100}%)`} v={`${fmtUsdg(quote.fee)} USDG`} />
+              <Row k="Price after" v={`${fmtCents(quote.before)} → ${fmtCents(quote.after)}`} />
+            </dl>
+          )}
+        </div>
       )}
 
-      {insufficient && (
-        <p className="text-[11px] text-atnx-magenta mt-2">
-          {mode === "buy" ? "Not enough USDG. Mint some under Settings → Wallet." : "You do not hold that many shares."}
-        </p>
+      {insufficient && mode === "buy" && (
+        <div className="mt-3 flex items-center justify-between gap-3 text-xs">
+          <span className="text-atnx-magenta">Not enough USDG.</span>
+          <button type="button" onClick={mint} disabled={!!busy} className="h-8 px-3 rounded-lg border border-surface text-secondary hover:text-primary cursor-pointer disabled:opacity-50">
+            {busy === "Minting…" ? "Minting…" : "Mint 1,000 test USDG"}
+          </button>
+        </div>
       )}
-      {error && <p className="text-[11px] text-atnx-magenta mt-2 break-words">{error}</p>}
+      {insufficient && mode === "sell" && <p className="text-xs text-atnx-magenta mt-3">You do not hold that many shares.</p>}
+      {error && <p className="text-xs text-atnx-magenta mt-3 break-words">{error}</p>}
 
-      <button
-        type="button"
-        onClick={submit}
-        disabled={!canSubmit}
-        className={`mt-3 w-full h-11 rounded-xl font-bold text-sm cursor-pointer disabled:opacity-40 ${isUp ? "btn-cyan" : "btn-magenta"}`}
-      >
+      <button type="button" onClick={submit} disabled={!canSubmit} className={`mt-4 w-full h-12 rounded-xl font-bold text-sm cursor-pointer disabled:opacity-40 ${accent}`}>
         {busy ??
           (mode === "buy"
-            ? oc.allowance < (units ?? 0n)
-              ? `Approve USDG, then buy ${side.toUpperCase()}`
-              : `Buy ${side.toUpperCase()}`
-            : `Sell ${side.toUpperCase()}`)}
+            ? needsApproval
+              ? `Approve, then buy ${side.toUpperCase()}`
+              : `Buy ${side.toUpperCase()}${units && units > 0n ? ` for ${fmtUsdg(units, 0)} USDG` : ""}`
+            : `Sell ${units && units > 0n ? `${fmtUsdg(units)} ` : ""}${side.toUpperCase()}`)}
       </button>
-
+      {needsApproval && !busy && <p className="text-[11px] text-tertiary mt-2">First time only: your wallet asks you to let this market use your USDG, then to buy.</p>}
       {lastTx && (
-        <a href={txUrl(chain, lastTx)} target="_blank" rel="noreferrer" className="block mt-2 text-[11px] text-secondary hover:text-atnx-cyan font-mono">
-          Last tx {shortHash(lastTx)} ↗
+        <a href={txUrl(chain, lastTx)} target="_blank" rel="noreferrer" className="block mt-2 text-[11px] text-tertiary hover:text-atnx-cyan">
+          View last transaction {shortHash(lastTx)} ↗
         </a>
       )}
 
-      {(oc.up > 0n || oc.down > 0n) && (
-        <div className="mt-3 pt-3 border-t border-surface text-[11px] font-mono tabular-nums space-y-1">
-          <div className="text-[10px] uppercase tracking-wider text-tertiary">Your shares</div>
-          {oc.up > 0n && <Row k="UP" v={`${fmtUsdg(oc.up)} · worth ${fmtUsdg(quoteSell(oc.pools, "up", oc.up, oc.feeBps).payout)}`} />}
-          {oc.down > 0n && <Row k="DOWN" v={`${fmtUsdg(oc.down)} · worth ${fmtUsdg(quoteSell(oc.pools, "down", oc.down, oc.feeBps).payout)}`} />}
+      {holdsAnything && mode === "buy" && (
+        <div className="mt-4 pt-3 border-t border-surface space-y-2">
+          {(["up", "down"] as const).map((s) => {
+            const h = s === "up" ? oc.up : oc.down;
+            if (h === 0n) return null;
+            const worth = quoteSell(pools, s, h, oc.feeBps).payout;
+            return (
+              <div key={s} className="flex items-center justify-between gap-3 text-xs">
+                <span className="text-secondary">
+                  You hold <span className="tabular-nums font-bold text-primary">{fmtUsdg(h)}</span> <span className={s === "up" ? "text-atnx-cyan" : "text-atnx-magenta"}>{s.toUpperCase()}</span>
+                  <span className="text-tertiary"> · sells for {fmtUsdg(worth)} USDG</span>
+                </span>
+                <button type="button" onClick={() => startSelling(s)} className="h-8 px-3 rounded-lg border border-surface text-secondary hover:text-primary cursor-pointer shrink-0">
+                  Sell
+                </button>
+              </div>
+            );
+          })}
         </div>
       )}
 
       {resolved.length > 0 && (
-        <div className="mt-3 pt-3 border-t border-surface">
+        <div className="mt-4 pt-3 border-t border-surface">
           <RedeemList rows={resolved} chainKey={chain.key} onDone={oc.refetch} />
         </div>
       )}
 
-      <p className="text-[10px] text-tertiary mt-3 leading-relaxed">
-        Resolves when the VI holds at or past a bound for three prints. Until then, sell to take profit or cut a loss.{" "}
-        <Link href="/app/portfolio" className="hover:text-atnx-cyan">Portfolio</Link>
+      <p className="text-[11px] text-tertiary mt-4">
+        Testnet money only. <Link href="/app/portfolio" className="hover:text-atnx-cyan">See your portfolio ↗</Link>
       </p>
     </Card>
+  );
+}
+
+// "Will Halloween's index reach 1300 or fall to 850 first?"
+function Question({ name, row }: { name: string; row: BmMarketRow }) {
+  return (
+    <p className="text-sm font-bold text-primary leading-snug mb-3">
+      Will {name}&apos;s index reach <span className="text-atnx-cyan tabular-nums">{row.upper_bound}</span> or fall to{" "}
+      <span className="text-atnx-magenta tabular-nums">{row.lower_bound}</span> first?
+    </p>
+  );
+}
+
+function SideButton({ side, price, selected, onClick }: { side: Side; price: number; selected: boolean; onClick: () => void }) {
+  const up = side === "up";
+  const ring = up ? "border-atnx-cyan shadow-[0_0_18px_rgba(0,212,255,0.25)]" : "border-atnx-magenta shadow-[0_0_18px_rgba(255,0,229,0.25)]";
+  const tone = up ? "text-atnx-cyan" : "text-atnx-magenta";
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={selected}
+      onClick={onClick}
+      className={`h-16 rounded-xl border bg-elevated flex flex-col items-center justify-center gap-0.5 cursor-pointer transition-all ${
+        selected ? ring : "border-surface opacity-70 hover:opacity-100"
+      }`}
+    >
+      <span className={`font-display font-bold text-lg leading-none ${tone}`}>{up ? "↗ UP" : "↘ DOWN"}</span>
+      <span className="text-[11px] text-tertiary tabular-nums">{fmtCents(price)} a share</span>
+    </button>
   );
 }
 
@@ -405,23 +432,17 @@ function Row({ k, v }: { k: string; v: string }) {
   return (
     <div className="flex items-center justify-between gap-3">
       <dt className="text-tertiary">{k}</dt>
-      <dd className="text-primary">{v}</dd>
+      <dd className="text-secondary tabular-nums">{v}</dd>
     </div>
   );
 }
 
-function BoundsLine({ row }: { row: BmMarketRow }) {
-  return (
-    <div className="flex items-center justify-between text-[11px] font-mono tabular-nums mb-3">
-      <span>
-        <span className="text-atnx-magenta">DOWN pays @ {row.lower_bound}</span>
-      </span>
-      <span className="text-tertiary">from VI {Math.round(row.start_vi)}</span>
-      <span>
-        <span className="text-atnx-cyan">UP pays @ {row.upper_bound}</span>
-      </span>
-    </div>
-  );
+function friendly(msg: string): string {
+  const m = msg.split("\n")[0];
+  if (/rejected|denied|cancel/i.test(m)) return "Cancelled in the wallet.";
+  if (/insufficient funds/i.test(m)) return "Not enough ETH for gas on this network.";
+  if (/Slippage/i.test(m)) return "The price moved while you were confirming. Try again.";
+  return m.slice(0, 140);
 }
 
 // Resolved markets on this chain where the viewer holds winning shares.
@@ -452,13 +473,7 @@ function RedeemList({ rows, chainKey, onDone }: { rows: BmMarketRow[]; chainKey:
   async function redeem(row: BmMarketRow) {
     setBusy(row.id);
     try {
-      const hash = await writeContractAsync({
-        address: chain.markets,
-        abi: boundedViMarketsAbi,
-        functionName: "redeem",
-        args: [BigInt(row.onchain_market_id!)],
-        chainId: chain.chainId,
-      });
+      const hash = await writeContractAsync({ address: chain.markets, abi: boundedViMarketsAbi, functionName: "redeem", args: [BigInt(row.onchain_market_id!)], chainId: chain.chainId });
       await waitForTransactionReceipt(config, { hash, chainId: chain.chainId });
       void balances.refetch();
       onDone();
@@ -468,19 +483,13 @@ function RedeemList({ rows, chainKey, onDone }: { rows: BmMarketRow[]; chainKey:
   }
 
   return (
-    <div className="space-y-2">
-      <div className="text-[10px] font-mono uppercase tracking-wider text-tertiary">Resolved · redeem</div>
+    <div className="space-y-2 mb-3">
       {claimable.map(({ row, win }) => (
-        <div key={row.id} className="flex items-center justify-between gap-2 text-[11px] font-mono tabular-nums">
-          <span className={row.resolved_side === "up" ? "text-atnx-cyan" : "text-atnx-magenta"}>
-            {row.resolved_side?.toUpperCase()} won at VI {Math.round(row.resolved_vi ?? 0)}
+        <div key={row.id} className="flex items-center justify-between gap-3 text-xs">
+          <span className="text-secondary">
+            An earlier market resolved <span className={row.resolved_side === "up" ? "text-atnx-cyan" : "text-atnx-magenta"}>{row.resolved_side?.toUpperCase()}</span>. You won.
           </span>
-          <button
-            type="button"
-            disabled={busy === row.id}
-            onClick={() => redeem(row)}
-            className="h-7 px-3 rounded-lg btn-cyan font-bold cursor-pointer disabled:opacity-50"
-          >
+          <button type="button" disabled={busy === row.id} onClick={() => redeem(row)} className="h-8 px-3 rounded-lg btn-cyan text-xs font-bold cursor-pointer disabled:opacity-50 shrink-0">
             {busy === row.id ? "Redeeming…" : `Redeem ${fmtUsdg(win)} USDG`}
           </button>
         </div>

@@ -1,5 +1,5 @@
 import { cookieStorage, createConfig, createStorage, http } from 'wagmi';
-import { injected, walletConnect } from 'wagmi/connectors';
+import { injected, mock, walletConnect } from 'wagmi/connectors';
 import { BM_CHAINS, DEFAULT_CHAIN } from './chains';
 
 // Browser wallet access: injected wallets (MetaMask, Rabby, Brave, the
@@ -17,6 +17,12 @@ const chains = ordered.map((c) => c.viemChain) as [typeof ordered[0]['viemChain'
 export const wagmiConfig = createConfig({
   chains,
   connectors: [
+    // Local screenshots and layout checks without a wallet extension:
+    // NEXT_PUBLIC_BM_MOCK_WALLET=0x… pretends that address is connected.
+    // Never set in production.
+    ...(process.env.NODE_ENV !== 'production' && process.env.NEXT_PUBLIC_BM_MOCK_WALLET
+      ? [mock({ accounts: [process.env.NEXT_PUBLIC_BM_MOCK_WALLET as `0x${string}`] })]
+      : []),
     injected(),
     ...(WC_PROJECT_ID
       ? [
