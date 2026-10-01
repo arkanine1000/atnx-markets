@@ -78,7 +78,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         address: getAddress(address),
         chainId,
         domain: window.location.host,
-        uri: window.location.origin,
+        // The auth server checks this against the redirect allowlist
+        // (https://markets.atnx.app/**), so it has to carry a path.
+        uri: window.location.href,
         version: "1",
         nonce: generateSiweNonce(),
         issuedAt: new Date(),
