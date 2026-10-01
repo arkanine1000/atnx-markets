@@ -1,0 +1,61 @@
+name: solana-build
+
+# Builds the Anchor program on a GitHub runner and uploads the .so, the
+# IDL and the program keypair as artifacts. The local machine's compiler
+# segfaults, so this is where the Solana side gets built; deploying the
+# artifact from a laptop is `solana program deploy bounded_vi.so`.
+on:
+  push:
+    paths:
+      - "programs/**"
+      - "Anchor.toml"
+      - "Cargo.toml"
+      - ".github/workflows/solana-build.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cache/solana
+            target
+          key: solana-${{ runner.os }}-${{ hashFiles('**/Cargo.lock', 'Anchor.toml') }}
+
+      - name: Install Solana CLI
+        run: |
+          sh -c "$(curl -sSfL https://release.anza.xyz/v2.3.13/install)"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
+
+      - name: Install Anchor CLI
+        run: |
+          sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev libudev-dev
+          cargo install --git https://github.com/coral-xyz/anchor --tag v0.31.1 anchor-cli --locked --force
+          anchor --version
+
+      - name: Build
+        run: |
+          solana-keygen new --no-bip39-passphrase --silent --outfile ~/.config/solana/id.json
+          anchor build
+          anchor keys list
+          ls -la target/deploy target/idl
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bounded_vi
+          path: |
+            target/deploy/bounded_vi.so
+            target/deploy/bounded_vi-keypair.json
+            target/idl/bounded_vi.json
+            target/types/bounded_vi.ts
+          if-no-files-found: error

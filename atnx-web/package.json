@@ -29,7 +29,8 @@
     "thumbs:backfill": "npx --yes tsx --env-file=.env.local scripts/backfill-thumbnails.ts",
     "test:bm": "npx --yes tsx --test lib/bm/*.test.ts",
     "bm:keeper:dry": "npx --yes tsx --env-file=.env.local scripts/bm-keeper-dry.ts",
-    "bm:e2e": "npx --yes tsx --env-file=.env.local scripts/bm-e2e.ts"
+    "bm:e2e": "npx --yes tsx --env-file=.env.local scripts/bm-e2e.ts",
+    "bm:open": "npx --yes tsx --env-file=.env.local scripts/bm-open.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.2",
