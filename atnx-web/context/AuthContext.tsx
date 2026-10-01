@@ -11,7 +11,8 @@ import {
 import { useRouter } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
-import type { EIP1193Provider } from "viem";
+import { getAddress, type Hex } from "viem";
+import { createSiweMessage, generateSiweNonce } from "viem/siwe";
 import { ensureWalletProfile } from "@/app/app/actions/auth";
 
 interface AuthContextType {
@@ -20,9 +21,9 @@ interface AuthContextType {
   isLoginModalOpen: boolean;
   openLoginModal: () => void;
   closeLoginModal: () => void;
-  // Sign in with Ethereum through the connected wallet's provider: one
-  // signature, then a normal Supabase session.
-  signInWithWallet: (provider: EIP1193Provider, address: string) => Promise<void>;
+  // Sign in with Ethereum: one signature over an EIP-4361 message, then a
+  // normal Supabase session. The caller signs (wagmi's signMessage).
+  signInWithWallet: (p: { address: string; chainId: number; sign: (message: string) => Promise<Hex> }) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -68,15 +69,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const closeLoginModal = useCallback(() => setLoginModalOpen(false), []);
 
   const signInWithWallet = useCallback(
-    async (provider: EIP1193Provider, address: string) => {
+    async ({ address, chainId, sign }: { address: string; chainId: number; sign: (message: string) => Promise<Hex> }) => {
       const supabase = createClient();
-      // Supabase wants the signing address beside the provider's request().
-      const wallet = { address, request: provider.request.bind(provider) };
-      const { data, error } = await supabase.auth.signInWithWeb3({
-        chain: "ethereum",
-        wallet: wallet as never,
+      // The message is built here rather than by supabase-js, whose own
+      // builder lowercases the address and omits the nonce; wallets that
+      // validate EIP-4361 (Phantom) refuse that as malformed.
+      const message = createSiweMessage({
+        address: getAddress(address),
+        chainId,
+        domain: window.location.host,
+        uri: window.location.origin,
+        version: "1",
+        nonce: generateSiweNonce(),
+        issuedAt: new Date(),
         statement: "Sign in to ATNX markets. Testnet only; tokens have no value.",
       });
+      const signature = await sign(message);
+      const { data, error } = await supabase.auth.signInWithWeb3({ chain: "ethereum", message, signature });
       if (error) {
         console.error("Wallet sign-in error:", error);
         throw error;

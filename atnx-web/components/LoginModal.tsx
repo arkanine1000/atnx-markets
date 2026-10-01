@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useAccount, useConnect } from "wagmi";
-import type { EIP1193Provider } from "viem";
+import { useAccount, useConnect, useSignMessage } from "wagmi";
 import { useAuth } from "@/context/AuthContext";
 import { shortAddress } from "@/components/bm/format";
 
@@ -11,7 +10,8 @@ import { shortAddress } from "@/components/bm/format";
 // identity for trading, opening markets and capturing.
 export function LoginModal() {
   const { isLoginModalOpen, closeLoginModal, signInWithWallet } = useAuth();
-  const { address, isConnected, connector } = useAccount();
+  const { address, chainId, isConnected } = useAccount();
+  const { signMessageAsync } = useSignMessage();
   const { connect, connectors, isPending: connecting, error: connectError } = useConnect();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -31,12 +31,11 @@ export function LoginModal() {
   const choices = named.length > 0 ? named : connectors;
 
   async function sign() {
-    if (!connector || !address || busy) return;
+    if (!address || !chainId || busy) return;
     setBusy(true);
     setError(null);
     try {
-      const provider = (await connector.getProvider()) as EIP1193Provider;
-      await signInWithWallet(provider, address);
+      await signInWithWallet({ address, chainId, sign: (message) => signMessageAsync({ message }) });
     } catch (err) {
       setError(friendly((err as Error).message));
     } finally {

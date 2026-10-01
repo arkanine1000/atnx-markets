@@ -91,16 +91,10 @@ export function UserMenu() {
             </span>
           </div>
           {!user && (
-            <button
-              type="button"
-              onClick={() => {
-                setOpen(false);
-                openLoginModal();
-              }}
-              className="w-full text-left px-3 py-2 text-xs text-atnx-cyan hover:bg-surface transition-colors cursor-pointer"
-            >
-              Sign in with this wallet
-            </button>
+            <div className="px-3 py-2 text-[11px] text-tertiary">
+              Signature pending: approve it in the wallet to finish signing in.{" "}
+              <button type="button" onClick={() => { setOpen(false); openLoginModal(); }} className="text-atnx-cyan cursor-pointer">Ask again</button>
+            </div>
           )}
           {user && (
             <Link
