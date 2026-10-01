@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useAccount, useConfig, useReadContract, useSwitchChain, useWriteContract } from "wagmi";
@@ -233,7 +232,6 @@ export function BoundedTicket({ atnxMarketId, name, score, scoring = false, boun
 
   const isUp = side === "up";
   const pools = oc.pools;
-  const target = isUp ? row.upper_bound : row.lower_bound;
   const insufficient = mode === "buy" ? !!units && units > oc.usdg : !!units && units > held;
   const canSubmit = !!units && units > 0n && !!quote && !insufficient && !busy && (quote.kind === "buy" ? quote.shares > 0n : quote.payout > 0n);
   const stake = units ?? 0n;
@@ -248,14 +246,10 @@ export function BoundedTicket({ atnxMarketId, name, score, scoring = false, boun
       {mode === "buy" ? (
         <>
           <Question name={name} row={row} />
-          <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Side">
+          <div className="grid grid-cols-2 gap-2 mb-4" role="radiogroup" aria-label="Side">
             <SideButton side="up" price={priceOf(pools, "up")} selected={isUp} onClick={() => setSide("up")} />
             <SideButton side="down" price={priceOf(pools, "down")} selected={!isUp} onClick={() => setSide("down")} />
           </div>
-          <p className="text-xs text-secondary mt-2 mb-4">
-            <span className={isUp ? "text-atnx-cyan" : "text-atnx-magenta"}>{side.toUpperCase()}</span> pays 1 USDG a share if the index {isUp ? "reaches" : "falls to"}{" "}
-            <span className="tabular-nums font-bold text-primary">{target}</span> first. Sell any time before.
-          </p>
         </>
       ) : (
         <div className="flex items-center justify-between mb-4">
@@ -390,10 +384,6 @@ export function BoundedTicket({ atnxMarketId, name, score, scoring = false, boun
           <RedeemList rows={resolved} chainKey={chain.key} onDone={oc.refetch} />
         </div>
       )}
-
-      <p className="text-[11px] text-tertiary mt-4">
-        Testnet money only. <Link href="/app/portfolio" className="hover:text-atnx-cyan">See your portfolio ↗</Link>
-      </p>
     </Card>
   );
 }
