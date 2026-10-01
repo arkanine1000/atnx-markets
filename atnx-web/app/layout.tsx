@@ -2,7 +2,6 @@ import type { Metadata, Viewport } from "next";
 import { Archivo, Instrument_Sans, Martian_Mono } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import { AuthProvider } from "@/context/AuthContext";
-import { DemoProvider } from "@/context/DemoContext";
 import { LoginModal } from "@/components/LoginModal";
 import { PWARegister } from "@/components/PWARegister";
 import { InstallPrompt } from "@/components/InstallPrompt";
@@ -66,11 +65,9 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col font-sans">
         <ThemeProvider attribute="class" defaultTheme="dark" themes={["dark", "light"]}>
           <AuthProvider>
-            <DemoProvider>
-              {children}
-              <LoginModal />
-              <InstallPrompt />
-            </DemoProvider>
+            {children}
+            <LoginModal />
+            <InstallPrompt />
           </AuthProvider>
         </ThemeProvider>
         <PWARegister />

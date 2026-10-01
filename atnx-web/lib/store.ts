@@ -772,30 +772,6 @@ export interface MarketDetail {
   // Where the attention is (lib/vi/score.ts summarizeAttention); null
   // while nothing has answered.
   attention: AttentionSummary | null;
-  // Simulated USDC traded on this market: every open and every close
-  // counts once, at its size (leverage not multiplied in).
-  volumeUsd: number;
-  tradeCount: number;
-}
-
-// Volume and trade count from the positions on record. Supabase/007 keeps
-// markets.total_volume_usd current for the same figure; aggregating here
-// keeps the page right before that file is applied.
-export function tradeVolume(
-  positions: { size_usd: number; status: string }[]
-): { volumeUsd: number; tradeCount: number } {
-  let volumeUsd = 0;
-  let tradeCount = 0;
-  for (const p of positions) {
-    const size = Number(p.size_usd) || 0;
-    volumeUsd += size;
-    tradeCount += 1;
-    if (p.status === 'closed') {
-      volumeUsd += size;
-      tradeCount += 1;
-    }
-  }
-  return { volumeUsd, tradeCount };
 }
 
 export async function getMarketDetail(
@@ -831,10 +807,9 @@ export async function getMarketDetail(
   // raw readings (about a day at the five-minute cadence) on top so 1H and
   // 4H still have every sample.
   const parentId = (market as MarketRow).parent_market_id;
-  const [bucketed, recent, traded, parentRes, childrenRes, orderRes] = await Promise.all([
+  const [bucketed, recent, parentRes, childrenRes, orderRes] = await Promise.all([
     getViSeries([market.id], { days: 90, bucketSeconds: 30 * 60, fallbackRows: 1000 }),
     getRecentViRows(market.id, 300),
-    supabase.from('positions').select('size_usd, status').eq('market_id', market.id),
     parentId
       ? supabase
           .from('markets')
@@ -862,7 +837,6 @@ export async function getMarketDetail(
       .limit(500)
       .returns<{ id: string; entity_name: string }[]>(),
   ]);
-  if (traded.error) throw traded.error;
   if (parentRes.error) throw parentRes.error;
   if (childrenRes.error) throw childrenRes.error;
   if (orderRes.error) throw orderRes.error;
@@ -887,89 +861,5 @@ export async function getMarketDetail(
     captures,
     trends,
     attention,
-    ...tradeVolume(traded.data ?? []),
   };
-}
-
-export interface TradeLogEvent {
-  id: string;                      // `${positionId}:open` | `${positionId}:close`
-  kind: 'open' | 'close';
-  handle: string;                  // trader's user_profiles.handle
-  direction: 'long' | 'short';
-  sizeUsd: number;
-  leverage: number;
-  vi: number;                      // entry_vi for open, exit_vi for close
-  pnl: number | null;              // realized_pnl for close, null for open
-  liquidated: boolean;             // close was forced: the loss reached the size
-  at: string;                      // opened_at for open, closed_at for close
-}
-
-// Public trade log for a market. `positions` has no RLS today (all existing
-// code filters by user_id at the app layer), so we read via the admin client
-// and only expose the handle + trade-shape fields — no user_id or email leak.
-// We fetch positions and user_profiles separately because positions.user_id
-// FKs to auth.users (Supabase native), not to public.user_profiles — so
-// PostgREST can't auto-embed the relation.
-export async function getMarketTradeLog(
-  marketId: string,
-  limit = 50
-): Promise<TradeLogEvent[]> {
-  const supabase = createAdminClient();
-
-  const { data: positions, error: posErr } = await supabase
-    .from('positions')
-    .select(
-      'id, user_id, direction, size_usd, leverage, entry_vi, exit_vi, realized_pnl, liquidated, opened_at, closed_at'
-    )
-    .eq('market_id', marketId)
-    .order('opened_at', { ascending: false })
-    .limit(limit);
-  if (posErr) throw posErr;
-  if (!positions || positions.length === 0) return [];
-
-  const userIds = Array.from(new Set(positions.map((p) => p.user_id)));
-  const { data: profiles, error: profErr } = await supabase
-    .from('user_profiles')
-    .select('id, handle')
-    .in('id', userIds);
-  if (profErr) throw profErr;
-
-  const handleById = new Map<string, string>();
-  for (const row of profiles ?? []) {
-    if (row.handle) handleById.set(row.id, row.handle);
-  }
-
-  const events: TradeLogEvent[] = [];
-  for (const p of positions) {
-    const handle = handleById.get(p.user_id) ?? 'anon';
-    events.push({
-      id: `${p.id}:open`,
-      kind: 'open',
-      handle,
-      direction: p.direction,
-      sizeUsd: p.size_usd,
-      leverage: p.leverage,
-      vi: p.entry_vi,
-      pnl: null,
-      liquidated: false,
-      at: p.opened_at,
-    });
-    if (p.closed_at && p.exit_vi !== null) {
-      events.push({
-        id: `${p.id}:close`,
-        kind: 'close',
-        handle,
-        direction: p.direction,
-        sizeUsd: p.size_usd,
-        leverage: p.leverage,
-        vi: p.exit_vi,
-        pnl: p.realized_pnl,
-        liquidated: Boolean(p.liquidated),
-        at: p.closed_at,
-      });
-    }
-  }
-
-  events.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
-  return events.slice(0, limit);
 }

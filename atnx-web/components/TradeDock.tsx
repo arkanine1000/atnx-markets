@@ -3,9 +3,9 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 // The market page's order ticket on phones, the way Polymarket does it:
-// Long and Short anchored just above the tab bar (Markets, +, Portfolio
+// UP and DOWN anchored just above the tab bar (Markets, +, Portfolio
 // stay where a thumb expects them), and the ticket itself (amount,
-// leverage, submit) in a sheet that slides up from the bottom edge when
+// quote, submit) in a sheet that slides up from the bottom edge when
 // one of them is tapped. The page behind stays scrollable: chart, pulse
 // and activity are all there, only the ticket waits behind the buttons.
 // Desktop keeps the ticket in its column; this renders nothing there.
@@ -13,7 +13,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 // How long the closing animation runs before the sheet unmounts.
 const CLOSE_MS = 200;
 
-export type Side = "long" | "short";
+export type Side = "up" | "down";
 
 export function TradeDock({
   renderTicket,
@@ -82,7 +82,7 @@ export function TradeDock({
           <div
             role="dialog"
             aria-modal="true"
-            aria-label={side === "long" ? "Open a long" : "Open a short"}
+            aria-label={side === "up" ? "Buy UP" : "Buy DOWN"}
             onClick={(e) => e.stopPropagation()}
             className={`w-full max-h-[88svh] overflow-y-auto rounded-t-2xl bg-surface border-t border-surface shadow-2xl pb-[env(safe-area-inset-bottom)] ${
               closing ? "animate-sheet-down" : "animate-sheet-up"
@@ -113,17 +113,17 @@ export function TradeDock({
         <div className="h-14 px-4 flex items-center gap-3 max-w-6xl mx-auto">
           <button
             type="button"
-            onClick={() => open("long")}
+            onClick={() => open("up")}
             className="btn-cyan flex-1 h-11 rounded-xl font-bold text-sm cursor-pointer inline-flex items-center justify-center gap-1.5"
           >
-            <span aria-hidden="true">{"↗"}</span> Long
+            <span aria-hidden="true">{"↗"}</span> UP
           </button>
           <button
             type="button"
-            onClick={() => open("short")}
+            onClick={() => open("down")}
             className="btn-magenta flex-1 h-11 rounded-xl font-bold text-sm cursor-pointer inline-flex items-center justify-center gap-1.5"
           >
-            <span aria-hidden="true">{"↘"}</span> Short
+            <span aria-hidden="true">{"↘"}</span> DOWN
           </button>
         </div>
       </div>

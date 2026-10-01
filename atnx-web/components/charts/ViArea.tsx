@@ -5,15 +5,12 @@ import {
   Area,
   AreaChart,
   CartesianGrid,
-  ReferenceDot,
   ReferenceLine,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
 import { useTheme } from "next-themes";
-import { useDemoContext } from "@/context/DemoContext";
-import { useFakeTicker } from "@/hooks/useFakeTicker";
 
 // Virality Index over time, drawn as a 2px line over a soft gradient wash.
 // One series, so colour carries polarity only: cyan when the visible range
@@ -94,9 +91,7 @@ export function ViSparkline({
   color?: string;
   className?: string;
 }) {
-  const { isLiveMode } = useDemoContext();
-  const live = useFakeTicker(dataPoints, isLiveMode);
-  const data = isLiveMode ? live : dataPoints;
+  const data = dataPoints;
   const { ref, w, h, ready } = useSize();
   const gradId = useId();
   const stroke = color ?? polarityColor(data);
@@ -161,7 +156,8 @@ export function ViSparkline({
 
 // ---------------------------------------------------------------------------
 // Full chart for the market page: range tabs, hairline grid, right-hand ticks
-// (Trendle-style), crosshair tooltip, optional entry marker for an open position.
+// (Trendle-style), crosshair tooltip, and the two bounds of the open
+// UP/DOWN market drawn as lines the VI has to reach.
 
 export type Range = "1H" | "4H" | "1D" | "1W" | "1M" | "ALL";
 export const RANGES: Range[] = ["1H", "4H", "1D", "1W", "1M", "ALL"];
@@ -216,48 +212,22 @@ export function ViChart({
   dataPoints,
   range,
   height = 280,
-  entryVi,
-  entryType,
+  bounds,
   scoring = false,
 }: {
   dataPoints: ViPoint[];
   range: Range;
   height?: number;
-  entryVi?: number;
-  entryType?: "long" | "short";
+  /** Bounds of the open bounded market: UP pays at `upper`, DOWN at `lower`. */
+  bounds?: { lower: number; upper: number } | null;
   /** The market has no VI yet; the empty chart says so instead of blaming the range. */
   scoring?: boolean;
 }) {
-  const { isLiveMode } = useDemoContext();
-  const live = useFakeTicker(dataPoints, isLiveMode);
-  const all = isLiveMode ? live : dataPoints;
-  const data = useMemo(() => sliceRange(all, range), [all, range]);
+  const data = useMemo(() => sliceRange(dataPoints, range), [dataPoints, range]);
   const t = useChartTheme();
   const { ref, w, h, ready } = useSize();
   const gradId = useId();
   const stroke = polarityColor(data);
-
-  // Legacy series mix a 0–100 seed with today's scores; put the entry marker
-  // on whichever scale the visible data is using.
-  const entryY = useMemo(() => {
-    if (entryVi === undefined || !data.length) return undefined;
-    const max = Math.max(...data.map((p) => p.value));
-    return max <= 100 && entryVi > 100 ? entryVi / 10 : entryVi;
-  }, [entryVi, data]);
-  const entryIdx = useMemo(() => {
-    if (entryY === undefined) return undefined;
-    let best = 0;
-    let bestDist = Infinity;
-    data.forEach((p, i) => {
-      const d = Math.abs(p.value - entryY);
-      if (d < bestDist) {
-        bestDist = d;
-        best = i;
-      }
-    });
-    return best;
-  }, [entryY, data]);
-  const entryColor = entryType === "short" ? DOWN : UP;
 
   if (data.length < 2) {
     return (
@@ -382,29 +352,41 @@ export function ViChart({
             }}
             isAnimationActive={false}
           />
-          {entryY !== undefined && (
+          {/* The bounds: where UP and DOWN pay. The domain stretches to
+              include them so the distance the VI still has to travel is
+              visible; a lower bound of 0 is the axis itself. */}
+          {bounds && (
             <ReferenceLine
-              y={entryY}
-              stroke={entryColor}
+              y={bounds.upper}
+              stroke={UP}
               strokeWidth={1}
-              strokeOpacity={0.6}
+              strokeDasharray="4 3"
+              strokeOpacity={0.7}
+              ifOverflow="extendDomain"
               label={{
-                value: `${entryType === "short" ? "SHORT" : "LONG"} ENTRY`,
+                value: `UP PAYS @ ${bounds.upper}`,
                 position: "insideTopLeft",
-                fill: entryColor,
+                fill: UP,
                 fontSize: 10,
                 fontWeight: 700,
               }}
             />
           )}
-          {entryY !== undefined && entryIdx !== undefined && (
-            <ReferenceDot
-              x={data[entryIdx].date}
-              y={data[entryIdx].value}
-              r={4}
-              fill={entryColor}
-              stroke={t.surface}
-              strokeWidth={2}
+          {bounds && bounds.lower > 0 && (
+            <ReferenceLine
+              y={bounds.lower}
+              stroke={DOWN}
+              strokeWidth={1}
+              strokeDasharray="4 3"
+              strokeOpacity={0.7}
+              ifOverflow="extendDomain"
+              label={{
+                value: `DOWN PAYS @ ${bounds.lower}`,
+                position: "insideBottomLeft",
+                fill: DOWN,
+                fontSize: 10,
+                fontWeight: 700,
+              }}
             />
           )}
         </AreaChart>

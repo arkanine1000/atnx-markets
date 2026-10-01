@@ -103,10 +103,11 @@ export default function PrivacyPage() {
           authentication records and do not show them to other users.
         </p>
         <p>
-          We also store the handle shown on your profile, your simulated
-          balance, positions and trades, and the markets and captures you
-          submit. Your handle, positions on the leaderboard and submissions are
-          visible to other users. Simulated trades involve no real money.
+          We also store the handle shown on your profile and the markets and
+          captures you submit. Your handle and submissions are visible to
+          other users. Trades use testnet tokens that have no value (mock
+          USDG) and are made from your own wallet on a public blockchain,
+          where anyone can see them.
         </p>
       </Section>
 

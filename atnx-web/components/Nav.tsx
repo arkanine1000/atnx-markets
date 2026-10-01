@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useTheme } from "next-themes";
 import { Suspense, useSyncExternalStore } from "react";
 import { UserMenu } from "@/components/UserMenu";
+import { WalletButton } from "@/components/bm/WalletButton";
 import { NavSearch, NavSearchFallback } from "@/components/NavSearch";
 import { LiveLogo } from "@/components/LiveLogo";
 
@@ -48,18 +49,12 @@ const LINKS: NavLink[] = [
     match: (p: string) => p === "/app/portfolio",
     icon: () => <PortfolioIcon />,
   },
-  {
-    href: "/app/leaderboard",
-    label: "Leaderboard",
-    match: (p: string) => p === "/app/leaderboard",
-    icon: () => <TrophyIcon />,
-  },
 ];
 
 // Phones get a bottom bar with the three actions a thumb reaches for:
-// Markets, Create (a plain + like YouTube's), Portfolio. Leaderboard lives
-// under the account menu there. The desktop pill keeps all four. A market
-// page stacks its Long / Short dock (TradeDock) on top of the bar.
+// Markets, Create (a plain + like YouTube's), Portfolio. The desktop pill
+// keeps the same three. A market page stacks its UP / DOWN dock
+// (TradeDock) on top of the bar.
 const BOTTOM_BAR = ["/app", "/app/submit", "/app/portfolio"];
 
 function PlusIcon({ size = 12 }: { size?: number }) {
@@ -229,6 +224,12 @@ export function Nav() {
                 {activeTheme === "dark" ? "☀️" : "🌙"}
               </button>
             )}
+            <span className="hidden sm:inline-flex">
+              <WalletButton />
+            </span>
+            <span className="sm:hidden inline-flex">
+              <WalletButton compact />
+            </span>
             <UserMenu />
           </div>
         </div>

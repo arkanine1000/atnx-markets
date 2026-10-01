@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getLeaderboard } from "@/lib/leaderboard";
-import { getTreasury } from "@/lib/treasury";
+import { listAll, recentKeeperLog } from "@/lib/bm/registry";
+import type { BmKeeperLogRow, BmMarketRow } from "@/lib/supabase/database-bm";
 import { AdminDashboard } from "./dashboard-client";
 
 export const dynamic = "force-dynamic";
@@ -100,8 +100,8 @@ export default async function AdminPage() {
     { data: reviewCaptures },
     { data: log },
     { data: waitlist },
-    traders,
-    treasury,
+    bmMarkets,
+    bmLog,
   ] = await Promise.all([
       // Creator channels: the resolver's review queue and what it verified
       // (supabase/017; admin-readable under RLS).
@@ -146,11 +146,19 @@ export default async function AdminPage() {
         .order("created_at", { ascending: false })
         .limit(1000)
         .returns<WaitlistRow[]>(),
-      // The full board, with the figures the public page keeps to itself
-      // (equity, realized and unrealized, trade counts, volume), and the
-      // treasury the fees flow into.
-      getLeaderboard(),
-      getTreasury(),
+      // Bounded VI markets and the keeper's latest runs (bm schema, read
+      // through the service role). Empty while the schema is not exposed.
+      listAll().catch((err): BmMarketRow[] => {
+        console.error("[admin] bm markets", err);
+        return [];
+      }),
+      recentKeeperLog(50).then(
+        (rows) => rows as BmKeeperLogRow[],
+        (err): BmKeeperLogRow[] => {
+          console.error("[admin] bm keeper log", err);
+          return [];
+        }
+      ),
     ]);
 
   return (
@@ -160,8 +168,8 @@ export default async function AdminPage() {
       reviewCaptures={reviewCaptures ?? []}
       log={log ?? []}
       waitlist={waitlist ?? []}
-      traders={traders}
-      treasury={treasury}
+      bmMarkets={bmMarkets}
+      bmLog={bmLog}
     />
   );
 }

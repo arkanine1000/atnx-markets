@@ -4,7 +4,7 @@ import { LegalSection as Section } from "@/components/LegalSection";
 
 export const metadata: Metadata = {
   title: "Terms of Service — ATNX",
-  description: "The rules for using ATNX, its simulated markets and the ATNX Capture extension.",
+  description: "The rules for using ATNX, its testnet markets and the ATNX Capture extension.",
 };
 
 const UPDATED = "September 24, 2026";
@@ -41,17 +41,17 @@ export default function TermsPage() {
         </p>
       </Section>
 
-      <Section title="Simulated trading, no real money">
+      <Section title="Testnet trading, no real money">
         <ul className="list-disc pl-5 space-y-2">
           <li>
-            Balances, positions, prices and winnings on ATNX are simulated.
-            They have no monetary value, cannot be bought, sold, withdrawn or
-            exchanged for money, tokens or anything else, and are not your
-            property.
+            Trading on ATNX uses testnet tokens that have no value (mock
+            USDG). They, and the UP and DOWN shares bought with them, have no
+            monetary value and cannot be exchanged for money or anything else
+            of value.
           </li>
           <li>
-            We may adjust, reset or remove simulated balances and positions,
-            for example to fix errors, reverse abuse, or start a new season.
+            We may pause, resolve or retire markets, for example to fix
+            errors, reverse abuse, or start a new season.
           </li>
           <li>
             ATNX is not a financial service, exchange, broker or gambling
@@ -100,7 +100,7 @@ export default function TermsPage() {
             personal information.
           </li>
           <li>
-            Manipulate markets, the Virality Index or the leaderboard, including
+            Manipulate markets, or the Virality Index, including
             by running several accounts or coordinating with others to do so.
           </li>
           <li>
@@ -116,8 +116,8 @@ export default function TermsPage() {
         <p>
           We may suspend or close an account that breaks these terms, or when
           the law requires it. You can stop using ATNX at any time and ask us to
-          delete your account as described in the Privacy Policy. Simulated
-          balances end with the account.
+          delete your account as described in the Privacy Policy. Testnet
+          tokens that have no value (mock USDG) stay in your wallet.
         </p>
       </Section>
 

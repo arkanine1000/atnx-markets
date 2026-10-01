@@ -3,9 +3,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import type { LeaderboardRow } from "@/lib/leaderboard";
-import { STARTING_BALANCE } from "@/lib/leaderboard";
-import type { Treasury } from "@/lib/treasury";
+import type { BmKeeperLogRow, BmMarketRow } from "@/lib/supabase/database-bm";
 import {
   softDeleteMarket,
   retireMarket,
@@ -67,16 +65,7 @@ interface WaitlistRow {
   created_at: string;
 }
 
-type Tab = "markets" | "captures" | "handles" | "log" | "waitlist" | "trading";
-
-const usd = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-  maximumFractionDigits: 2,
-});
-function signedUsd(n: number): string {
-  return `${n >= 0 ? "+" : "-"}${usd.format(Math.abs(n))}`;
-}
+type Tab = "markets" | "captures" | "handles" | "log" | "waitlist" | "bounded";
 
 function formatDate(ts: string): string {
   return new Date(ts).toLocaleString();
@@ -169,16 +158,16 @@ export function AdminDashboard({
   reviewCaptures,
   log,
   waitlist,
-  traders,
-  treasury,
+  bmMarkets,
+  bmLog,
 }: {
   handles: HandleRow[];
   markets: MarketRow[];
   reviewCaptures: ReviewCaptureRow[];
   log: ModerationLogRow[];
   waitlist: WaitlistRow[];
-  traders: LeaderboardRow[];
-  treasury: Treasury;
+  bmMarkets: BmMarketRow[];
+  bmLog: BmKeeperLogRow[];
 }) {
   const [tab, setTab] = useState<Tab>("markets");
 
@@ -202,7 +191,7 @@ export function AdminDashboard({
       </header>
 
       <div className="flex gap-1 text-xs mb-4 border-b border-surface">
-        {(["markets", "captures", "handles", "log", "waitlist", "trading"] as Tab[]).map((t) => (
+        {(["markets", "captures", "handles", "log", "waitlist", "bounded"] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -222,7 +211,7 @@ export function AdminDashboard({
                   ? `Moderation log (${log.length})`
                   : t === "waitlist"
                     ? `Waitlist (${waitlist.length})`
-                    : `Trading (${traders.length})`}
+                    : `Bounded (${bmMarkets.length})`}
           </button>
         ))}
       </div>
@@ -234,7 +223,7 @@ export function AdminDashboard({
       {tab === "handles" && <HandlesTab rows={handles} />}
       {tab === "log" && <LogTab log={log} />}
       {tab === "waitlist" && <WaitlistTab rows={waitlist} />}
-      {tab === "trading" && <TradingTab rows={traders} treasury={treasury} />}
+      {tab === "bounded" && <BoundedTab rows={bmMarkets} log={bmLog} />}
     </div>
   );
 }
@@ -768,129 +757,89 @@ function WaitlistTab({ rows }: { rows: WaitlistRow[] }) {
   );
 }
 
-// The whole simulated book: the treasury and what it has taken in, who
-// leads, and every trader's equity, realized and unrealized result, fees
-// earned, trade counts and volume. The public board shows only rank,
-// fees and PnL; this is where the rest went.
-function TradingTab({ rows, treasury }: { rows: LeaderboardRow[]; treasury: Treasury }) {
-  const leader = rows[0];
-  const totalVolume = rows.reduce((sum, r) => sum + r.volumeUsd, 0);
-  const totalTrades = rows.reduce((sum, r) => sum + r.totalTrades, 0);
-  const openPositions = rows.reduce((sum, r) => sum + r.openPositions, 0);
-  const creatorFees = rows.reduce((sum, r) => sum + r.feesEarnedUsd, 0);
-  const tone = (n: number) =>
-    n > 0 ? "text-atnx-cyan" : n < 0 ? "text-atnx-magenta" : "text-tertiary";
-  const { sorted, sort, toggle } = useSort(
-    rows,
-    {
-      rank: (r) => r.rank,
-      trader: (r) => r.handle,
-      trades: (r) => r.totalTrades,
-      open: (r) => r.openPositions,
-      volume: (r) => r.volumeUsd,
-      realized: (r) => r.realizedPnl,
-      unrealized: (r) => r.unrealizedPnl,
-      fees: (r) => r.feesEarnedUsd,
-      equity: (r) => r.equity,
-      return: (r) => r.returnPct,
-    },
-    { key: "rank", dir: "asc" }
-  );
-  const tiles: { label: string; value: string; sub: string }[] = [
-    {
-      label: "Treasury",
-      value: usd.format(treasury.balanceUsd),
-      sub: `${treasury.feeCount} ${treasury.feeCount === 1 ? "fee" : "fees"} taken`,
-    },
-    {
-      label: "Paid to creators",
-      value: usd.format(creatorFees),
-      sub: "half of every open's 1% fee",
-    },
-    {
-      label: "Leader",
-      value: leader ? `@${leader.handle}` : "\u2014",
-      sub: leader ? `${leader.returnPct >= 0 ? "+" : ""}${leader.returnPct.toFixed(1)}% on ${usd.format(STARTING_BALANCE)}` : "no trades yet",
-    },
-    {
-      label: "Traders",
-      value: String(rows.length),
-      sub: "with at least one trade",
-    },
-    {
-      label: "Volume",
-      value: usd.format(totalVolume),
-      sub: `${totalTrades} ${totalTrades === 1 ? "trade" : "trades"} \u00b7 ${openPositions} open`,
-    },
-  ];
+// Bounded VI markets: every on-chain market the registry knows, newest
+// first, and the keeper's latest log rows.
+const short = (v: string | null) => (v ? (v.length > 12 ? `${v.slice(0, 6)}\u2026${v.slice(-4)}` : v) : "\u2014");
+
+function BoundedTab({ rows, log }: { rows: BmMarketRow[]; log: BmKeeperLogRow[] }) {
   return (
-    <div>
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
-        {tiles.map((t) => (
-          <div key={t.label} className="rounded-lg border border-surface bg-surface p-3 min-w-0">
-            <div className="text-[10px] font-mono uppercase tracking-wider text-tertiary mb-1">
-              {t.label}
-            </div>
-            <div className="font-display font-bold tabular-nums text-primary text-lg truncate">
-              {t.value}
-            </div>
-            <div className="text-[11px] text-tertiary mt-0.5 truncate">{t.sub}</div>
-          </div>
-        ))}
-      </div>
-      <p className="text-xs text-secondary mb-3">
-        Simulated USDC. Ranked by equity: cash plus open positions marked to
-        the live VI, creator fees included. Everyone starts with{" "}
-        {usd.format(STARTING_BALANCE)}.
-      </p>
+    <div className="space-y-8">
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
           <thead>
             <tr className="text-tertiary font-mono uppercase tracking-wider">
-              <SortTh column="rank" sort={sort} onSort={toggle} align="right">#</SortTh>
-              <SortTh column="trader" sort={sort} onSort={toggle}>Trader</SortTh>
-              <SortTh column="trades" sort={sort} onSort={toggle} align="right">Trades</SortTh>
-              <SortTh column="open" sort={sort} onSort={toggle} align="right">Open</SortTh>
-              <SortTh column="volume" sort={sort} onSort={toggle} align="right">Volume</SortTh>
-              <SortTh column="realized" sort={sort} onSort={toggle} align="right">Realized</SortTh>
-              <SortTh column="unrealized" sort={sort} onSort={toggle} align="right">Unrealized</SortTh>
-              <SortTh column="fees" sort={sort} onSort={toggle} align="right">Fees earned</SortTh>
-              <SortTh column="equity" sort={sort} onSort={toggle} align="right">Equity</SortTh>
-              <SortTh column="return" sort={sort} onSort={toggle} align="right">Return</SortTh>
+              <th className="py-2 px-2 text-left">Market</th>
+              <th className="py-2 px-2 text-left">Chain</th>
+              <th className="py-2 px-2 text-left">State</th>
+              <th className="py-2 px-2 text-right">Start VI</th>
+              <th className="py-2 px-2 text-right">Lower</th>
+              <th className="py-2 px-2 text-right">Upper</th>
+              <th className="py-2 px-2 text-left">On-chain id</th>
+              <th className="py-2 px-2 text-left">Resolved</th>
+              <th className="py-2 px-2 text-left">Created</th>
             </tr>
           </thead>
           <tbody>
-            {sorted.map((row) => (
-              <tr key={row.userId} className="border-t border-surface font-mono tabular-nums">
-                <td className="py-2 px-2 text-right text-tertiary">{row.rank}</td>
-                <td className="py-2 px-2 text-left text-primary font-sans font-bold">
-                  @{row.handle}
+            {rows.map((r) => (
+              <tr key={r.id} className="border-t border-surface font-mono tabular-nums">
+                <td className="py-2 px-2 text-primary" title={r.atnx_market_id}>
+                  <Link href={`/app/markets/${r.atnx_market_id}`} className="hover:text-atnx-cyan">
+                    {short(r.atnx_market_id)}
+                  </Link>
                 </td>
-                <td className="py-2 px-2 text-right text-secondary">{row.totalTrades}</td>
-                <td className="py-2 px-2 text-right text-secondary">{row.openPositions}</td>
-                <td className="py-2 px-2 text-right text-secondary">{usd.format(row.volumeUsd)}</td>
-                <td className={`py-2 px-2 text-right ${tone(row.realizedPnl)}`}>
-                  {signedUsd(row.realizedPnl)}
-                </td>
-                <td className={`py-2 px-2 text-right ${tone(row.unrealizedPnl)}`}>
-                  {signedUsd(row.unrealizedPnl)}
-                </td>
-                <td className={`py-2 px-2 text-right ${tone(row.feesEarnedUsd)}`}>
-                  {row.feesEarnedUsd > 0 ? signedUsd(row.feesEarnedUsd) : "\u2014"}
-                </td>
-                <td className="py-2 px-2 text-right text-primary font-bold">
-                  {usd.format(row.equity)}
-                </td>
-                <td className={`py-2 px-2 text-right ${tone(row.returnPct)}`}>
-                  {row.returnPct >= 0 ? "+" : ""}
-                  {row.returnPct.toFixed(1)}%
-                </td>
+                <td className="py-2 px-2 text-secondary">{r.chain}</td>
+                <td className="py-2 px-2 text-secondary" title={r.error ?? undefined}>{r.state}</td>
+                <td className="py-2 px-2 text-right text-secondary">{r.start_vi}</td>
+                <td className="py-2 px-2 text-right text-secondary">{r.lower_bound}</td>
+                <td className="py-2 px-2 text-right text-secondary">{r.upper_bound}</td>
+                <td className="py-2 px-2 text-secondary">{r.onchain_market_id ?? "\u2014"}</td>
+                <td className="py-2 px-2 text-secondary">{r.resolved_side ?? "\u2014"}</td>
+                <td className="py-2 px-2 text-tertiary whitespace-nowrap">{formatDate(r.created_at)}</td>
               </tr>
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={10} className="py-8 text-center text-tertiary">
-                  Nobody has traded yet.
+                <td colSpan={9} className="py-8 text-center text-tertiary">
+                  No bounded markets yet.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="overflow-x-auto">
+        <h2 className="text-xs font-mono uppercase tracking-wider text-tertiary mb-2">
+          Keeper log (last {log.length})
+        </h2>
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-tertiary font-mono uppercase tracking-wider">
+              <th className="py-2 px-2 text-left">When</th>
+              <th className="py-2 px-2 text-left">Action</th>
+              <th className="py-2 px-2 text-left">Market</th>
+              <th className="py-2 px-2 text-left">Tx</th>
+              <th className="py-2 px-2 text-left">Error</th>
+            </tr>
+          </thead>
+          <tbody>
+            {log.map((e) => (
+              <tr key={e.id} className="border-t border-surface font-mono">
+                <td className="py-2 px-2 text-tertiary whitespace-nowrap">{formatDate(e.created_at)}</td>
+                <td className="py-2 px-2 text-primary">{e.action}</td>
+                <td className="py-2 px-2 text-secondary" title={e.bm_market_id ?? undefined}>
+                  {short(e.bm_market_id)}
+                </td>
+                <td className="py-2 px-2 text-secondary" title={e.tx_hash ?? undefined}>
+                  {short(e.tx_hash)}
+                </td>
+                <td className="py-2 px-2 text-atnx-magenta break-all">{e.error ?? ""}</td>
+              </tr>
+            ))}
+            {log.length === 0 && (
+              <tr>
+                <td colSpan={5} className="py-8 text-center text-tertiary">
+                  The keeper has not logged anything yet.
                 </td>
               </tr>
             )}

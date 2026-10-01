@@ -22,7 +22,12 @@ locally.
 ## Database
 
 Schema lives in `supabase/` as numbered SQL files, applied by hand in order,
-in the Supabase SQL editor or with `npx supabase db query --linked -f <file>`:
+in the Supabase SQL editor or with `npx supabase db query --linked -f <file>`.
+The simulated-trading tables (`positions`, `sim_balances`, `sim_treasury`,
+`fee_events`) and the functions from 006, 007, 009 and 019 are legacy:
+trading moved on-chain in the hackathon build; see the repository README.
+The app no longer reads them, apart from the sign-in callback creating a
+`sim_balances` row and the admin purge RPC.
 
 | File | What it does |
 |---|---|
@@ -32,11 +37,11 @@ in the Supabase SQL editor or with `npx supabase db query --linked -f <file>`:
 | `002_taxonomy_and_audit.sql` | `markets.category`, `aliases`, `wikidata_qid`; unique normalised name; `submission_decisions` audit table. Check for duplicate names first (query in the file header). |
 | `003_alias_matching.sql` | Name retrieval also scores each market's aliases. |
 | `004_vi_components.sql` | `markets.vi_components` (per-source VI breakdown) and `vi_history.raw_vi`. |
-| `005_vi_history_series.sql` | `vi_history_series()`: bucketed, median-per-bucket VI history packed as JSON per market, for the portfolio chart's 1D/1W/1M/ALL ranges. Until it is applied the endpoint falls back to the newest 1,000 raw rows per market. |
-| `006_trading_integrity.sql` | Trading and profile hardening: `open_position()` / `close_position()` do the accounting atomically and validate size and leverage; users can no longer write `positions` or `sim_balances` directly; `user_profiles.role` changes need an admin; profiles are readable by their owner and admins only. **The trading actions require this migration.** |
-| `007_trade_volume.sql` | Trade volume: `open_position()` / `close_position()` add each trade's size to `markets.total_volume_usd` (every open and every close counts once, at size), and the column is backfilled from `positions`. The market page and the leaderboard aggregate `positions` themselves, so they show volume with or without this file. |
+| `005_vi_history_series.sql` | `vi_history_series()`: bucketed, median-per-bucket VI history packed as JSON per market, for the charts' 1D/1W/1M/ALL ranges. Until it is applied the endpoint falls back to the newest 1,000 raw rows per market. |
+| `006_trading_integrity.sql` | Trading and profile hardening: `open_position()` / `close_position()` do the accounting atomically and validate size and leverage; users can no longer write `positions` or `sim_balances` directly; `user_profiles.role` changes need an admin; profiles are readable by their owner and admins only. |
+| `007_trade_volume.sql` | Trade volume: `open_position()` / `close_position()` add each trade's size to `markets.total_volume_usd` (every open and every close counts once, at size), and the column is backfilled from `positions`. |
 | `008_market_thumbnails.sql` | Curated market images: adds `markets.thumbnail_source` and `thumbnail_checked_at` beside the baseline's unused `thumbnail_url`, which the hourly slow refresh now fills for highlighted markets (`lib/thumbnails.ts`). Cards fall back to the newest capture until it is set, so nothing breaks before this file is applied except the curation pass itself. |
-| `009_fees_and_liquidation.sql` | Liquidation and trading fees. Realized PnL is floored at −size and a position whose mark reaches that floor is closed by a trigger on `markets.current_vi` (`positions.liquidated`), so a balance can no longer go negative. Every open pays a 1% fee on its size, split half to the market's creator (`markets.created_by`, backfilled from each market's first capture; totalled in `sim_balances.fees_earned_usd`) and half to the one-row `sim_treasury`; `fee_events` is the ledger. **The trading actions, portfolio, leaderboard and market page read the new columns and require this migration.** |
+| `009_fees_and_liquidation.sql` | Liquidation and trading fees. Realized PnL is floored at −size and a position whose mark reaches that floor is closed by a trigger on `markets.current_vi` (`positions.liquidated`), so a balance can no longer go negative. Every open pays a 1% fee on its size, split half to the market's creator (`markets.created_by`, backfilled from each market's first capture; totalled in `sim_balances.fees_earned_usd`) and half to the one-row `sim_treasury`; `fee_events` is the ledger. |
 | `010_market_parent.sql` | `markets.parent_market_id`: the subject a market is about (a meme about a person, a variant of a meme), one level deep. Display only: the market page shows the parent on the child and the children on the parent, and nothing in scoring or trading reads it. Set from the admin dashboard's About button (`admin_set_parent_market`); the review step will set it from the subject candidate it offered. **The market page and the admin dashboard select the column and require this migration.** |
 | `011_submission_drafts.sql` | The review step's drafts: one row per proposed submission, holding the model's analysis, the candidates, the routing decision and the bounded choices the submitter may pick from; the parked image lives under `{user}/pending/` in the `captures` bucket. Expired drafts are marked and their images dropped by the hourly refresh. Server-only (RLS on, no policies). **`/api/captures/propose`, `/commit` and `/recrop` require this migration.** |
 | `012_market_description.sql` | `markets.description` and `description_source`: the market's own summary, filled by the thumbnail job from the same place it took the image (the Wikipedia intro, the reference page's summary). The hero and the market page header show it instead of the newest capture's description, which describes that post rather than the subject. `manual` is never overwritten. **The hero and market page select the column and require this migration.** |
@@ -164,6 +169,5 @@ ignores for Gemini 3.x (measured: 18 s and truncated JSON versus 2.6 s).
   landing page's signups.
 - `components/` shared UI. `supabase/` schema. `scripts/` eval and seeding.
 - `../atnx-extension/` is the Chrome extension that posts to `/api/captures/propose`
-  and commits from its side panel, and trades from it through
-  `/api/positions` (open) and `/api/positions/[id]/close`, which share
-  `lib/trading.ts` with the site's own server actions.
+  and commits from its side panel. Trading moved on-chain in the hackathon
+  build; see the repository README.
