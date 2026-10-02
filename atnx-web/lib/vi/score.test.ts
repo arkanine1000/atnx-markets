@@ -1,7 +1,7 @@
 // Run with: npm run test:vi
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { blendScores, combine, rescaleSeed, RAMP_MS, searchTerms, hasQualifier } from './score';
+import { blendScores, combine, rescaleSeed, RAMP_MS, searchTerms, hasQualifier, isGenericTerm } from './score';
 
 // The ramp maths, over the 48 h span it had (RAMP_MS is 0 pre-launch).
 const SPAN = 48 * 3600 * 1000;
@@ -323,4 +323,24 @@ test('searchTerms and hasQualifier: a name the model qualified searches its alia
   assert.deepEqual(searchTerms('Hello', ['Hello Adele', 'Adele Hello'], { wiki: null, entityType: 'other', category: 'music', name: 'Hello (Adele song)' }), { term: 'Hello Adele', aliases: ['Adele Hello'] });
   assert.deepEqual(searchTerms('Hello', [], { wiki: null, entityType: 'other', category: 'music', name: 'Hello (Adele song)' }), { term: 'Hello', aliases: [] }, 'no alias to fall back on');
   assert.deepEqual(searchTerms('Drake', ['Drake rapper'], { wiki: null, entityType: 'person', category: 'music', name: 'Drake (rapper)' }), { term: 'Drake rapper', aliases: [] }, 'a person too, when the model qualified it');
+});
+
+test('isGenericTerm: one word is generic unless Wikipedia owns it, or a meme coined it and Wikipedia has nothing', () => {
+  assert.equal(isGenericTerm('Donald Trump', null), false, 'two words never generic');
+  assert.equal(isGenericTerm('The', { own: 1, title: 'The' }), true, 'a function word, article or not');
+  assert.equal(isGenericTerm('Trollface', { own: 1, title: 'Trollface', from: 'term' }), false);
+  assert.equal(isGenericTerm('Meta', { own: 1, title: 'Meta Platforms', from: 'term' }), false);
+  assert.equal(isGenericTerm('Verity', { own: 0, title: 'Verity', from: 'term' }), true, 'a namesake article');
+  assert.equal(isGenericTerm('Verity', { own: 0, title: 'Verity', from: 'term' }, { entityType: 'meme' }), true, 'a namesake article, even for a meme');
+  // Searched and found nothing: a coined meme name is not generic; anything else still is.
+  const nothing = { own: 0, title: null, from: 'term' };
+  assert.equal(isGenericTerm('Nosfercatu', nothing, { entityType: 'meme' }), false);
+  assert.equal(isGenericTerm('Whimsy', nothing, { entityType: 'trend' }), true, 'an everyday word Wikipedia happens not to title');
+  assert.equal(isGenericTerm('ATNX', nothing, { entityType: 'brand' }), true);
+  assert.equal(isGenericTerm('Nosfercatu', nothing), true, 'no type given');
+  assert.equal(isGenericTerm('Nosfercatu', { own: 0, title: null, from: 'alias' }, { entityType: 'meme' }), true, 'resolved through an alias says nothing about the word');
+  assert.equal(isGenericTerm('Nosfercatu', { own: 0, title: null }, { entityType: 'meme' }), false, 'a reading without from is a term reading');
+  assert.equal(isGenericTerm('Nosfercatu', null, { entityType: 'meme' }), true, 'no reading at all: nothing is known');
+  assert.equal(isGenericTerm('Nosfercatu', { title: null }, { entityType: 'meme' }), true, 'an old reading without own and without a title');
+  assert.equal(isGenericTerm('Nujabes', { title: 'Nujabes' }), false, 'an old reading: title compared by name');
 });

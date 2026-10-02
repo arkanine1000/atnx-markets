@@ -259,8 +259,9 @@ export async function scoreTerms(
       }
 
       // Single common words score big on search and social by accident.
-      // Only count those sources when Wikipedia knows the term by that name.
-      if (isGenericTerm(term, (components.wikipedia as SourceComponent | undefined)?.meta)) {
+      // Only count those sources when Wikipedia knows the term by that
+      // name, or when a meme's coined name is unknown to it altogether.
+      if (isGenericTerm(term, (components.wikipedia as SourceComponent | undefined)?.meta, { entityType: req.entityType })) {
         delete components.trends;
         delete components.bluesky;
       }

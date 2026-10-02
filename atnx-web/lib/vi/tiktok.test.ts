@@ -186,3 +186,27 @@ test('tiktokEarlyDue: a young mapped tag with no level is read again an hour aft
   assert.equal(tiktokEarlyDue({ ...mapped, meta: { hashtag: null, discovered_at: mapped.meta.discovered_at } }, t0 + 66 * 60_000), false, 'no tag');
   assert.equal(tiktokEarlyDue(null), false);
 });
+
+import { pickHashtag, tagQualifies } from './tiktok';
+
+test('pickHashtag: a tag qualifies on videos or on views; the own tag wins once established either way', () => {
+  const counts = (rows: [string, number, number | null][]) => new Map(rows.map(([hashtag, video_count, view_count]) => [hashtag, { hashtag, video_count, view_count }]));
+  // Nosfercatu, 2026-10-02: 9 videos, 9.2M views; the alias tag does not exist.
+  const nosfer = counts([['nosfercatu', 9, 9_210_558]]);
+  assert.equal(tagQualifies(nosfer.get('nosfercatu')!), true);
+  assert.equal(pickHashtag(['nosfercatu', 'nosfercat'], nosfer)?.hashtag, 'nosfercatu');
+  // Few videos and few views: nowhere to live.
+  assert.equal(pickHashtag(['tinytag'], counts([['tinytag', 9, 40_000]])), null);
+  assert.equal(pickHashtag(['tinytag'], counts([['tinytag', 9, null]])), null, 'no view total: videos alone decide');
+  // Videos still qualify a tag with no view total.
+  assert.equal(pickHashtag(['skibiditoilet'], counts([['skibiditoilet', 2_000_000, null]]))?.hashtag, 'skibiditoilet');
+  // Established own tag over a bigger but broader alias, unless the alias dwarfs it (20x by videos).
+  assert.equal(pickHashtag(['elonmusk', 'elon'], counts([['elonmusk', 5_000, null], ['elon', 50_000, null]]))?.hashtag, 'elonmusk');
+  assert.equal(pickHashtag(['grandtheftautovi', 'gta6'], counts([['grandtheftautovi', 17_000, null], ['gta6', 3_000_000, null]]))?.hashtag, 'gta6');
+  // An own tag established by views alone also holds against a modest alias.
+  assert.equal(pickHashtag(['nosfercatu', 'vampirecat'], counts([['nosfercatu', 9, 9_210_558], ['vampirecat', 150, 200_000]]))?.hashtag, 'nosfercatu');
+  // Among view-only qualifiers with the same video count, the one with more views.
+  assert.equal(pickHashtag(['a', 'b'], counts([['a', 5, 300_000], ['b', 5, 900_000]]))?.hashtag, 'b');
+  // An own tag below both floors defers to a qualifying alias.
+  assert.equal(pickHashtag(['own', 'alias'], counts([['own', 50, 10_000], ['alias', 400, null]]))?.hashtag, 'alias');
+});
