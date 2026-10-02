@@ -283,9 +283,15 @@ export function judgeCandidate(term: string, info: PageInfo, { corporate = false
   if (titleMatchesTerm(term, info.title, { corporate })) return { ...none(), title: info.title, match: 'redirect' };
   // "Donald Trump mugshot" -> "Mug shot of Donald Trump": the target is
   // the same subject under another title when every word of the term is
-  // in it. Never for a single word: "Clavicular" -> "Clavicle" is the
-  // bone, and single words are where the generic-term guard matters.
+  // in it. For a single word only when the target is a longer title that
+  // carries the word itself ("Chemtrails" -> "Chemtrail conspiracy
+  // theory", "Skibidi" -> "Skibidi Toilet"): "Clavicular" -> "Clavicle"
+  // is the bone, "Cats" -> "Cat" the animal, and single words are where
+  // the generic-term guard matters (redirectNamesTerm).
   const tokens = normalizeTitle(term).split(' ').filter(Boolean);
+  if (tokens.length === 1) {
+    return redirectNamesTerm(term, info.title) ? { ...none(), title: info.title, match: 'redirect' } : none();
+  }
   if (tokens.length >= 2) {
     const target = normalizeTitle(info.title);
     const letters = target.replace(/ /g, '');
@@ -294,6 +300,22 @@ export function judgeCandidate(term: string, info: PageInfo, { corporate = false
     if (all) return { ...none(), title: info.title, match: 'redirect' };
   }
   return none();
+}
+
+// Whether a redirect's target is a longer title for a one-word term: the
+// target has two or more words and one of them is the term, or the term
+// less a plural ending, or the term is that word less its plural ending
+// ("Chemtrails" is in "Chemtrail conspiracy theory"). A one-word target
+// ("Cat" for "Cats") is a common noun's article, not a name, and a
+// trailing "(qualifier)" is not a word of the title. Pure.
+export function redirectNamesTerm(term: string, target: string): boolean {
+  const t = normalizeTitle(term).replace(/ /g, '');
+  if (!t) return false;
+  const words = normalizeTitle(target.replace(/\s*\([^)]*\)\s*$/, '')).split(' ').filter(Boolean);
+  if (words.length < 2) return false;
+  const stems = (w: string) => [w, w.replace(/(es|s)$/, '')].filter((x) => x.length >= 3);
+  const mine = new Set(stems(t));
+  return words.some((w) => stems(w).some((x) => mine.has(x)));
 }
 
 // The article whose pageviews stand for a term: OpenSearch candidates
