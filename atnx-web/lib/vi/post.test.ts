@@ -1,7 +1,7 @@
 // Run with: npm run test:vi
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parsePostUrl, postKey, postLevel, postReadDue, postReading, MIN_GAP_H } from './post';
+import { parsePostUrl, postKey, postLevel, postReadDue, postReading, MIN_GAP_H, isTiktokShortLink, tiktokRefFromOembed } from './post';
 import type { Sample } from './samples';
 
 const H = 3600_000;
@@ -119,4 +119,20 @@ test('postReading: momentum against the rate a day earlier, once every post has 
   const r = postReading(s, T0);
   assert.equal(r.viewsPerDay, 10_000 * 24);
   assert.ok(r.momentum !== null && Math.abs(r.momentum - 2) < 1e-9, `momentum ${r.momentum}`);
+});
+
+test('a TikTok short link is recognised and resolved from what oEmbed names', () => {
+  assert.equal(isTiktokShortLink('https://vm.tiktok.com/ZN8hQ3sSs/'), true);
+  assert.equal(isTiktokShortLink('https://vt.tiktok.com/ZSabc/'), true);
+  assert.equal(isTiktokShortLink('https://www.tiktok.com/t/ZN8hQ3sSs/'), true);
+  assert.equal(isTiktokShortLink('https://www.tiktok.com/@notsophiesilva/video/7691788798593748254'), false, 'a full link needs no resolving');
+  assert.equal(isTiktokShortLink('https://www.tiktok.com/tag/halloween'), false);
+  assert.equal(isTiktokShortLink('nope'), false);
+  assert.deepEqual(tiktokRefFromOembed({ author_unique_id: 'notsophiesilva', embed_product_id: '7691788798593748254' }), {
+    platform: 'tiktok',
+    id: '7691788798593748254',
+    url: 'https://www.tiktok.com/@notsophiesilva/video/7691788798593748254',
+  });
+  assert.equal(tiktokRefFromOembed({ author_unique_id: 'x' }), null);
+  assert.equal(tiktokRefFromOembed({ author_unique_id: 'x', embed_product_id: 'abc' }), null);
 });
