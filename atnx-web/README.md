@@ -81,7 +81,10 @@ subject has a market, adding to it is the default; creating the meme's own
 market is the secondary option and may mark it as about the subject
 (`markets.parent_market_id`). In the band below the link thresholds the
 close markets are shown and the person picks. Nothing on the screen is free
-text: the name comes from the model's proposal and up to two alternates,
+text, except an optional link to the post for a screenshot that came
+without one, which is checked against the platform (the post must exist;
+`lib/vi/post.ts`) and becomes the capture's source URL so the post's own
+views count toward the score: the name comes from the model's proposal and up to two alternates,
 type and category from the fixed enums, aliases can only be dropped, and
 the crop is a rectangle the server applies to its own copy of the image
 (two re-crops per draft, each one more model call). Market creation is

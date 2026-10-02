@@ -1,4 +1,4 @@
-// Composite VI dispatcher. Nine sources, each reporting an absolute level
+// Composite VI dispatcher. Ten sources, each reporting an absolute level
 // and a momentum ratio, combined by lib/vi/score.ts.
 //
 // Two refresh cadences share one stored breakdown per market
@@ -31,6 +31,7 @@ import { fetchHnSignal } from './vi/hn';
 import { fetchDexSignal } from './vi/dex';
 import { fetchXSignal } from './vi/x';
 import { fetchTiktokSignal, prefetchTiktok, tiktokEarlyDue } from './vi/tiktok';
+import { fetchPostSignal, prefetchPosts } from './vi/post';
 import { effectiveYoutube, readChannelMeta, type CreatorHandle } from './creators/channel';
 import { readXAccountMeta, type XHandle } from './creators/x-account';
 
@@ -138,10 +139,12 @@ function neverScored(r: ScoreRequest): boolean {
 }
 
 // Sources that answer for many markets in one request are started here,
-// before the markets are scored; their adapters await the result. Only
-// the slow path calls this: a capture scores one market, and its TikTok
-// mapping can wait for the next hourly pass. Returns what was started.
+// before the markets are scored; their adapters await the result. The
+// slow path and the new-market scoring call it (a capture's own post is
+// read at creation, so the market goes live with it). Returns what was
+// started.
 export function prefetchSlowSources(requests: ScoreRequest[]): { tiktokHashtags: number } {
+  prefetchPosts(requests.map((r) => ({ marketId: r.marketId, stored: r.stored?.post ?? null })));
   const tiktokHashtags = prefetchTiktok(
     requests
       .filter((r) => applies('tiktok', r))
@@ -209,7 +212,7 @@ export async function scoreTerms(
       const corporate = req.entityType === 'brand';
 
       const request = { term, stored, ...req };
-      const [bluesky, gdelt, wikipedia, youtube, hn, dex, x, tiktok] = await Promise.all([
+      const [bluesky, gdelt, wikipedia, youtube, hn, dex, x, tiktok, post] = await Promise.all([
         want.has('bluesky') ? fetchBlueskySignal(search.term, search.aliases).catch(() => null) : null,
         want.has('gdelt') && applies('gdelt', request) ? readGdeltSignal(req.marketId).catch(() => null) : null,
         want.has('wikipedia') ? fetchWikipediaSignal(term, aliases, { corporate, aliasCandidates }).catch(() => null) : null,
@@ -224,6 +227,8 @@ export async function scoreTerms(
         want.has('tiktok') && applies('tiktok', request)
           ? fetchTiktokSignal({ term: search.term, aliases: tiktokAliases(term, req.aliases ?? [], search), marketId: req.marketId, stored: stored?.tiktok ?? null }).catch(() => null)
           : null,
+        // The captured posts themselves, any category (lib/vi/post.ts).
+        want.has('post') ? fetchPostSignal({ marketId: req.marketId, stored: stored?.post ?? null }).catch(() => null) : null,
       ]);
       if (bluesky) components.bluesky = bluesky;
       if (gdelt) components.gdelt = gdelt;
@@ -233,6 +238,7 @@ export async function scoreTerms(
       if (dex) components.dex = dex;
       if (x) components.x = x;
       if (tiktok) components.tiktok = tiktok;
+      if (post) components.post = post;
       // A category-bound source keeps nothing once the market leaves its
       // category.
       for (const name of ['hn', 'dex', 'tiktok', 'gdelt'] as const) {

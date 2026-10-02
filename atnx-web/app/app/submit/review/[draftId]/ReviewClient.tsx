@@ -319,6 +319,9 @@ export function ReviewClient({ initial }: { initial: ReviewDraftView }) {
   const [kept, setKept] = useState<Set<string>>(new Set(choices.aliases));
   const [withParent, setWithParent] = useState(Boolean(choices.parentMarketId));
   const [showOcr, setShowOcr] = useState(false);
+  // A link to the post, for a screenshot that came without one; the post's
+  // own views then count toward the score (lib/vi/post.ts).
+  const [postUrl, setPostUrl] = useState("");
   const [showCreate, setShowCreate] = useState(defaultMode === "create");
 
   const [crop, setCrop] = useState<CropRect | null>(null);
@@ -387,7 +390,7 @@ export function ReviewClient({ initial }: { initial: ReviewDraftView }) {
     setBusy("commit");
     setError(null);
     try {
-      const body = await post("/api/captures/commit", { draftId: view.draftId, choice });
+      const body = await post("/api/captures/commit", { draftId: view.draftId, choice, ...(postUrl.trim() ? { postUrl: postUrl.trim() } : {}) });
       if (!body.success) {
         setError({ message: body.error, code: body.code });
         return;
@@ -707,6 +710,22 @@ export function ReviewClient({ initial }: { initial: ReviewDraftView }) {
               <span className="text-tertiary font-normal">· {label(choices.createSubject.entityType)}</span>
             </div>
           </button>
+        )}
+
+        {/* A screenshot of a post with no link: the reviewer may add one. */}
+        {!view.sourceUrl && analysis.platforms.some((p) => /tiktok|instagram|^x$|twitter/i.test(p)) && (
+          <label className="block">
+            <div className="text-[10px] font-mono uppercase tracking-wider text-tertiary">Link to the post (optional)</div>
+            <input
+              type="url"
+              inputMode="url"
+              value={postUrl}
+              onChange={(e) => setPostUrl(e.target.value)}
+              placeholder="https://www.tiktok.com/@…/video/…"
+              className="mt-1 w-full rounded-xl border border-surface bg-elevated px-3 py-2 text-sm text-primary placeholder:text-tertiary focus:border-atnx-cyan focus:outline-none"
+            />
+            <div className="mt-1 text-[11px] text-tertiary">Its own views then count toward the score. TikTok, Instagram or X.</div>
+          </label>
         )}
 
         {/* Read-only facts. */}

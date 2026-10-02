@@ -11,7 +11,7 @@ import { verifiedXHandles, type XHandle } from '@/lib/creators/x-account';
 
 // The VI refresh job behind /api/markets/refresh (fast, every 5 minutes:
 // Google Trends, Bluesky) and /api/markets/refresh-slow (hourly: GDELT,
-// Wikipedia, YouTube, HN, X, TikTok). It lives here rather than in the
+// Wikipedia, YouTube, HN, X, TikTok, the captured posts). It lives here rather than in the
 // route file because Next.js 16 refuses a route module that exports
 // anything but handlers and segment config. In the hackathon fork no
 // cron calls either route; production atnx.app writes the VI.
@@ -67,6 +67,8 @@ export interface RefreshSummary {
   tiktok?: { hashtags: number; markets: number; estUsd: number };
   // Fast pass: young markets given their early second TikTok read.
   tiktokEarly?: number;
+  // Slow path: markets whose captured posts were read this run (lib/vi/post.ts).
+  post?: { markets: number };
   dryRun?: { name: string; oldVi: number | null; raw: number | null; fetched: string[]; components: Components }[];
 }
 
@@ -112,6 +114,7 @@ export async function refreshScores(cadence: 'fast' | 'slow', { dryRun = false, 
     summary.gdelt = { known: 0, unknown: 0 };
     summary.x = { markets: 0, tweets: 0, requests: 0, estUsd: 0 };
     summary.tiktok = { hashtags: 0, markets: 0, estUsd: 0 };
+    summary.post = { markets: 0 };
   }
   if (markets.length === 0) return summary;
   const ids = markets.map((m) => m.id);
@@ -156,6 +159,8 @@ async function settle(market: MarketRow, result: SignalResult, cadence: 'fast' |
   // first sample, which has a mapping but no level yet.
   const tiktokAt = result.components.tiktok?.fetchedAt ? Date.parse(result.components.tiktok.fetchedAt) : 0;
   if (summary.tiktok && tiktokAt >= startedAt) summary.tiktok.markets++;
+  const postAt = result.components.post?.fetchedAt ? Date.parse(result.components.post.fetchedAt) : 0;
+  if (summary.post && postAt >= startedAt) summary.post.markets++;
   if (summary.x && result.fetched.includes('x')) {
     const meta = result.components.x?.meta ?? {};
     const reading = { tweets: Number(meta.tweets ?? 0), requests: Number(meta.requests ?? 0) };
