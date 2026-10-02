@@ -54,3 +54,20 @@ test('verifyAliases: a one-word alias counts when it is the article under anothe
   assert.deepEqual(verifyAliases('Wabbit Twouble', ['Chungus'], pages), [], 'a section redirect is not the article');
   assert.deepEqual(verifyAliases('MrBeast', ['mrbeast'], pages), [], 'the title spelled differently adds nothing');
 });
+
+import { redirectNamesTerm } from './wikipedia';
+
+test('a one-word term redirected to a longer title that carries the word is that article; a different word or a one-word target is not', () => {
+  const chem = judgeCandidate('Chemtrails', page({ requested: 'Chemtrails', title: 'Chemtrail conspiracy theory', redirected: true }));
+  assert.equal(chem.title, 'Chemtrail conspiracy theory');
+  assert.equal(chem.match, 'redirect');
+  const skibidi = judgeCandidate('Skibidi', page({ requested: 'Skibidi', title: 'Skibidi Toilet', redirected: true }));
+  assert.equal(skibidi.match, 'redirect');
+  assert.equal(judgeCandidate('Trump', page({ requested: 'Trump', title: 'Donald Trump', redirected: true })).match, 'redirect');
+  assert.equal(judgeCandidate('Clavicular', page({ requested: 'Clavicular', title: 'Clavicle', redirected: true })).title, null, 'the bone');
+  assert.equal(judgeCandidate('Cats', page({ requested: 'Cats', title: 'Cat', redirected: true })).title, null, 'a one-word target is a common noun');
+  assert.equal(judgeCandidate('Musk', page({ requested: 'Musk', title: 'Elon Musk', redirected: true })).match, 'redirect');
+  assert.equal(redirectNamesTerm('Chemtrails', 'Chemtrail conspiracy theory'), true);
+  assert.equal(redirectNamesTerm('Verity', 'Verity (novel)'), false, 'a qualified namesake has one word');
+  assert.equal(redirectNamesTerm('Elon', 'Elon University'), true, 'carries the word; the disambiguation check runs before this');
+});

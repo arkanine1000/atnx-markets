@@ -84,7 +84,7 @@ close markets are shown and the person picks. Nothing on the screen is free
 text, except an optional link to the post for a screenshot that came
 without one, which is checked against the platform (the post must exist;
 `lib/vi/post.ts`) and becomes the capture's source URL so the post's own
-views count toward the score: the name comes from the model's proposal and up to two alternates,
+views count toward the score: the name comes from the model's proposal, up to two alternates, and, when Wikipedia knows nothing under the model's name but knows a one-word alias as a redirect to a longer article ("Chemtrails" to "Chemtrail conspiracy theory"), that word and the article's title (`lib/naming.ts`),
 type and category from the fixed enums, aliases can only be dropped, and
 the crop is a rectangle the server applies to its own copy of the image
 (two re-crops per draft, each one more model call). Market creation is

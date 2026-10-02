@@ -258,6 +258,8 @@ export function buildReview(input: {
   candidates: ScoredCandidate[];
   details: Map<string, MarketDetails>;
   subject: SubjectResolution;
+  // Names Wikipedia vouches for beside the model's (lib/naming.ts).
+  nameAlternates?: string[];
 }): { nudge: Nudge; choices: DraftChoices } {
   const { submission: s, decision } = input;
   const nm = s.new_market;
@@ -302,7 +304,16 @@ export function buildReview(input: {
         : 'none';
 
   const canCreate = nm !== null;
-  const names = nm ? [nm.name, ...s.name_alternates.filter((n) => n !== nm.name)] : [];
+  const names: string[] = [];
+  if (nm) {
+    const seen = new Set<string>();
+    for (const n of [nm.name, ...s.name_alternates, ...(input.nameAlternates ?? [])]) {
+      const k = n.trim().toLowerCase();
+      if (!k || seen.has(k)) continue;
+      seen.add(k);
+      names.push(n.trim());
+    }
+  }
   const parentMarketId = subject && subject.parentMarketId === null ? subject.id : null;
   const createSubject =
     !subjectDetails && input.subject.proposal && nm && aboutSomething
