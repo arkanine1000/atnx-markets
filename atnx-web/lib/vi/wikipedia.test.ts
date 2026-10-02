@@ -71,3 +71,12 @@ test('a one-word term redirected to a longer title that carries the word is that
   assert.equal(redirectNamesTerm('Verity', 'Verity (novel)'), false, 'a qualified namesake has one word');
   assert.equal(redirectNamesTerm('Elon', 'Elon University'), true, 'carries the word; the disambiguation check runs before this');
 });
+
+import { pickAliasVerdict, type CandidateVerdict } from './wikipedia';
+
+test('pickAliasVerdict: an exact article beats a redirect found earlier; otherwise the first found', () => {
+  const v = (title: string, match: CandidateVerdict['match']): CandidateVerdict => ({ title, match, ambiguous: false, namedRedirect: false, redirectTitle: null });
+  assert.equal(pickAliasVerdict([v('Nike Flywire', 'redirect'), v('Drosophila connectome', 'exact')])?.title, 'Drosophila connectome');
+  assert.equal(pickAliasVerdict([v('Nike Flywire', 'redirect'), v('Flywire (screen)', 'qualified')])?.title, 'Nike Flywire');
+  assert.equal(pickAliasVerdict([]), null);
+});

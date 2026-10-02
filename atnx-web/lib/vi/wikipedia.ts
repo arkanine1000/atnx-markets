@@ -60,15 +60,25 @@ export async function fetchWikipediaSignal(
   if (term.trim().length < 2) return empty;
 
   try {
-    // The name first; an alias only when the name resolves to nothing.
+    // The name first; the aliases only when the name resolves to nothing,
+    // and among them an exact article over a redirect or a qualified
+    // namesake: "FlyWire" (a handle-shaped alias, tried first) redirects
+    // to Nike's shoe tech while "Drosophila connectome" is the article.
     let from: 'term' | 'alias' = 'term';
     let resolved = await resolvePageviewArticle(term, { corporate });
-    for (const alias of aliases) {
-      if (resolved.title || alias.trim().length < 2) break;
-      const viaAlias = await resolvePageviewArticle(alias, { corporate });
-      if (viaAlias.title) {
+    if (!resolved.title) {
+      const found: CandidateVerdict[] = [];
+      for (const alias of aliases) {
+        if (alias.trim().length < 2) continue;
+        const viaAlias = await resolvePageviewArticle(alias, { corporate });
+        if (!viaAlias.title) continue;
+        found.push(viaAlias);
+        if (viaAlias.match === 'exact') break;
+      }
+      const best = pickAliasVerdict(found);
+      if (best) {
         from = 'alias';
-        resolved = { ...viaAlias, ambiguous: resolved.ambiguous, namedRedirect: resolved.namedRedirect, redirectTitle: resolved.redirectTitle };
+        resolved = { ...best, ambiguous: resolved.ambiguous, namedRedirect: resolved.namedRedirect, redirectTitle: resolved.redirectTitle };
       }
     }
     // Whether the article (or the absence of one) is the term's own
@@ -108,6 +118,13 @@ export async function fetchWikipediaSignal(
     }
 
     const daily = await fetchDailyPageviews(title);
+    if (daily === null) {
+      // The pageviews API did not answer: unknown, not a known zero
+      // (SpaceX read 0 for an hour on 2026-10-02 from one failed fetch).
+      // The title and the verdict stay, so the guards still know the
+      // article; the dispatcher keeps the stored reading.
+      return { ...empty, title, level: null, meta: { title, ...base } };
+    }
     if (daily.length === 0) {
       const none: WikipediaSignal = { ...empty, title, level: 0, meta: { title, ...base } };
       cache.set(key, { data: none, expiry: Date.now() + CACHE_TTL });
@@ -394,13 +411,23 @@ function normalizeTitle(s: string): string {
     .trim();
 }
 
-async function fetchDailyPageviews(title: string): Promise<{ date: string; views: number }[]> {
+// Among the aliases that resolved, an exact article first, then the first
+// found. Null when none did. Pure.
+export function pickAliasVerdict(found: CandidateVerdict[]): CandidateVerdict | null {
+  return found.find((v) => v.match === 'exact') ?? found[0] ?? null;
+}
+
+// Null when the API did not answer, [] when it answered with no days.
+async function fetchDailyPageviews(title: string): Promise<{ date: string; views: number }[] | null> {
   // Pageviews lag ~24h. End the window 2 days back, pull 30 days prior.
   const end = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
   const start = new Date(end.getTime() - 30 * 24 * 60 * 60 * 1000);
   const url = `${PAGEVIEWS_BASE}/${encodeURIComponent(title.replace(/ /g, '_'))}/daily/${formatDate(start)}/${formatDate(end)}`;
   const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' } });
-  if (!res.ok) return [];
+  // 404 is the API's answer for an article with no views yet; anything
+  // else is the API not answering.
+  if (res.status === 404) return [];
+  if (!res.ok) return null;
   const body = (await res.json()) as { items?: { timestamp: string; views: number }[] };
   return (body.items ?? []).map((item) => ({
     date: `${item.timestamp.slice(0, 4)}-${item.timestamp.slice(4, 6)}-${item.timestamp.slice(6, 8)}`,

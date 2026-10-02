@@ -134,6 +134,49 @@ export function parsePostUrl(raw: string | null | undefined): PostRef | null {
 
 export const postKey = (ref: Pick<PostRef, 'platform' | 'id'>): string => `${ref.platform}:${ref.id}`;
 
+// A TikTok short link, the form the app's share sheet hands out
+// ("vm.tiktok.com/ZN8hQ3sSs/", "tiktok.com/t/ZN8hQ3sSs/"): it names the
+// post only after a redirect. Pure.
+export function isTiktokShortLink(raw: string | null | undefined): boolean {
+  if (!raw) return false;
+  try {
+    const u = new URL(raw.trim());
+    const host = u.hostname.replace(/^www\./, '').toLowerCase();
+    return host === 'vm.tiktok.com' || host === 'vt.tiktok.com' || (host === 'tiktok.com' && /^\/t\/[A-Za-z0-9]+/.test(u.pathname));
+  } catch {
+    return false;
+  }
+}
+
+// The canonical post URL TikTok's oEmbed answer names. Pure.
+export function tiktokRefFromOembed(body: { author_unique_id?: unknown; embed_product_id?: unknown }): PostRef | null {
+  const author = typeof body.author_unique_id === 'string' ? body.author_unique_id.trim() : '';
+  const id = typeof body.embed_product_id === 'string' && /^\d+$/.test(body.embed_product_id) ? body.embed_product_id : '';
+  return author && id ? { platform: 'tiktok', id, url: `https://www.tiktok.com/@${author}/video/${id}` } : null;
+}
+
+const shortLinks = new Map<string, PostRef | null>();
+
+// The post a URL points at, resolving a TikTok short link through oEmbed
+// (one request, remembered for the process). Null for anything else or
+// when TikTok does not answer.
+export async function resolvePostUrl(raw: string | null | undefined): Promise<PostRef | null> {
+  const direct = parsePostUrl(raw);
+  if (direct || !raw || !isTiktokShortLink(raw)) return direct;
+  const key = raw.trim();
+  if (shortLinks.has(key)) return shortLinks.get(key) ?? null;
+  let ref: PostRef | null = null;
+  try {
+    const res = await fetch(`https://www.tiktok.com/oembed?url=${encodeURIComponent(key)}`, { cache: 'no-store', signal: AbortSignal.timeout(8_000) });
+    if (res.ok) ref = tiktokRefFromOembed((await res.json()) as { author_unique_id?: unknown; embed_product_id?: unknown });
+  } catch (err) {
+    console.warn(`[post] short link ${key}: ${(err as Error).message}`);
+    return null; // not remembered: a timeout is worth another try next pass
+  }
+  shortLinks.set(key, ref);
+  return ref;
+}
+
 // Views a day to level, log scale: 1k/day -> 100, 10k -> 300, 100k -> 500,
 // 1M -> 700, 10M -> 900. Pure.
 export function postLevel(viewsPerDay: number): number {
@@ -351,8 +394,10 @@ export async function postsForMarkets(marketIds: string[]): Promise<Map<string, 
     console.error(`[post] captures lookup failed: ${error.message}`);
     return out;
   }
-  for (const row of (data ?? []) as { market_id: string; source_url: string | null }[]) {
-    const ref = parsePostUrl(row.source_url);
+  const rows = (data ?? []) as { market_id: string; source_url: string | null }[];
+  const refs = await Promise.all(rows.map((row) => resolvePostUrl(row.source_url)));
+  for (const [i, row] of rows.entries()) {
+    const ref = refs[i];
     if (!ref) continue;
     const list = out.get(row.market_id) ?? [];
     if (list.length >= MAX_POSTS_PER_MARKET || list.some((r) => postKey(r) === postKey(ref))) continue;
@@ -412,16 +457,19 @@ export function prefetchPosts(requests: PostRequest[], now = Date.now()): void {
   })();
 }
 
-export async function fetchPostSignal(req: PostRequest): Promise<SourceComponent> {
+export async function fetchPostSignal(req: PostRequest): Promise<SourceComponent | null> {
   const { marketId, stored } = req;
   const now = Date.now();
-  const empty: SourceComponent = { source: 'post', level: null, momentum: null, fetchedAt: new Date(now).toISOString() };
-  if (!marketId) return empty;
-  if (!postReadDue(stored, now)) return stored ?? empty;
-  if (!batch || now - batchStarted > 20 * 60 * 1000) return stored ?? empty; // not in this pass's run
+  if (!marketId) return null;
+  if (!postReadDue(stored, now)) return stored ?? null;
+  if (!batch || now - batchStarted > 20 * 60 * 1000) return stored ?? null; // not in this pass's run
 
   const mine = (await batch).get(marketId);
-  if (!mine || mine.length === 0) return stored ?? empty; // no captured post, beyond the cap, or the run failed
+  // No captured post, beyond the cap, or the run failed: the stored
+  // reading stands, and a market with none gets no component at all
+  // (null is left out of the breakdown, lib/signals.ts) rather than an
+  // unknown on every market that was captured from a search page.
+  if (!mine || mine.length === 0) return stored ?? null;
 
   for (const s of mine) {
     await writeSample(marketId, 'post', s.views ?? 0, {
@@ -467,8 +515,8 @@ export interface VerifiedPostLink {
 // platform this source reads, and the post must exist. Throws with a
 // message the reviewer can act on.
 export async function verifyPostLink(raw: string, ocrText: string | null | undefined): Promise<VerifiedPostLink> {
-  const ref = parsePostUrl(raw);
-  if (!ref) throw new Error('The link must be to a TikTok video, an Instagram post or reel, or an X post');
+  const ref = await resolvePostUrl(raw);
+  if (!ref) throw new Error(isTiktokShortLink(raw) ? 'TikTok has no post at that link' : 'The link must be to a TikTok video, an Instagram post or reel, or an X post');
   const ocr = (ocrText ?? '').toLowerCase();
   const seen = (names: (string | null | undefined)[]) => {
     const got = names.filter((n): n is string => !!n && n.trim().length >= 3).map((n) => n.trim().toLowerCase());
