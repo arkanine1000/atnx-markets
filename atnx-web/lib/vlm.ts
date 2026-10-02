@@ -73,6 +73,9 @@ function buildSchema(candidateIds: string[]) {
     subject_market_id: candidateId(),
     subject_name: z.string().max(120).nullable(),
     subject_entity_type: z.enum(SUBJECT_TYPES).nullable(),
+    // The name the content might go by, filled in even on a reject, so the
+    // second look (lib/corroborate.ts) has a phrase to check.
+    tentative_name: z.string().max(120).nullable(),
     description: z.string().max(400),
     ocr_text: z.string().max(4000),
     platforms_detected: z.array(z.string()).max(8),
@@ -102,7 +105,7 @@ const SYSTEM_PROMPT = `You classify content that people submit to ATNX, a platfo
 Decide three things.
 
 1. admit. Admit the submission when its main subject is a piece of internet culture with a public identity: a meme, a viral trend or format, a public figure, a brand or product in the public conversation, a public event, a song, show, film, game, or crypto token that people are talking about. Reject (admit=false) with a reject_reason when:
-   - not_cultural_content: a blank, private, or purely functional screen (settings, spreadsheets, documents, chats between private individuals, receipts, code), or content with no identifiable public subject. A generic phrase is not a subject: a calendar period ("November 2026", "2027", "Q4"), a common word or category ("memes", "football", "cats"), a platform or a format name on its own. A meme built on such a phrase is admitted under the meme's own name, never under the phrase.
+   - not_cultural_content: a blank, private, or purely functional screen (settings, spreadsheets, documents, chats between private individuals, receipts, code), or content with no identifiable public subject. A generic phrase is not a subject: a calendar period ("November 2026", "2027", "Q4"), a common word or category ("memes", "football", "cats"), a platform or a format name on its own. A meme built on such a phrase is admitted under the meme's own name, never under the phrase. A coined caption or hashtag is a name, not a category: a pun or portmanteau on a common word ("Nosfercatu", "Catzilla") names the meme and is admitted under it even when you have not seen it before. Engagement counts visible on the screen (likes, shares, views in the hundreds of thousands or millions, "trending" or "viral" labels) are evidence that the content is circulating as culture; weigh them against rejecting.
    - policy: sexual content involving minors, or content whose main subject is a private individual being harassed or doxxed.
    - unreadable: the input is too small, corrupted, or garbled to read.
    When admit is false, set matched_market_id and new_market to null.
@@ -113,7 +116,7 @@ Decide three things.
 
 4. subject. When the content is a meme, trend, edit, image or event ABOUT a specific person, brand, product or public event that has its own identity beyond this content (a mugshot meme is about the person in it; a "graphics setting off / on" meme is about that product; a fan edit is about the show), name that subject. If the subject is one of the candidate markets, set subject_market_id to its id; otherwise set subject_name (canonical name) and subject_entity_type (person, brand or event). The subject is what the content is about, never the platform it appears on and never the meme format itself. Leave all three null when the market IS the subject (a person's own post, a brand's own product page, a public figure's photo with no meme on top) or when there is no single subject.
 
-Also fill in: description (one sentence, what the content is and why it is circulating), ocr_text (all readable text in the image, verbatim, or the submitted text; empty string if none), platforms_detected (platform names visible or implied, such as X, TikTok, Instagram, Reddit, YouTube), sentiment, and confidence in your admit/match/new decision (high, medium, low). Use low when the subject is ambiguous or you are unsure whether it is a known thing.`;
+Also fill in: tentative_name (the most specific name this content might go by, taken from a caption, hashtag, title or label, whether or not you admit it; null only when there is no phrase at all), description (one sentence, what the content is and why it is circulating), ocr_text (all readable text in the image, verbatim, or the submitted text; empty string if none), platforms_detected (platform names visible or implied, such as X, TikTok, Instagram, Reddit, YouTube), sentiment, and confidence in your admit/match/new decision (high, medium, low). Use low when the subject is ambiguous or you are unsure whether it is a known thing.`;
 
 function buildUserText(input: AnalyzeSubmissionInput): string {
   const lines: string[] = [];
@@ -153,6 +156,7 @@ function unreadable(model: string, latencyMs: number, text = ''): SubmissionAnal
     subject_market_id: null,
     subject_name: null,
     subject_entity_type: null,
+    tentative_name: null,
     description: '',
     ocr_text: text,
     platforms_detected: [],
