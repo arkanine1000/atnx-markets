@@ -45,7 +45,7 @@ Known limits: Google/X sign-in on the subdomain redirects to the main site, so t
 - Env vars: see `atnx-web/.env.local.example` plus `CRON_SECRET`, `BM_KEEPER_PRIVATE_KEY`, `NEXT_PUBLIC_BM_DEFAULT_CHAIN`, `BM_SEED_USDG`, `BM_TOUCH_PRINTS`, `BM_MAX_VI_AGE_MIN`, `BM_AUTO_ROLL`.
 - Run the keeper by hand: `curl -H "Authorization: Bearer $CRON_SECRET" https://markets.atnx.app/api/bm/keeper?dry=1`.
 - Tests: `cd contracts && forge test`; `cd atnx-web && npm run test:bm`.
-- Deploy contracts: `contracts/deploy.sh robinhood_testnet` and `contracts/deploy.sh arbitrum_sepolia`; paste the printed `NEXT_PUBLIC_BM_*` lines into the Vercel env (and `atnx-web/.env.local`), then `cd atnx-web && vercel deploy --prod`.
+- Deploy contracts: `contracts/deploy.sh robinhood_testnet` and `contracts/deploy.sh arbitrum_sepolia`; paste the printed `NEXT_PUBLIC_BM_*` lines into the Vercel env (and `atnx-web/.env.local`), then push to `main`: the GitHub integration deploys production.
 - Keeper by hand, locally: `cd atnx-web && npm run bm:keeper:dry` (add `-- --live` for a real tick).
 - Open a market from the keeper: `npm run bm:open` lists candidates, `npm run bm:open -- "Name"` opens one.
 - Keeper rule of thumb: a market's cursor starts at the newest VI print when it opens; only prints made while it is open can resolve it.

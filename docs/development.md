@@ -72,14 +72,14 @@ by the web app at `/privacy`, so deploy the web app before submitting. Bump
 
 # Deployment
 
-- Hosted on **Vercel**, domain `atnx.app`.
-- `vercel.json` schedules `/api/markets/refresh` every 5 min (`*/5 * * * *`) and `/api/markets/refresh-slow` hourly.
+- Hosted on **Vercel**, project `atnx-markets`, domain `markets.atnx.app`, Root Directory `atnx-web`. The GitHub integration builds every push: a pull request gets a preview, a push to `main` deploys production. (Until 2026-10-02 the root directory was `.` and only CLI deploys from inside `atnx-web` worked; a `vercel deploy` from inside `atnx-web` now fails, so link at the repository root if a CLI deploy is ever needed.)
+- `vercel.json` schedules `/api/bm/keeper` every 5 min; the VI refresh crons stay on production ATNX, whose history this build reads.
 - `next.config.ts` is intentionally empty — all routing/CORS lives in `proxy.ts` and route handlers.
 - The extension defaults to `https://atnx.app`; no rebuild needed to switch friends between prod and local.
 
 # Known rough edges
 
-- The per-source caches and the X and TikTok daily ledgers are in-memory per instance; the ledgers re-read `vi_samples` every few minutes, so a multi-instance deployment overspends by at most that window.
+- The per-source caches and the X, TikTok and post-read daily ledgers are in-memory per instance; the ledgers re-read `vi_samples` every few minutes, so a multi-instance deployment overspends by at most that window.
 - Tests cover the VI math (`npm run test:vi`, node:test through tsx). `npm run eval:capture` is the regression check for the submission pipeline and the review step; the rest is manual.
 - Google Trends has no official API. Rate-limit hiccups surface as an unknown reading and the refresh keeps the market's last value.
 - Each free source has a hard ceiling (YouTube's 100 searches a day, Apify's plan limit, the X tweet budget); when one runs out the source goes dark until its window resets and the stored reading stands in for up to two days.
