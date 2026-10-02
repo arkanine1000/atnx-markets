@@ -236,7 +236,7 @@ export async function runGdeltJob(now = Date.now(), { marketIds, backfill = true
   const summary: GdeltJobSummary = { markets: 0, days: [], backfilled: 0, rows: 0, gbBilled: 0 };
   if (!bigqueryConfigured()) return { ...summary, skipped: 'GCP_SA_KEY_B64 not set' };
   const db = createAdminClient();
-  let q = db.from('markets').select('id, entity_name, category, aliases, vi_components').is('deleted_at', null);
+  let q = db.from('markets').select('id, entity_name, entity_type, category, aliases, vi_components').is('deleted_at', null);
   if (marketIds) q = q.in('id', marketIds);
   const { data, error } = await q;
   if (error) throw new Error(error.message);
@@ -244,7 +244,7 @@ export async function runGdeltJob(now = Date.now(), { marketIds, backfill = true
   for (const m of data ?? []) {
     if (!gdeltApplies(m.category)) continue;
     const wiki = (m.vi_components as Record<string, SourceComponent | undefined> | null)?.wikipedia?.meta;
-    if (isGenericTerm(m.entity_name, wiki)) continue;
+    if (isGenericTerm(m.entity_name, wiki, { entityType: m.entity_type })) continue;
     const phrases = gdeltPhrases(m.entity_name, (m.aliases as string[] | null) ?? []);
     if (phrases.length) markets.push({ id: m.id, name: m.entity_name, phrases });
   }

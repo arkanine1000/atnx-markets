@@ -135,7 +135,7 @@ const rows = markets.map((m) => {
     parent: m.parent_market_id, captures: capsBy[m.id] ?? { total: 0, eval: 0 },
     vi, tier: viTier(vi).label, viUpdatedAgeMin: ageMin(m.vi_last_updated),
     src, aliases, searchable: searchableAliases(aliases, wiki), wikiTitle: (wiki?.title as string | null | undefined) ?? null,
-    genericDropped: single && isGenericTerm(term, wiki), single,
+    genericDropped: single && isGenericTerm(term, wiki, { entityType: m.entity_type }), single,
     total: totalCount[m.id], n24: p24.length, r24: rng(p24), raw24: rng(p24, 'raw'), n7: p7.length, r7: rng(p7), raw7: rng(p7, 'raw'),
     lastChangeAgeH: lastChange ? Number(((NOW - lastChange) / H).toFixed(1)) : null,
     distinctVi7: new Set(p7.map((p) => p.vi.toFixed(2))).size,

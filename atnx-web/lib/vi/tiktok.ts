@@ -12,9 +12,10 @@
 // daily axis (see tiktokReading: a trend with a spike gate, because the
 // vendor's totals jitter), and the momentum is that rate against the
 // prior day's trend. Sampled every three hours
-// (the stored reading is returned unchanged until then). Views are
-// recorded but not scored: TikTok stopped showing hashtag views in 2024
-// and the vendor's figure is of uncertain origin.
+// (the stored reading is returned unchanged until then). The vendor's
+// view totals are differenced the same way and are what the composite
+// scores (views a day gained under the tag, lib/vi/score.ts
+// sourceReading); the video rate is the level and the momentum.
 //
 // $0.0005 per hashtag plus compute. Bounded by the rows-per-run cap, a
 // daily hashtag budget from the samples ledger, and a pause after a
@@ -52,8 +53,12 @@ const DISCOVERY_TTL_MS = 7 * 24 * 3600 * 1000;
 // within hours, and each check sends four tags that do not exist.
 const NO_HASHTAG_TTL_MS = 24 * 3600 * 1000;
 const MAX_CANDIDATES = 4;
-// A hashtag with fewer videos than this is not where the market lives.
+// A hashtag with fewer videos than this is not where the market lives,
+// unless its views say otherwise: a meme that is a few videos with
+// millions of views (Nosfercatu, 2026-10-02: 9 videos, 9.2M views) lives
+// under its tag all the same, and views are what the composite scores.
 const MIN_VIDEOS = 100;
+const MIN_VIEWS = 100_000;
 const DEFAULT_DAILY_BUDGET = 400;
 const PAUSE_MS = 30 * 60 * 1000;
 const SAMPLE_KEEP_MS = 3 * 24 * 3600 * 1000;
@@ -133,25 +138,37 @@ export function hashtagCandidates(term: string, aliases: string[] = []): string[
   return out.slice(0, MAX_CANDIDATES);
 }
 
-// A name's own tag with this many videos is the market's over a bigger
-// but broader alias tag ("elonmusk" over "elon")...
+// A name's own tag with this many videos (or views) is the market's over
+// a bigger but broader alias tag ("elonmusk" over "elon")...
 const OWN_TAG_MIN_VIDEOS = 10 * MIN_VIDEOS;
+const OWN_TAG_MIN_VIEWS = 10 * MIN_VIEWS;
 // ...unless an alias tag is this many times bigger: then the alias is
 // what people actually post under ("gta6" at millions against
 // "grandtheftautovi" at 17k).
 const ALIAS_OVER_OWN = 20;
 
+// Whether a tag is somewhere a market can live: enough videos, or enough
+// views for the few videos it has. Pure.
+export function tagQualifies(s: HashtagStats): boolean {
+  return s.video_count >= MIN_VIDEOS || (s.view_count ?? 0) >= MIN_VIEWS;
+}
+
 // The hashtag the market lives under, from a batch of counts: the name's
-// own tag when it is established and no alias tag dwarfs it, otherwise
-// the candidate with the most videos, if it has enough. Pure.
+// own tag when it is established (by videos or by views) and no alias tag
+// dwarfs it, otherwise the qualifying candidate with the most videos, and
+// among tags that qualify on views alone, the one with the most views.
+// Video counts rank first because the vendor's view totals jitter
+// between reads while the video counts never do. Pure.
 export function pickHashtag(candidates: string[], counts: Map<string, HashtagStats>): HashtagStats | null {
   const own = candidates[0] ? counts.get(candidates[0].toLowerCase()) : undefined;
   let best: HashtagStats | null = null;
   for (const c of candidates) {
     const s = counts.get(c.toLowerCase());
-    if (s && s.video_count >= MIN_VIDEOS && (!best || s.video_count > best.video_count)) best = s;
+    if (!s || !tagQualifies(s)) continue;
+    if (!best || s.video_count > best.video_count || (s.video_count === best.video_count && (s.view_count ?? 0) > (best.view_count ?? 0))) best = s;
   }
-  if (own && own.video_count >= OWN_TAG_MIN_VIDEOS && (!best || best.video_count < ALIAS_OVER_OWN * own.video_count)) return own;
+  const ownEstablished = !!own && (own.video_count >= OWN_TAG_MIN_VIDEOS || (own.view_count ?? 0) >= OWN_TAG_MIN_VIEWS);
+  if (own && ownEstablished && (!best || best.video_count < ALIAS_OVER_OWN * own.video_count)) return own;
   return best;
 }
 
@@ -451,7 +468,7 @@ export async function fetchTiktokSignal(req: TiktokRequest): Promise<SourceCompo
   const discoveredAt = discovering ? new Date(now).toISOString() : ((stored?.meta?.discovered_at as string | null) ?? new Date(now).toISOString());
 
   if (!stats) {
-    // No hashtag with enough videos under any name: unknown, not zero
+    // No hashtag with enough videos or views under any name: unknown, not zero
     // (a hashtag is not the phrase), asked again after a day.
     if (marketId) await writeSample(marketId, 'tiktok', 0, { hashtag: null, queried, view_count: null });
     return { ...empty, meta: { hashtag: null, discovered_at: discoveredAt, queried } };

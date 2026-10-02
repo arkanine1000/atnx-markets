@@ -248,16 +248,31 @@ export function median(xs: number[]): number {
 // "Meta Platforms" for a brand, or a coined name that redirects into a
 // broader article), 0 when it is not (a disambiguation page, a common
 // word's article). Older readings only have the title, compared by name.
+//
+// A meme (entityType 'meme') whose one-word name Wikipedia searched and
+// found nothing under at all is a coined word, not a common one: every
+// everyday word has an article or a redirect, a portmanteau the model
+// admitted as a meme ("Nosfercatu") does not, and nothing but the meme
+// matches it on search and social. Memes only: a one-word trend
+// ("Whimsy", no article, an everyday word) is the accident the guard is
+// for. A reading that found a namesake (a title under own 0) still says
+// the word means something else, and no reading at all still says
+// nothing is known.
 export function isGenericTerm(
   term: string,
-  wiki: { title?: string | number | null; own?: string | number | null } | null | undefined
+  wiki: { title?: string | number | null; own?: string | number | null; from?: string | number | null } | null | undefined,
+  { entityType }: { entityType?: string | null } = {}
 ): boolean {
   const tokens = term.trim().split(/\s+/).filter(Boolean);
   if (tokens.length >= 2) return false;
   // Function words have Wikipedia articles too ("The"), so an article match
   // is not enough on its own.
   if (tokens.length === 0 || FUNCTION_WORDS.has(tokens[0].toLowerCase())) return true;
-  if (wiki?.own !== undefined && wiki.own !== null) return Number(wiki.own) !== 1;
+  if (wiki?.own !== undefined && wiki.own !== null) {
+    if (Number(wiki.own) === 1) return false;
+    const searchedAndFoundNothing = !wiki.title && (wiki.from === undefined || wiki.from === 'term');
+    return !(entityType === 'meme' && searchedAndFoundNothing);
+  }
   const title = typeof wiki?.title === 'string' ? wiki.title : null;
   if (!title) return true;
   return title.trim().toLowerCase() !== term.trim().toLowerCase();
