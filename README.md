@@ -56,6 +56,7 @@ atnx/
 | [docs/architecture.md](docs/architecture.md) | The pipeline at a glance and the tech stack |
 | [docs/web-app.md](docs/web-app.md) | Routes, API, key libraries, React context and components, the auth flow |
 | [docs/virality-index.md](docs/virality-index.md) | The VI: sources, cadences, a new market's first day, records, Jev, tuning |
+| [docs/vi-sources.md](docs/vi-sources.md) | Every source the VI reads, by role and cost, and the aggregators worth adding next |
 | [docs/database.md](docs/database.md) | Supabase tables, RPCs, storage |
 | [docs/extension.md](docs/extension.md) | The Chrome extension's moving parts, permissions and config |
 | [docs/development.md](docs/development.md) | Local setup, env vars, checking the pipeline, seeding, extension dev and release, deployment, known rough edges |
