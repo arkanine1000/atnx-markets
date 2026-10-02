@@ -5,9 +5,10 @@ import { validateChoice } from '@/lib/review';
 import { createClient } from '@/lib/supabase/server';
 import { corsHeaders, corsPreflight } from '@/lib/cors';
 
-// Second half of the review step. JSON body: { draftId, choice }, where
-// choice is one of the options the draft offered (lib/review.ts
-// validateChoice). Persists the capture and, when chosen, the market; the
+// Second half of the review step. JSON body: { draftId, choice, postUrl? },
+// where choice is one of the options the draft offered (lib/review.ts
+// validateChoice) and postUrl is the reviewer's link to the post for a
+// screenshot that came without one (lib/vi/post.ts verifyPostLink). Persists the capture and, when chosen, the market; the
 // VI scoring runs after the response.
 // 300: the response returns first; a new market's full scoring pass runs
 // after it (lib/capture.ts scoreNewMarket).
@@ -23,7 +24,7 @@ export async function POST(request: Request) {
     return Response.json({ success: false, error: 'Not signed in' }, { status: 401, headers });
   }
 
-  let body: { draftId?: unknown; choice?: unknown };
+  let body: { draftId?: unknown; choice?: unknown; postUrl?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -36,7 +37,8 @@ export async function POST(request: Request) {
   try {
     const draft = await loadDraft(body.draftId, user.id);
     const choice = validateChoice(draft, body.choice);
-    const result = await commitDraft(draft, { supabase, userId: user.id, choice, persisted: true });
+    const postUrl = typeof body.postUrl === 'string' ? body.postUrl.slice(0, 500) : null;
+    const result = await commitDraft(draft, { supabase, userId: user.id, choice, persisted: true, postUrl });
     if (result.background) after(result.background);
     return Response.json(successBody(result), { headers });
   } catch (err) {

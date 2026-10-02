@@ -11,6 +11,7 @@ import {
 import { embedText, marketEmbeddingText, toPgVector } from './embed';
 import { retrieveCandidates, type RetrievalResult, type ScoredCandidate } from './retrieve';
 import { corroborationTerm, gatherEvidence, secondLookEnabled } from './corroborate';
+import { verifyPostLink } from './vi/post';
 import {
   LINK_COSINE,
   LINK_TRIGRAM,
@@ -620,7 +621,10 @@ export interface CommitOptions {
   persisted: boolean;
   // One-shot path: a low-confidence create gets one model retry with a
   // wider candidate list. With a reviewer, the reviewer is the retry.
-  lowConfidenceRetry?: boolean;
+  lowConfidenceRetry?: boolean;  // A link to the post the screenshot shows, added at review when the
+  // capture came without one (lib/vi/post.ts verifyPostLink). Becomes the
+  // capture's source URL, so the post's own views count toward the score.
+  postUrl?: string | null;
 }
 
 export async function commitDraft(
@@ -630,6 +634,21 @@ export async function commitDraft(
   const { choice } = opts;
   const s = draft.submission;
   const strongId = draft.choices.strongMatchId;
+
+  // The reviewer's link to the post, for a screenshot that came without
+  // one: checked against the platform, then it is the capture's source.
+  let postLink: Record<string, string | boolean> = {};
+  if (opts.postUrl && opts.postUrl.trim()) {
+    if (draft.sourceUrl) throw new ReviewError('This submission already has a source link');
+    let verified;
+    try {
+      verified = await verifyPostLink(opts.postUrl, s.ocr_text);
+    } catch (err) {
+      throw new ReviewError((err as Error).message, 400, 'bad_post_link');
+    }
+    draft = { ...draft, sourceUrl: verified.ref.url };
+    postLink = { post_link: verified.ref.platform, ...(verified.authorMatched === null ? {} : { post_link_author_matched: verified.authorMatched }) };
+  }
 
   if (choice.kind === 'create' && strongId && (await isNewAccount(opts.userId))) {
     throw new ReviewError(
@@ -797,7 +816,7 @@ export async function commitDraft(
     throw err;
   }
 
-  await recordDecision({ ...audit, outcome, captureId: capture.id, marketId, extra: { ...extra, ...(draft.decision.jev ? { jev: draft.decision.jev } : {}) } });
+  await recordDecision({ ...audit, outcome, captureId: capture.id, marketId, extra: { ...extra, ...postLink, ...(draft.decision.jev ? { jev: draft.decision.jev } : {}) } });
   if (opts.persisted) {
     await markDraftCommitted(draft.id, capture.id, marketId);
     await removeParkedImages([draft.imagePath, draft.cropPath]);
