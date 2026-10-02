@@ -32,6 +32,25 @@ The score is total attention. Each source's raw reading is converted to YouTube-
 
 For a person or brand the go-live level is usually within a few points of where it settles. For a meme, TikTok can be half the total, so the level sits about a hundred points low for the first hour. The gap that can matter is a creator whose name nobody writes: the market reads near zero until the own channel or account is verified, automatically when the capture evidence and Wikidata agree, otherwise after the admin decides on the Handles tab.
 
+**Measured, 2026-10-02** (22 markets created since 2026-09-27 with hourly
+snapshots, 9 of them at least a day old; medians, hours after creation):
+
+| What | When |
+| --- | --- |
+| Every source that will ever answer has answered | 3.3 h over the nine day-old markets; 1.4 to 2.5 h for markets created after the early TikTok read and the captured-post source shipped (TikTok's second read at ~1.4 h, the post pair at ~2.5 h) |
+| YouTube momentum | 4 h |
+| X momentum | 12.5 h (four three-hourly reads) |
+| TikTok momentum | 33 h (twelve hours against the same hours a day earlier) |
+| Raw score within 10 % of its day-one value, and staying there | 17 h |
+
+The go-live score sat a median 44 points under the day-one score, lower
+on six of the nine markets and higher on one: the sources that land later
+add attention, and the level is a log of the sum. The three outliers
+where X answered 15 to 25 hours in all fall at 16:00 to 17:00 UTC on
+2026-10-02, when the twitterapi.io credit was topped up after running
+out, not a property of the pipeline. Re-measure with `vi_component_history`
+once a week of post-source markets exists.
+
 **Records.** `vi_history` keeps the smoothed and raw score per write, `vi_samples` the per-source raw series the momentum needs (YouTube view totals, X and TikTok reads, own-account reads, the Jev shadow rows), `vi_component_history` a snapshot of each market's breakdown per hourly pass for sixty days, so a calibration can be refitted on any past hour.
 
 **Jev.** TypeSafe AI's Jev answers typed yes/no questions on the gateway with a probability. Since 2026-09-29 it filters X posts for the score (`JEV_TWEETS=on`): only posts it keeps at `JEV_TWEET_KEEP_AT` (default 0.4) count toward the rate and views, a capped read's rate scales by the kept share, and a filtered read compares itself only with filtered samples for the day's median and the momentum baseline. Media-only posts are not judged and stay in; a failed call keeps every post. The threshold came from an adjudication of the shadow data by a stronger model (`npm run jev:adjudicate`): at 0.4 no post about the subject was dropped on 294 live posts. On YouTube titles Jev lost to Gemini (right on 25 % of their disagreements), so `JEV_TITLES` is off in production and Gemini stays the title judge. The admission gate (`JEV_GATE`) stays in shadow: too few creations a day to judge. Each flag is `off | shadow | on`.
