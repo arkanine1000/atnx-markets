@@ -1,6 +1,7 @@
 import { generateText, NoObjectGeneratedError, Output, type LanguageModel } from 'ai';
 import { z } from 'zod';
 import { CATEGORIES } from './categories';
+import type { Corroboration } from './corroborate';
 
 // Provider-neutral analysis of one submission (image, text, or both) through
 // the Vercel AI Gateway. Replaces lib/claude-vision.ts. The output is
@@ -87,6 +88,9 @@ function buildSchema(candidateIds: string[]) {
 export type SubmissionAnalysis = z.infer<ReturnType<typeof buildSchema>> & {
   model: string;
   latencyMs: number;
+  // Set by the capture pipeline when a rejection got a second look with
+  // outside evidence (lib/corroborate.ts); recorded with the decision.
+  corroboration?: Corroboration | null;
 };
 
 export interface AnalyzeSubmissionInput {
@@ -96,6 +100,9 @@ export interface AnalyzeSubmissionInput {
   sourceUrl?: string;
   pageTitle?: string;
   candidates: CandidateMarket[];
+  // Lines of outside evidence about the content's name, from the second
+  // look at a rejection (lib/corroborate.ts). Shown before the request.
+  evidence?: string[];
   // Test seam: pass a mock model instead of the gateway string.
   model?: LanguageModel;
 }
@@ -137,6 +144,15 @@ function buildUserText(input: AnalyzeSubmissionInput): string {
     }
   } else {
     lines.push('Candidate markets: none.');
+  }
+  if (input.evidence?.length) {
+    lines.push(
+      'A first look at this submission rejected it as not cultural content. Since then the name it might go by was checked against outside sources, which found:'
+    );
+    for (const e of input.evidence) lines.push(`- ${e}`);
+    lines.push(
+      'Decide again with this evidence. A phrase that outside sources know as a meme, trend or subject is cultural content: admit it under that name. The sources knowing a common word or category ("cats", "football") says nothing about this content; the generic-phrase rule still applies. Evidence that says nothing (no entry, no videos, below resolution) is not a reason to admit.'
+    );
   }
   lines.push(
     input.imageBase64

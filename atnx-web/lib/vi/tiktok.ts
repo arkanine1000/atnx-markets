@@ -393,6 +393,36 @@ async function callActor(hashtags: string[], timeoutS: number, out: Map<string, 
   return true;
 }
 
+// One direct actor run for a phrase's hashtags, for the second look at a
+// rejected submission (lib/corroborate.ts): the tag with the most videos
+// among the first SECOND_LOOK_TAGS candidates, or null when the source is
+// off or paused, the day's budget is spent, the cap is reached, or the
+// run failed. Measured at about 3 s a tag. The spend is counted in this
+// process only (vi_samples rows need a market); SECOND_LOOK_CAP bounds it.
+const SECOND_LOOK_TAGS = 2;
+const SECOND_LOOK_TIMEOUT_S = 20;
+const SECOND_LOOK_CAP = 40;
+let secondLookTags = 0;
+export async function countHashtags(term: string): Promise<HashtagStats | null> {
+  if (!tiktokConfigured() || Date.now() < pausedUntil) return null;
+  const tags = hashtagCandidates(term).slice(0, SECOND_LOOK_TAGS);
+  if (tags.length === 0 || secondLookTags + tags.length > SECOND_LOOK_CAP) return null;
+  const budget = tiktokDailyBudget();
+  const spent = await dailyLedger('tiktok', 'queried');
+  if (budget - spent - secondLookTags < tags.length) return null;
+  secondLookTags += tags.length;
+  const out = new Map<string, HashtagStats>();
+  try {
+    if (!(await callActor(tags, SECOND_LOOK_TIMEOUT_S, out))) return null;
+  } catch (err) {
+    console.error(`[tiktok] second-look run failed: ${(err as Error).message}`);
+    return null;
+  }
+  let best: HashtagStats | null = null;
+  for (const st of out.values()) if (!best || st.video_count > best.video_count) best = st;
+  return best;
+}
+
 // On a re-discovery, a market whose current hashtag got no row this pass
 // keeps it rather than being re-mapped on partial counts; it asks again
 // next pass. Pure.

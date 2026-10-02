@@ -176,6 +176,30 @@ async function viewCounts(ids: string[]): Promise<{ id: string; views: number; p
   }));
 }
 
+// A one-off search for a phrase, for the second look at a rejected
+// submission (lib/corroborate.ts): the week's most-viewed videos naming
+// it and their views. Spends the re-discovery budget, counted in this
+// process only (vi_samples rows need a market, so the day's ledger does
+// not see these), and at most SECOND_LOOK_CAP a process. Null when the
+// source is off, the budget is spent, or the search failed.
+const SECOND_LOOK_CAP = 20;
+let secondLooks = 0;
+export async function searchPhrase(term: string): Promise<{ videos: number; views: number; titles: string[] } | null> {
+  if (!youtubeConfigured() || term.trim().length < 2) return null;
+  if (secondLooks >= SECOND_LOOK_CAP || (await searchesLeft(false)) <= 0) return null;
+  secondLooks++;
+  searchedThisProcess++;
+  const ids = await discover(term, []);
+  if (!ids) return null;
+  const videos = await viewCounts(ids);
+  if (!videos) return null;
+  return {
+    videos: videos.length,
+    views: videos.reduce((a, v) => a + v.views, 0),
+    titles: videos.slice(0, 3).map((v) => v.title),
+  };
+}
+
 export interface YoutubeRequest {
   term: string;
   aliases?: string[];

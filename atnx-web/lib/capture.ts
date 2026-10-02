@@ -10,6 +10,7 @@ import {
 } from './vlm';
 import { embedText, marketEmbeddingText, toPgVector } from './embed';
 import { retrieveCandidates, type RetrievalResult, type ScoredCandidate } from './retrieve';
+import { corroborationTerm, gatherEvidence, secondLookEnabled } from './corroborate';
 import {
   LINK_COSINE,
   LINK_TRIGRAM,
@@ -305,7 +306,7 @@ async function analyseAndRoute(opts: {
     }
   }
 
-  const submission = await analyzeSubmission({
+  let submission = await analyzeSubmission({
     imageBase64: opts.imageBase64,
     mediaType: opts.mediaType,
     text: modelText,
@@ -313,6 +314,48 @@ async function analyseAndRoute(opts: {
     pageTitle: opts.pageTitle,
     candidates,
   });
+
+  // The second look (lib/corroborate.ts): a not_cultural_content reject
+  // whose tentative name outside sources know is put to the model again,
+  // with the evidence and with the markets nearest that name, which an
+  // image-only capture never had in the first call. Nothing found, no
+  // second call. Measured budget: the lookups run together under one
+  // deadline, then one more model call; only paid on such rejections.
+  const term = secondLookEnabled() ? corroborationTerm(submission) : null;
+  if (term) {
+    const started = performance.now();
+    const first = { reject_reason: submission.reject_reason, confidence: submission.confidence, tentative_name: submission.tentative_name };
+    const { evidence, timed_out } = await gatherEvidence(term);
+    let flipped = false;
+    if (evidence.length > 0) {
+      let secondCandidates = candidates;
+      try {
+        const q = await embedText([term, submission.description].filter(Boolean).join('\n'), { purpose: 'query' });
+        const found = await retrieveCandidates({ embedding: q, limit: 10 });
+        secondCandidates = found.candidates.map(({ id, name, entityType }) => ({ id, name, entityType }));
+        if (secondCandidates.length) preRetrieval = found;
+      } catch (err) {
+        console.warn('[capture] second-look retrieval failed', (err as Error).message);
+      }
+      const second = await analyzeSubmission({
+        imageBase64: opts.imageBase64,
+        mediaType: opts.mediaType,
+        text: modelText,
+        sourceUrl: opts.sourceUrl,
+        pageTitle: opts.pageTitle,
+        candidates: secondCandidates,
+        evidence: evidence.map((e) => e.line),
+      });
+      flipped = second.admit;
+      submission = second;
+      candidates = secondCandidates;
+    }
+    submission = {
+      ...submission,
+      corroboration: { term, evidence, timed_out, latency_ms: Math.round(performance.now() - started), flipped, first_pass: first },
+    };
+    console.log(`[capture] second look "${term}": ${evidence.length} evidence (${evidence.map((e) => e.source).join(', ') || 'none'}), ${flipped ? 'admitted' : 'rejection stands'}`);
+  }
 
   // Post-model retrieval on the name the model proposed, so a duplicate of
   // an existing market is linked instead of created.
