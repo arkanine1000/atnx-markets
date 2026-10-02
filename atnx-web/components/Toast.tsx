@@ -19,8 +19,10 @@ export function DemoToast({ message, detail, type, onDismiss }: ToastProps) {
   const bad = type === "short" || type === "down" || type === "close-loss";
   const accent = bad ? "#FF00E5" : "#00D4FF";
 
+  // Bottom right, clear of the navbar. Below lg the trade dock is up:
+  // on phones it sits on the tab bar (4rem + 3.5rem), from sm on the edge.
   return (
-    <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 animate-slide-in">
+    <div className="fixed right-4 sm:right-6 bottom-[calc(8rem+env(safe-area-inset-bottom))] sm:bottom-[calc(4.5rem+env(safe-area-inset-bottom))] lg:bottom-6 max-w-[calc(100%-2rem)] z-50 animate-slide-in">
       <div
         className="bg-elevated pl-4 pr-5 py-3 rounded-xl shadow-2xl flex items-center gap-3 border border-surface"
         style={{
@@ -34,7 +36,7 @@ export function DemoToast({ message, detail, type, onDismiss }: ToastProps) {
           {type === "close-loss" ? "↓" : "✓"}
         </span>
         <div>
-          <div className="text-sm font-bold text-primary whitespace-nowrap">
+          <div className="text-sm font-bold text-primary sm:whitespace-nowrap">
             {message}
           </div>
           {detail && <div className="text-xs text-secondary">{detail}</div>}
