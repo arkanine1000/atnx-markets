@@ -77,8 +77,8 @@ export default function PrivacyPage() {
           <li>
             Market names are looked up against public and third-party sources
             (such as Google Trends, Wikipedia, YouTube, Bluesky, Hacker News,
-            GDELT, and X and TikTok through data providers) to compute the
-            Virality Index. Only the market name is sent; your identity is not.
+            GDELT, and X, TikTok and Instagram through data providers) to compute the
+            Virality Index. Only the market name is sent, and, for a market captured from a public post, the public address of that post; your identity is not.
           </li>
         </ul>
       </Section>

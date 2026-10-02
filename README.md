@@ -9,7 +9,7 @@ Ctrl+Shift+X → drag a selection → the model identifies it → you review: ad
                 → VI updates every 5 min → trade long / short on it
 ```
 
-Three ways in, one pipeline: the extension, the web form at `/app/submit` (screenshot, link, or text), and the Android share sheet. Every one of them stops at a review step before anything lands: the model's proposal, the existing markets it could belong to, and the choices the submitter may make, all bounded (no free text). A repeat of something captured before is answered outright.
+Three ways in, one pipeline: the extension, the web form at `/app/submit` (screenshot, link, or text), and the Android share sheet. Every one of them stops at a review step before anything lands: the model's proposal, the existing markets it could belong to, and the choices the submitter may make, all bounded (no free text, beyond an optional link to the post that is checked against the platform). A repeat of something captured before is answered outright.
 
 ---
 

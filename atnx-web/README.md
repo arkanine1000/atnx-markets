@@ -48,7 +48,7 @@ The app no longer reads them, apart from the sign-in callback creating a
 | `013_purge_market.sql` | `admin_purge_market()`: permanent deletion of a soft-deleted market from the admin dashboard (the Purge button on deleted rows). Removes the market, its captures and VI history and returns the image URLs so the server action can delete the files; refuses a live market or one with trades on record, since positions and fees cascade. |
 | `014_handles_fixed.sql` | Handles are fixed: one trigger guards both `role` and `handle` on `user_profiles` (replaces the 006 role guard), so a self-edit of the handle is refused at the table; the settings page shows it read-only. Admins may still change one from the SQL editor. |
 | `015_waitlist.sql` | `waitlist`: the landing page's signups, one row per lowercased address, written by the server from `/api/waitlist`, read by admins. |
-| `016_vi_samples.sql` | `vi_samples`: per-source raw readings over time (YouTube view totals hourly; later the X and TikTok series), from which `lib/vi/youtube.ts` derives momentum between samples of the same video set. Service-role only. **The YouTube source writes to it on every hourly run and requires this migration; without it the source still reports a level but never a momentum.** |
+| `016_vi_samples.sql` | `vi_samples`: per-source raw readings over time (YouTube view totals hourly; later the X and TikTok series and the captured posts' reads), from which `lib/vi/youtube.ts` derives momentum between samples of the same video set. Service-role only. **The YouTube source writes to it on every hourly run and requires this migration; without it the source still reports a level but never a momentum.** |
 | `017_market_handles.sql` | `market_handles`: a creator market's own platform accounts, one row per platform, resolved automatically (`lib/creators/resolve.ts`, `store.ts`); only `verified` rows feed the creator-reach reading (`lib/creators/channel.ts`). Admins read it and decide review candidates on the dashboard's Handles tab. **Applied 2026-09-25.** |
 | `018_vi_state.sql` | `markets.vi_state` (`scoring` / `live`) and `vi_scoring_since`: a new market is `scoring` until its first full pass over every source (right after the commit, else the next slow refresh, at most two hours), shown as "Scoring…" with no trading; a trigger on `positions` refuses an open on a scoring market. Existing rows are `live`. **`lib/store.ts` selects the column, so apply this before deploying code that reads it.** |
 | `020_vi_component_history.sql` | `vi_component_history`: one snapshot per market per hourly run of the per-source breakdown, raw and smoothed score, pruned after sixty days, so a calibration can be refitted on any past hour (`npm run vi:calibrate`, `vi:compare`). The writer tolerates a missing table. **Applied 2026-09-27.** |
@@ -132,14 +132,15 @@ against a running app.
    markets by name.
 5. Route (`lib/route.ts`): rejected, matched, linked, created, or created
    with a review flag when the model's confidence was low. Rejections are
-   final and skip review; everything else becomes a draft here. On commit
+   final, after the second look of step 3, and skip review; everything else becomes a draft here. On commit
    the decision is written to `submission_decisions` (an override of a
    strong match lands as `created_review` with the overridden market in
    `model_response`), the capture is saved and the response goes out with
    `viPending: true`.
 6. After the response (`after()` from `next/server`): on the one-shot path a
    low-confidence create gets one retry with a wider candidate list, then the market is
-   scored from every VI source (`lib/signals.ts`) and one `vi_history`
+   scored from every VI source (`lib/signals.ts`), the captured post's own
+   views included (`lib/vi/post.ts`), and one `vi_history`
    point is recorded. If this is cut off, the five-minute refresh scores
    the market on its next pass.
 
@@ -179,8 +180,8 @@ ignores for Gemini 3.x (measured: 18 s and truncated JSON versus 2.6 s).
 - `app/` routes. `app/app/` is the signed-in product; `app/app/submit/` is
   the web entry form; `app/admin/` is the moderation dashboard.
 - `lib/` server code. `capture.ts`, `capture-request.ts`, `vlm.ts`,
-  `embed.ts`, `retrieve.ts`, `route.ts`, `review.ts`, `store.ts` are the
-  submission path; `signals.ts` and `vi/` compute the virality index;
+  `corroborate.ts`, `naming.ts`, `embed.ts`, `retrieve.ts`, `route.ts`,
+  `review.ts`, `store.ts` are the submission path; `signals.ts` and `vi/` compute the virality index;
   `thumbnails.ts` curates images and descriptions; `waitlist.ts` takes the
   landing page's signups.
 - `components/` shared UI. `supabase/` schema. `scripts/` eval and seeding.

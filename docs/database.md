@@ -7,7 +7,7 @@
 | `submission_drafts` | The review step: one row per proposed submission with the analysis, candidates, routing decision, nudge and the bounded choices; the parked image path; status pending / committed / expired. Server-only. |
 | `submission_decisions` | Audit: one row per committed or rejected submission with outcome, market, candidates shown, similarity scores, model confidence, reject reason, latency and the full model response. Admin-readable. |
 | `vi_history` | Append-only time series of `(market_id, vi, raw_vi, recorded_at)` powering the sparklines. |
-| `vi_samples` | Per-source raw readings over time (`market_id, source, sampled_at, value, meta`): YouTube view totals, X and TikTok reads, own-account reads, the Jev shadow rows. Momentum for those sources is derived from it. Service-role only. |
+| `vi_samples` | Per-source raw readings over time (`market_id, source, sampled_at, value, meta`): YouTube view totals, X and TikTok reads, the captured posts' reads, own-account reads, the Jev shadow rows. Momentum for those sources is derived from it. Service-role only. |
 | `vi_component_history` | One snapshot of a market's breakdown, raw and smoothed score per hourly pass, kept sixty days, for refits and replays. |
 | `market_handles` | A market's own platform accounts, one row per platform, with how they were found and whether they are verified; only verified rows feed the score. |
 | `blocked_terms` | Names that may not become markets again, filled when an admin retires a market; the capture pipeline rejects a matching proposal. |
