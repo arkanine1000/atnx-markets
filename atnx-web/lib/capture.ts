@@ -12,6 +12,7 @@ import { embedText, marketEmbeddingText, toPgVector } from './embed';
 import { retrieveCandidates, type RetrievalResult, type ScoredCandidate } from './retrieve';
 import { corroborationTerm, gatherEvidence, secondLookEnabled } from './corroborate';
 import { verifyPostLink } from './vi/post';
+import { wikipediaNameAlternates } from './naming';
 import {
   LINK_COSINE,
   LINK_TRIGRAM,
@@ -481,13 +482,19 @@ async function reviewFor(
     ids.push(stage.decision.marketId);
   }
   if (subject.existing) ids.push(subject.existing.id);
-  const details = await marketDetails(ids);
+  const nm = stage.submission.new_market;
+  const [details, nameAlternates] = await Promise.all([
+    marketDetails(ids),
+    // A one-word alias Wikipedia knows as the real name (lib/naming.ts).
+    nm ? wikipediaNameAlternates(nm.name, nm.aliases) : Promise.resolve([]),
+  ]);
   const { nudge, choices } = buildReview({
     submission: stage.submission,
     decision: stage.decision,
     candidates,
     details,
     subject,
+    nameAlternates,
   });
   return { candidates, nudge, choices };
 }
