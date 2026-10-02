@@ -106,7 +106,20 @@ against a running app.
    with other well-known things is named with a qualifier, "Cars (2006
    film)", "Wednesday (TV series)", with the bare name among the aliases;
    the sources then search the aliases and Trends its topic, never the
-   bare word.
+   bare word. The model also names what the content might go by
+   (`tentative_name`) whether or not it admits it.
+   A rejection as not cultural content gets a second look
+   (`lib/corroborate.ts`): the tentative name, unless it is a generic
+   phrase, is checked against Know Your Meme, Wikipedia, YouTube (the
+   week's videos naming it, and their views), TikTok (the hashtag's
+   videos and views, one actor run), Bluesky (posts in the last day) and
+   Google Trends, together under one deadline. Anything found goes back to the model with the
+   image as evidence, along with the markets nearest that name, which an
+   image-only capture never had in the first call. Nothing found, the
+   rejection stands with no second call. Either way the evidence and the
+   first verdict are recorded with the decision
+   (`model_response.corroboration`). `ADMISSION_SECOND_LOOK=off` turns it
+   off.
 4. If the model proposed a new market, embed its name and description and
    check again, name and aliases against names and aliases. A close enough
    neighbour is linked instead of created. In the band below that, the
