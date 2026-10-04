@@ -106,6 +106,41 @@ function applies(name: SourceName, r: ScoreRequest): boolean {
   return APPLIES[name]?.(r) ?? true;
 }
 
+// Whether a source is asked for a market of this category and type, for
+// readers outside the dispatcher (the admin's explainer).
+export function sourceApplies(name: SourceName, m: { category?: string | null; entityType?: string | null }): boolean {
+  return APPLIES[name]?.({ term: '', category: m.category ?? null, entityType: m.entityType ?? null } as ScoreRequest) ?? true;
+}
+
+// The stored breakdown as it is scored. Two readings are not taken at face
+// value: an internet-native meme's "no Wikipedia article" is structural,
+// not a lack of attention, so it scores as unknown instead of pulling the
+// total down (decided 2026-09-25); and a verified own YouTube channel
+// scores the YouTube slot when its Shorts-discounted week beats the name
+// search (lib/creators/channel.ts effectiveYoutube). The dispatcher applies
+// the first here and the second with a ramp in scoreTerms; the explainer
+// applies both to see what the stored readings compute to.
+export function scoringComponents(
+  components: Components,
+  { category, creator = false }: { category?: string | null; creator?: boolean }
+): { components: Components; notes: string[] } {
+  const scoring: Components = { ...components };
+  const notes: string[] = [];
+  const wiki = components.wikipedia;
+  if (category === 'memes' && wiki && wiki.level === 0 && !wiki.meta?.title) {
+    scoring.wikipedia = { ...wiki, level: null };
+    notes.push('Wikipedia has no article for this meme; that reads as unknown rather than zero.');
+  }
+  if (creator) {
+    const yt = effectiveYoutube(components.youtube);
+    if (yt.channel && yt.component) {
+      scoring.youtube = yt.component;
+      notes.push('The verified YouTube channel scores the YouTube slot: its Shorts-discounted week beats the name search.');
+    }
+  }
+  return { components: scoring, notes };
+}
+
 // The verified accounts a market is scored with, from market_handles.
 export function creatorOf(youtube?: CreatorHandle | null, x?: XHandle | null): ScoreRequest['creator'] {
   if (!youtube && !x) return null;
@@ -322,11 +357,7 @@ export async function scoreTerms(
       // does). The stored reading keeps its 0 and its `own` verdict, which
       // the generic-term guard reads. Decided 2026-09-25, pre-launch;
       // revisit with more meme data.
-      const scoring: Components = { ...components };
-      const wiki = components.wikipedia;
-      if (request.category === 'memes' && wiki && wiki.level === 0 && !wiki.meta?.title) {
-        scoring.wikipedia = { ...wiki, level: null };
-      }
+      const { components: scoring } = scoringComponents(components, { category: request.category });
 
       let { composite, score } = rampedScore(scoring, {}, now);
       // Creator reach: the channel scores the YouTube slot when its (Shorts-

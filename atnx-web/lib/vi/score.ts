@@ -62,8 +62,8 @@ export const WEIGHTS: Record<SourceName, number> = {
 export const FAST_SOURCES: SourceName[] = ['trends', 'bluesky', 'dex'];
 export const SLOW_SOURCES: SourceName[] = ['gdelt', 'wikipedia', 'youtube', 'hn', 'x', 'tiktok', 'tiktok_search', 'post'];
 
-const LEVEL_SHARE = 0.65;
-const MOMENTUM_SHARE = 0.35;
+export const LEVEL_SHARE = 0.65;
+export const MOMENTUM_SHARE = 0.35;
 export const MOMENTUM_CAP = 10;
 
 // Per-source levels and the momentum axis stay on 0-1000. The composite
