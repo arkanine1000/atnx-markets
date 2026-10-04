@@ -11,6 +11,7 @@ import { createClient } from '@supabase/supabase-js';
 import { viTier, type Components, type SourceComponent } from '../lib/vi/score';
 import { USD_PER_TWEET, USD_PER_REQUEST_MIN } from '../lib/vi/x';
 import { usdPerHashtag } from '../lib/vi/tiktok';
+import { USD_PER_POST_READ, usdPerSearchResult } from '../lib/vi/tiktok-search';
 
 (async () => {
 
@@ -58,6 +59,12 @@ const { data: ts } = await s.from('vi_samples').select('meta').eq('source', 'tik
 const tr = (ts ?? []) as { meta: Record<string, number | string | null> | null }[];
 const queried = tr.reduce((a, r) => a + Number(r.meta?.queried ?? 0), 0);
 console.log(`tiktok: ${tr.length} markets sampled, ${queried} hashtags queried, ≈ $${(queried * usdPerHashtag()).toFixed(3)}`);
+const { data: ss } = await s.from('vi_samples').select('meta').eq('source', 'tiktok_search').gte('sampled_at', since);
+const sr = (ss ?? []) as { meta: Record<string, number | string | null> | null }[];
+const searches = sr.reduce((a, r) => a + Number(r.meta?.searched ?? 0), 0);
+const results = sr.reduce((a, r) => a + Number(r.meta?.results ?? 0), 0);
+const rereads = sr.reduce((a, r) => a + Number(r.meta?.reads ?? 0), 0);
+console.log(`tiktok_search: ${searches} searches (${results} results), ${rereads} re-reads, ≈ $${(results * usdPerSearchResult() + rereads * USD_PER_POST_READ).toFixed(3)}`);
 
 console.log('\ntop and notable:');
 const notable = new Set((process.env.VI_REPORT_NOTABLE ?? 'Meta,Doge,Clavicular,Google,Skibidi Toilet,Loki Edits,Goonmobile,Logan Paul,Michael Saylor,Kirkiversary,Anthropic').split(',').map((x) => x.trim()));

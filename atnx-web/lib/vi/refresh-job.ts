@@ -4,6 +4,7 @@ import { prefetchSlowSources, scoreTerms, type ScoreRequest, type SignalResult, 
 import { recordVi } from '@/lib/store';
 import { xSpendUsd } from '@/lib/vi/x';
 import { usdPerHashtag, tiktokEarlyDue } from '@/lib/vi/tiktok';
+import { resultsPerSearch, usdPerSearchResult } from '@/lib/vi/tiktok-search';
 import type { Components } from '@/lib/vi/score';
 import { normalizeSearchTerm } from '@/lib/vi/trends';
 import { verifiedYoutubeHandles, type CreatorHandle } from '@/lib/creators/channel';
@@ -65,6 +66,8 @@ export interface RefreshSummary {
   x?: { markets: number; tweets: number; requests: number; estUsd: number };
   // Slow path: hashtags sent to the TikTok actor this run, markets read.
   tiktok?: { hashtags: number; markets: number; estUsd: number };
+  // Slow path: keyword searches started this run (lib/vi/tiktok-search.ts).
+  tiktokSearch?: { searches: number; estUsd: number };
   // Fast pass: young markets given their early second TikTok read.
   tiktokEarly?: number;
   // Slow path: markets whose captured posts were read this run (lib/vi/post.ts).
@@ -114,6 +117,7 @@ export async function refreshScores(cadence: 'fast' | 'slow', { dryRun = false, 
     summary.gdelt = { known: 0, unknown: 0 };
     summary.x = { markets: 0, tweets: 0, requests: 0, estUsd: 0 };
     summary.tiktok = { hashtags: 0, markets: 0, estUsd: 0 };
+    summary.tiktokSearch = { searches: 0, estUsd: 0 };
     summary.post = { markets: 0 };
   }
   if (markets.length === 0) return summary;
@@ -127,6 +131,7 @@ export async function refreshScores(cadence: 'fast' | 'slow', { dryRun = false, 
     const started = prefetchSlowSources(markets.map(request));
     summary.tiktok.hashtags = started.tiktokHashtags;
     summary.tiktok.estUsd = Number((started.tiktokHashtags * usdPerHashtag()).toFixed(4));
+    summary.tiktokSearch = { searches: started.tiktokSearches, estUsd: Number((started.tiktokSearches * resultsPerSearch() * usdPerSearchResult()).toFixed(4)) };
   } else if (cadence === 'fast') {
     // Young markets due their early second TikTok read (one hashtag each).
     const young = markets.filter((m) => tiktokEarlyDue(m.vi_components?.tiktok));
