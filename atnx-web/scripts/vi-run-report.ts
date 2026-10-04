@@ -12,6 +12,7 @@ import { viTier, type Components, type SourceComponent } from '../lib/vi/score';
 import { USD_PER_TWEET, USD_PER_REQUEST_MIN } from '../lib/vi/x';
 import { usdPerHashtag } from '../lib/vi/tiktok';
 import { USD_PER_POST_READ, usdPerSearchResult } from '../lib/vi/tiktok-search';
+import { usdPerRedditResult } from '../lib/vi/reddit';
 
 (async () => {
 
@@ -65,6 +66,11 @@ const searches = sr.reduce((a, r) => a + Number(r.meta?.searched ?? 0), 0);
 const results = sr.reduce((a, r) => a + Number(r.meta?.results ?? 0), 0);
 const rereads = sr.reduce((a, r) => a + Number(r.meta?.reads ?? 0), 0);
 console.log(`tiktok_search: ${searches} searches (${results} results), ${rereads} re-reads, ≈ $${(results * usdPerSearchResult() + rereads * USD_PER_POST_READ).toFixed(3)}`);
+const { data: rs } = await s.from('vi_samples').select('meta').eq('source', 'reddit').gte('sampled_at', since);
+const rr = (rs ?? []) as { meta: Record<string, number | string | null> | null }[];
+const rphrases = rr.reduce((a, r) => a + Number(r.meta?.searched ?? 0), 0);
+const rresults = rr.reduce((a, r) => a + Number(r.meta?.results ?? 0), 0);
+console.log(`reddit: ${rr.length} markets, ${rphrases} phrases, ${rresults} results, ${rr.filter((r) => Number(r.meta?.capped)).length} capped, ≈ $${(rresults * usdPerRedditResult()).toFixed(3)} plus $0.02 a run`);
 
 console.log('\ntop and notable:');
 const notable = new Set((process.env.VI_REPORT_NOTABLE ?? 'Meta,Doge,Clavicular,Google,Skibidi Toilet,Loki Edits,Goonmobile,Logan Paul,Michael Saylor,Kirkiversary,Anthropic').split(',').map((x) => x.trim()));

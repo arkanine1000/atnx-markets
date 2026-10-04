@@ -5,6 +5,7 @@ import { recordVi } from '@/lib/store';
 import { xSpendUsd } from '@/lib/vi/x';
 import { usdPerHashtag, tiktokEarlyDue } from '@/lib/vi/tiktok';
 import { resultsPerSearch, usdPerSearchResult } from '@/lib/vi/tiktok-search';
+import { USD_PER_REDDIT_RUN, resultsPerPhrase, usdPerRedditResult } from '@/lib/vi/reddit';
 import type { Components } from '@/lib/vi/score';
 import { normalizeSearchTerm } from '@/lib/vi/trends';
 import { verifiedYoutubeHandles, type CreatorHandle } from '@/lib/creators/channel';
@@ -68,6 +69,8 @@ export interface RefreshSummary {
   tiktok?: { hashtags: number; markets: number; estUsd: number };
   // Slow path: keyword searches started this run (lib/vi/tiktok-search.ts).
   tiktokSearch?: { searches: number; estUsd: number };
+  // Slow path: Reddit phrases searched this run (lib/vi/reddit.ts).
+  reddit?: { phrases: number; estUsd: number };
   // Fast pass: young markets given their early second TikTok read.
   tiktokEarly?: number;
   // Slow path: markets whose captured posts were read this run (lib/vi/post.ts).
@@ -118,6 +121,7 @@ export async function refreshScores(cadence: 'fast' | 'slow', { dryRun = false, 
     summary.x = { markets: 0, tweets: 0, requests: 0, estUsd: 0 };
     summary.tiktok = { hashtags: 0, markets: 0, estUsd: 0 };
     summary.tiktokSearch = { searches: 0, estUsd: 0 };
+    summary.reddit = { phrases: 0, estUsd: 0 };
     summary.post = { markets: 0 };
   }
   if (markets.length === 0) return summary;
@@ -132,6 +136,7 @@ export async function refreshScores(cadence: 'fast' | 'slow', { dryRun = false, 
     summary.tiktok.hashtags = started.tiktokHashtags;
     summary.tiktok.estUsd = Number((started.tiktokHashtags * usdPerHashtag()).toFixed(4));
     summary.tiktokSearch = { searches: started.tiktokSearches, estUsd: Number((started.tiktokSearches * resultsPerSearch() * usdPerSearchResult()).toFixed(4)) };
+    summary.reddit = { phrases: started.redditPhrases, estUsd: Number((started.redditPhrases ? USD_PER_REDDIT_RUN + started.redditPhrases * resultsPerPhrase() * usdPerRedditResult() : 0).toFixed(4)) };
   } else if (cadence === 'fast') {
     // Young markets due their early second TikTok read (one hashtag each).
     const young = markets.filter((m) => tiktokEarlyDue(m.vi_components?.tiktok));

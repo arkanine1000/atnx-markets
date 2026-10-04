@@ -31,7 +31,8 @@
     "bm:keeper:dry": "npx --yes tsx --env-file=.env.local scripts/bm-keeper-dry.ts",
     "bm:e2e": "npx --yes tsx --env-file=.env.local scripts/bm-e2e.ts",
     "bm:open": "npx --yes tsx --env-file=.env.local scripts/bm-open.ts",
-    "bm:sol": "npx --yes tsx scripts/bm-sol.ts"
+    "bm:sol": "npx --yes tsx scripts/bm-sol.ts",
+    "vi:source-shift": "npx --yes tsx --env-file=.env.local scripts/vi-source-shift.ts"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.31.1",

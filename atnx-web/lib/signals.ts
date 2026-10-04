@@ -1,4 +1,4 @@
-// Composite VI dispatcher. Eleven sources, each reporting an absolute level
+// Composite VI dispatcher. Twelve sources, each reporting an absolute level
 // and a momentum ratio, combined by lib/vi/score.ts.
 //
 // Two refresh cadences share one stored breakdown per market
@@ -33,6 +33,7 @@ import { fetchXSignal } from './vi/x';
 import { fetchTiktokSignal, prefetchTiktok, tiktokEarlyDue } from './vi/tiktok';
 import { fetchPostSignal, prefetchPosts } from './vi/post';
 import { fetchTiktokSearchSignal, prefetchTiktokSearch } from './vi/tiktok-search';
+import { fetchRedditSignal, prefetchReddit } from './vi/reddit';
 import { effectiveYoutube, readChannelMeta, type CreatorHandle } from './creators/channel';
 import { readXAccountMeta, type XHandle } from './creators/x-account';
 
@@ -97,11 +98,14 @@ const APPLIES: Partial<Record<SourceName, (r: ScoreRequest) => boolean>> = {
   // Where a meme, a person or a release lives as posts naming it; not
   // 'other', whose names are too generic for a keyword search.
   tiktok_search: (r) => TIKTOK_SEARCH_CATEGORIES.has(r.category ?? ''),
+  // Where Reddit argues: memes, games, tech and politics.
+  reddit: (r) => REDDIT_CATEGORIES.has(r.category ?? ''),
   // News coverage, except coined meme names (lib/vi/gdelt.ts).
   gdelt: (r) => gdeltApplies(r.category),
 };
 const TIKTOK_CATEGORIES = new Set(['memes', 'people', 'music', 'film_tv', 'gaming', 'other']);
 const TIKTOK_SEARCH_CATEGORIES = new Set(['memes', 'people', 'music', 'film_tv', 'gaming']);
+const REDDIT_CATEGORIES = new Set(['memes', 'tech', 'gaming', 'politics']);
 function applies(name: SourceName, r: ScoreRequest): boolean {
   return APPLIES[name]?.(r) ?? true;
 }
@@ -148,7 +152,10 @@ function neverScored(r: ScoreRequest): boolean {
 // slow path and the new-market scoring call it (a capture's own post is
 // read at creation, so the market goes live with it). Returns what was
 // started.
-export function prefetchSlowSources(requests: ScoreRequest[]): { tiktokHashtags: number; tiktokSearches: number } {
+export function prefetchSlowSources(requests: ScoreRequest[]): { tiktokHashtags: number; tiktokSearches: number; redditPhrases: number } {
+  const redditPhrases = prefetchReddit(
+    requests.filter((r) => applies('reddit', r)).map((r) => ({ marketId: r.marketId, term: r.term, aliases: r.aliases ?? [], stored: r.stored?.reddit ?? null }))
+  );
   prefetchPosts(requests.map((r) => ({ marketId: r.marketId, stored: r.stored?.post ?? null })));
   const tiktokSearches = prefetchTiktokSearch(
     requests
@@ -167,7 +174,7 @@ export function prefetchSlowSources(requests: ScoreRequest[]): { tiktokHashtags:
         return { term: search.term, aliases: tiktokAliases(r.term, r.aliases ?? [], search), marketId: r.marketId, stored: r.stored?.tiktok ?? null };
       })
   );
-  return { tiktokHashtags, tiktokSearches };
+  return { tiktokHashtags, tiktokSearches, redditPhrases };
 }
 
 // The aliases TikTok may build hashtag candidates from. Every alias as
@@ -226,7 +233,7 @@ export async function scoreTerms(
       const corporate = req.entityType === 'brand';
 
       const request = { term, stored, ...req };
-      const [bluesky, gdelt, wikipedia, youtube, hn, dex, x, tiktok, tiktokSearch, post] = await Promise.all([
+      const [bluesky, gdelt, wikipedia, youtube, hn, dex, x, tiktok, tiktokSearch, post, reddit] = await Promise.all([
         want.has('bluesky') ? fetchBlueskySignal(search.term, search.aliases).catch(() => null) : null,
         want.has('gdelt') && applies('gdelt', request) ? readGdeltSignal(req.marketId).catch(() => null) : null,
         want.has('wikipedia') ? fetchWikipediaSignal(term, aliases, { corporate, aliasCandidates }).catch(() => null) : null,
@@ -247,6 +254,8 @@ export async function scoreTerms(
           : null,
         // The captured posts themselves, any category (lib/vi/post.ts).
         want.has('post') ? fetchPostSignal({ marketId: req.marketId, stored: stored?.post ?? null }).catch(() => null) : null,
+        // The week's Reddit posts naming the phrase (lib/vi/reddit.ts).
+        want.has('reddit') && applies('reddit', request) ? fetchRedditSignal({ marketId: req.marketId, term, aliases: req.aliases ?? [], stored: stored?.reddit ?? null }).catch(() => null) : null,
       ]);
       if (bluesky) components.bluesky = bluesky;
       if (gdelt) components.gdelt = gdelt;
@@ -258,9 +267,10 @@ export async function scoreTerms(
       if (tiktok) components.tiktok = tiktok;
       if (tiktokSearch) components.tiktok_search = tiktokSearch;
       if (post) components.post = post;
+      if (reddit) components.reddit = reddit;
       // A category-bound source keeps nothing once the market leaves its
       // category.
-      for (const name of ['hn', 'dex', 'tiktok', 'tiktok_search', 'gdelt'] as const) {
+      for (const name of ['hn', 'dex', 'tiktok', 'tiktok_search', 'reddit', 'gdelt'] as const) {
         if (components[name] && !applies(name, request)) delete components[name];
       }
 
