@@ -38,6 +38,7 @@ const TTL_SLACK = 15 * 60 * 1000;
 // Searches a day for re-discovery; the rest of the 100 stay free for
 // markets that have never searched.
 const SEARCH_BUDGET = 90;
+export const YOUTUBE_SEARCH_BUDGET = SEARCH_BUDGET;
 const SEARCH_CAP = 100;
 const LEDGER_TTL = 5 * 60 * 1000;
 const WINDOW_DAYS = 7;
