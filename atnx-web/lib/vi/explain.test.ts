@@ -231,5 +231,5 @@ test('cronHealth: a full hour, a missing hour, the hour in progress', () => {
   assert.equal(byHour['2026-10-05T11:00:00.000Z'].ok, false);
   assert.equal(byHour['2026-10-05T12:00:00.000Z'].ok, true, 'the hour in progress is judged pro rata');
   assert.equal(r.fastLastAt, new Date(h('2026-10-05T12:15:00Z')).toISOString());
-  assert.match(r.sentences[0], /^Fast refresh last wrote 5 min ago; 4 of 4 five-minute slots/);
+  assert.match(r.sentences[0], /^Fast refresh last wrote 5 min ago; 4 of 5 five-minute slots/);
 });

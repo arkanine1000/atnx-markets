@@ -68,7 +68,9 @@ export const SOURCE_CADENCE: Record<SourceName, { everyMs: number; text: string 
   trends: { everyMs: 5 * MIN, text: 'every 5 min' },
   bluesky: { everyMs: 5 * MIN, text: 'every 5 min' },
   dex: { everyMs: 5 * MIN, text: 'every 5 min' },
-  wikipedia: { everyMs: HOUR, text: 'hourly' },
+  // Read hourly, but served from a one-hour cache, so a pass can hand back
+  // the previous hour's reading: effectively every 2 h.
+  wikipedia: { everyMs: 2 * HOUR, text: 'hourly, from a one-hour cache (up to 2 h)' },
   gdelt: { everyMs: HOUR, text: 'hourly (daily data)' },
   youtube: { everyMs: HOUR, text: 'hourly; a new search every 1 to 3 days' },
   hn: { everyMs: HOUR, text: 'hourly' },
@@ -182,8 +184,9 @@ export function readingText(c: SourceComponent, reading: number | null, now: num
   switch (c.source) {
     case 'trends': {
       if (m.below_resolution) return `searched below Google Trends' resolution against '${str(m.benchmark) ?? 'the benchmark'}', counted as unknown`;
-      const kw = str(m.topic) ?? str(m.keyword);
-      return `searched at ${reading === null ? '?' : fmtCount(reading)}× the benchmark query '${str(m.benchmark) ?? '?'}'${kw ? ` (as '${kw}')` : ''}`;
+      const kw = str(m.keyword);
+      const topic = str(m.topic);
+      return `searched at ${reading === null ? '?' : fmtCount(reading)}× the benchmark query '${str(m.benchmark) ?? '?'}'${kw ? ` (as '${kw}'${topic ? ', by topic' : ''})` : ''}`;
     }
     case 'bluesky': {
       const raw = m.posts_24h;
@@ -783,17 +786,17 @@ export function cronHealth({ fastSeries, snapshots, liveCount, now }: { fastSeri
   const current = hourStart(now);
   for (let i = 0; i < 24; i++) {
     const h = current - i * HOUR;
-    const elapsed = i === 0 ? (now - h) / HOUR : 1;
     const fastSlots = slots.get(h)?.size ?? 0;
     const slowMarkets = slow.get(h)?.size ?? 0;
-    const expectedSlots = Math.max(1, Math.floor(12 * elapsed));
+    // Slot k covers minutes 5k to 5k+5, so at minute m slots 0..floor(m/5) exist.
+    const expectedSlots = i === 0 ? Math.min(12, Math.floor((now - h) / (5 * MIN)) + 1) : 12;
     // The slow pass runs at :07; before then the hour has nothing to show.
     const slowDue = i > 0 || now - h > 15 * MIN;
     const ok = fastSlots >= Math.min(10, expectedSlots - 2) && (!slowDue || slowMarkets >= 0.9 * liveCount);
     hours.push({ hour: new Date(h).toISOString(), fastSlots, fastMarkets: fastMarkets.get(h)?.size ?? 0, slowMarkets, ok });
   }
   const sentences: string[] = [];
-  sentences.push(fastLast ? `Fast refresh last wrote ${fmtAge(now - fastLast)} ago; ${hours[0].fastSlots} of ${Math.max(1, Math.floor(12 * ((now - current) / HOUR)))} five-minute slots so far this hour.` : 'The fast refresh has not written in the last 24 h.');
+  sentences.push(fastLast ? `Fast refresh last wrote ${fmtAge(now - fastLast)} ago; ${hours[0].fastSlots} of ${Math.min(12, Math.floor((now - current) / (5 * MIN)) + 1)} five-minute slots so far this hour.` : 'The fast refresh has not written in the last 24 h.');
   sentences.push(slowLast ? `Slow refresh last snapshot ${fmtAge(now - slowLast)} ago, covering ${hours.find((h) => h.slowMarkets > 0)?.slowMarkets ?? 0} of ${liveCount} live markets.` : 'No hourly snapshot in the last 24 h.');
   const bad = hours.filter((h) => !h.ok).length;
   sentences.push(bad === 0 ? 'Every hour in the last day ran in full.' : `${bad} of the last 24 hours missed slots or markets.`);

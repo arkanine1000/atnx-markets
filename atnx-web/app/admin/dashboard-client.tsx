@@ -17,6 +17,8 @@ import {
   decideHandle,
 } from "./actions";
 import type { HandleRow } from "./page";
+import { useSort, SortTh } from "./table";
+import { ViTab } from "./vi-tab";
 
 interface MarketRow {
   id: string;
@@ -65,7 +67,7 @@ interface WaitlistRow {
   created_at: string;
 }
 
-type Tab = "markets" | "captures" | "handles" | "log" | "waitlist" | "bounded";
+type Tab = "markets" | "captures" | "handles" | "log" | "waitlist" | "bounded" | "vi";
 
 function formatDate(ts: string): string {
   return new Date(ts).toLocaleString();
@@ -75,79 +77,6 @@ function promptReason(action: string): string | null {
   const reason = window.prompt(`Reason for ${action} (optional):`, "");
   // Null means the user cancelled; empty string is allowed.
   return reason;
-}
-
-type SortDir = "asc" | "desc";
-type SortValue = string | number | null;
-interface SortState<K extends string> {
-  key: K;
-  dir: SortDir;
-}
-
-// Client-side sorting for the admin tables. Each tab already holds its
-// whole list, so a header click reorders what is loaded, no refetch.
-function useSort<R, K extends string>(
-  rows: R[],
-  columns: Record<K, (row: R) => SortValue>,
-  initial: SortState<NoInfer<K>>
-) {
-  const [sort, setSort] = useState(initial);
-  const get = columns[sort.key];
-  const sorted = [...rows].sort((a, b) => {
-    const x = get(a);
-    const y = get(b);
-    // Empty values sink to the bottom whichever way the column runs.
-    if (x === null || y === null) return x === y ? 0 : x === null ? 1 : -1;
-    const cmp =
-      typeof x === "number" && typeof y === "number"
-        ? x - y
-        : String(x).localeCompare(String(y), undefined, { numeric: true, sensitivity: "base" });
-    return sort.dir === "asc" ? cmp : -cmp;
-  });
-
-  function toggle(key: K) {
-    setSort((s) => {
-      if (s.key === key) return { key, dir: s.dir === "asc" ? "desc" : "asc" };
-      // Text starts A to Z; numbers and dates start largest or newest.
-      const sample = rows.map(columns[key]).find((v) => v !== null);
-      return { key, dir: typeof sample === "string" ? "asc" : "desc" };
-    });
-  }
-
-  return { sorted, sort, toggle };
-}
-
-function SortTh<K extends string>({
-  column,
-  sort,
-  onSort,
-  align = "left",
-  children,
-}: {
-  column: K;
-  sort: SortState<K>;
-  onSort: (key: K) => void;
-  align?: "left" | "right";
-  children: React.ReactNode;
-}) {
-  const active = sort.key === column;
-  return (
-    <th
-      className={`py-2 px-2 ${align === "right" ? "text-right" : "text-left"}`}
-      aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : undefined}
-    >
-      <button
-        type="button"
-        onClick={() => onSort(column)}
-        className={`uppercase tracking-wider cursor-pointer hover:text-primary transition-colors ${
-          active ? "text-primary" : ""
-        }`}
-      >
-        {children}
-        {active && (sort.dir === "asc" ? " ▴" : " ▾")}
-      </button>
-    </th>
-  );
 }
 
 const time = (ts: string) => Date.parse(ts);
@@ -170,6 +99,7 @@ export function AdminDashboard({
   bmLog: BmKeeperLogRow[];
 }) {
   const [tab, setTab] = useState<Tab>("markets");
+  const [viSeen, setViSeen] = useState(false);
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8 w-full">
@@ -191,10 +121,13 @@ export function AdminDashboard({
       </header>
 
       <div className="flex gap-1 text-xs mb-4 border-b border-surface">
-        {(["markets", "captures", "handles", "log", "waitlist", "bounded"] as Tab[]).map((t) => (
+        {(["markets", "captures", "handles", "log", "waitlist", "bounded", "vi"] as Tab[]).map((t) => (
           <button
             key={t}
-            onClick={() => setTab(t)}
+            onClick={() => {
+              setTab(t);
+              if (t === "vi") setViSeen(true);
+            }}
             className={`px-4 py-2 border-b-2 -mb-px cursor-pointer transition-colors ${
               tab === t
                 ? "border-atnx-magenta text-atnx-magenta font-bold"
@@ -211,7 +144,9 @@ export function AdminDashboard({
                   ? `Moderation log (${log.length})`
                   : t === "waitlist"
                     ? `Waitlist (${waitlist.length})`
-                    : `Bounded (${bmMarkets.length})`}
+                    : t === "bounded"
+                      ? `Bounded (${bmMarkets.length})`
+                      : "VI"}
           </button>
         ))}
       </div>
@@ -224,6 +159,8 @@ export function AdminDashboard({
       {tab === "log" && <LogTab log={log} />}
       {tab === "waitlist" && <WaitlistTab rows={waitlist} />}
       {tab === "bounded" && <BoundedTab rows={bmMarkets} log={bmLog} />}
+      {/* Mounted once visited and kept, so switching tabs does not reload it. */}
+      <div hidden={tab !== "vi"}>{viSeen && <ViTab />}</div>
     </div>
   );
 }
