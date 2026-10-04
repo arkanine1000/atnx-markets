@@ -13,7 +13,7 @@ Three ways in, one pipeline: the extension, the web form at `/app/submit` (scree
 
 ---
 
-## Hackathon build: bounded UP/DOWN markets on the VI
+## Bounded UP/DOWN markets on the VI
 
 This repository is the hackathon fork of ATNX for the **Arbitrum / Robinhood Chain Open House (Singapore)** and the **Colosseum Crypto World's Fair**. It replaces the simulated long/short trading with on-chain two-outcome markets on the Virality Index, and keeps everything upstream of trading (capture, identification, the VI pipeline) as it was.
 
@@ -21,7 +21,7 @@ This repository is the hackathon fork of ATNX for the **Arbitrum / Robinhood Cha
 
 | | |
 |---|---|
-| Live app | https://markets.atnx.app (production ATNX stays at https://atnx.app) |
+| Live app | https://markets.atnx.app (production ATNX at https://atnx.app) |
 | Contracts | `contracts/` (Foundry). Addresses in the table below. |
 | Design doc | "ATNX devnet market design: bounded VI markets", 2026-09-30 (summarised in *How it works*) |
 | Status | [docs/bounded-markets.md](docs/bounded-markets.md), *Built / not built* |
@@ -62,5 +62,3 @@ atnx/
 | [docs/development.md](docs/development.md) | Local setup, env vars, checking the pipeline, seeding, extension dev and release, deployment, known rough edges |
 | [contracts/README.md](contracts/README.md), [programs/README.md](programs/README.md) | The EVM contracts and the Solana program |
 | [atnx-web/README.md](atnx-web/README.md) | How a submission is decided, stage by stage |
-
-`docs/private/` is gitignored and holds notes that are not for the public repo.
