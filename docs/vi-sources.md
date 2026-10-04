@@ -21,13 +21,14 @@ scales with markets rather than posts.
 | twitterapi.io | API key | X talk every 3 h as matured impressions through the Jev post filter, own-account reach, handle lookup, captured-post reads | $0.00015 a tweet; `X_DAILY_TWEET_BUDGET` (10k a day in production) |
 | Apify, four actors | Token | `funny_ground/tiktok-hashtag-stats` every 3 h per market and in the second look; `clockworks/tiktok-scraper` for the week's posts naming the phrase, searched every two days per market and re-read every 6 h (`lib/vi/tiktok-search.ts`, since 2026-10-04); `apidojo/tiktok-scraper` and `apify/instagram-post-scraper` for the captured posts themselves (`lib/vi/post.ts`) | $0.0025, $0.0003 and $0.0017 to $0.0027 a result; `TIKTOK_DAILY_HASHTAG_BUDGET`, `POST_DAILY_READ_BUDGET` |
 | Apify, `harshmaur/reddit-scraper` | Token | The week's newest Reddit posts naming the phrase (quoted), once a day per market: upvotes plus comments a day as the reading, today's post rate against the week's average as the momentum (`lib/vi/reddit.ts`, since 2026-10-04); memes, tech, gaming, politics | $0.0018 a result plus $0.02 a run; `REDDIT_DAILY_BUDGET` |
+| Apify, `apify/instagram-hashtag-scraper` | Token | The week's reels under the market's tag (the TikTok mapping when it has one), every two days per market, daily when hot: plays a day as the reading, today against the reads a day or two back as the momentum (`lib/vi/instagram.ts`, since 2026-10-04); memes, people, music | $0.0023 a result; `INSTAGRAM_DAILY_BUDGET` |
 | TikTok oEmbed | Public | Link previews, short-link resolution, the review step's link check | Free |
 | Know Your Meme | Page fetches | Thumbnails, descriptions, the second look | Free |
 | Vercel AI Gateway | OIDC on Vercel, a key locally | Gemini Flash for vision and the YouTube title filter, Flash-Lite for text, Cohere Embed v4 for embeddings, Jev for X post relevance. The model layer, not an aggregator. | Per token |
 
-**Coverage by category.** Memes and people have no name-based Instagram
-source; TikTok keyword search (2026-10-04) now sees a meme that lives as
-untagged posts nobody captured. Music has no Spotify
+**Coverage by category.** TikTok keyword search (2026-10-04) sees a meme
+that lives as untagged posts nobody captured; Instagram reads the tag's
+reels and Reddit the week's posts naming the phrase (both 2026-10-04). Music has no Spotify
 or chart signal, gaming no Steam or Twitch, film and TV nothing beyond
 the general sources, sports nothing specific. Tech, crypto and politics
 are covered by what exists.
@@ -39,7 +40,7 @@ Ranked by how much VI accuracy each buys per dollar.
 | Rank | Actor | What it adds | Price | Categories |
 | --- | --- | --- | --- | --- |
 | 1, built 2026-10-04 | `clockworks/tiktok-scraper` with `searchQueries`, the video section and the past-week filter (`lib/vi/tiktok-search.ts`) | TikTok keyword search: posts naming the phrase, their plays and timestamps. Views a day for a phrase rather than a tag, which is what Nosfercatu and Chemtrails needed. | $0.0037 a result, or $0.0003 | memes, people, music, film_tv, gaming |
-| 2 | `apify/instagram-hashtag-scraper`, `apify/instagram-hashtag-analytics-scraper` | Instagram's first name-based reading: recent posts under a tag with plays and timestamps, possibly the tag's post count directly. Probe the count's refresh rate for a day before building, as was done for TikTok. | $0.0026 and $0.0023 a result | memes, people, music |
+| 2, built 2026-10-04 | `apify/instagram-hashtag-scraper`, hashtag mode with reels (keyword mode ranks by relevance with no date order, so a meme's result set is its old viral reels; probed 2026-10-04) | Instagram's first name-based reading: recent posts under a tag with plays and timestamps, possibly the tag's post count directly. Probe the count's refresh rate for a day before building, as was done for TikTok. | $0.0026 and $0.0023 a result | memes, people, music |
 | 3, built 2026-10-04 | `harshmaur/reddit-scraper` (half the price of trudax, rows name their search term, 8 s a run against 60) | Reddit search sorted new over a time window, with upvotes. The first undone item of the 2026-09-26 brainstorm, now in the same price band as the ScrapeCreators plan and in the actor pattern already run. | $0.004 or $0.002 a result | memes, tech, gaming, politics |
 | 4 | `clockworks/tiktok-profile-scraper` | TikTok profile mode for creators, the half of channel mode deferred on budget: plays on their own uploads, keyed on the resolved handle | $0.003 a result | people |
 | 5 | `apify/instagram-profile-scraper` | Creator reach on Instagram | $0.0026 a profile | people, music |

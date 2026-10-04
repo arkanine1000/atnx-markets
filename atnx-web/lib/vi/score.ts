@@ -22,7 +22,7 @@
 // market, and left a long opened at 1000 with nothing to win. PnL and
 // liquidation are relative to the entry, so nothing needs a bound.
 
-export type SourceName = 'trends' | 'bluesky' | 'gdelt' | 'wikipedia' | 'youtube' | 'hn' | 'dex' | 'x' | 'tiktok' | 'tiktok_search' | 'post' | 'reddit';
+export type SourceName = 'trends' | 'bluesky' | 'gdelt' | 'wikipedia' | 'youtube' | 'hn' | 'dex' | 'x' | 'tiktok' | 'tiktok_search' | 'post' | 'reddit' | 'instagram';
 
 export interface SourceComponent {
   source: SourceName;
@@ -50,6 +50,7 @@ export const WEIGHTS: Record<SourceName, number> = {
   tiktok_search: 0.2,
   post: 0.2,
   reddit: 0.15,
+  instagram: 0.2,
   bluesky: 0.2,
   wikipedia: 0.15,
   gdelt: 0.15,
@@ -61,7 +62,7 @@ export const WEIGHTS: Record<SourceName, number> = {
 // Free, unlimited and quick to answer goes fast; quota-bound, rate-limited
 // or daily-resolution goes slow.
 export const FAST_SOURCES: SourceName[] = ['trends', 'bluesky', 'dex'];
-export const SLOW_SOURCES: SourceName[] = ['gdelt', 'wikipedia', 'youtube', 'hn', 'x', 'tiktok', 'tiktok_search', 'post', 'reddit'];
+export const SLOW_SOURCES: SourceName[] = ['gdelt', 'wikipedia', 'youtube', 'hn', 'x', 'tiktok', 'tiktok_search', 'post', 'reddit', 'instagram'];
 
 const LEVEL_SHARE = 0.65;
 const MOMENTUM_SHARE = 0.35;
@@ -426,6 +427,9 @@ export const DEFAULT_CALIBRATION: Calibration = {
     // comment as a hundred X impressions, so k = 871 x 100^0.568; refit
     // once a week of readings exists.
     reddit: { k: 1.19e4, q: 0.568 },
+    // Plays a day on the week's reels under the tag (lib/vi/instagram.ts):
+    // the TikTok unit.
+    instagram: { k: 488.5, q: 0.568 },
     x: { k: 871, q: 0.568 }, // impressions a day on posts about the name (matured two hours)
     trends: { k: 1.445e7, q: 1 }, // ratio to the benchmark query
     bluesky: { k: 703, q: 1 }, // posts a day
@@ -551,6 +555,7 @@ export function sourceReading(c: SourceComponent, cal: Calibration = CALIBRATION
     }
     case 'post':
     case 'tiktok_search':
+    case 'instagram':
       r = metaNumber(m?.views_per_day);
       break;
     case 'reddit':

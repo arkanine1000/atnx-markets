@@ -15,6 +15,7 @@ import { createClient } from '@supabase/supabase-js';
 import { combine, summarizeAttention, viTier, type Components, type SourceComponent, type SourceName } from '../lib/vi/score';
 import { fetchRedditSignal, prefetchReddit, redditPhrases } from '../lib/vi/reddit';
 import { fetchTiktokSearchSignal, prefetchTiktokSearch } from '../lib/vi/tiktok-search';
+import { fetchInstagramSignal, prefetchInstagram } from '../lib/vi/instagram';
 import { searchTerms, searchableAliases } from '../lib/vi/score';
 
 const sources = (process.argv[2] ?? '').split(',').map((s) => s.trim()).filter(Boolean) as SourceName[];
@@ -29,6 +30,7 @@ interface Market { id: string; entity_name: string; entity_type: string | null; 
 const CATS: Partial<Record<SourceName, Set<string>>> = {
   reddit: new Set(['memes', 'tech', 'gaming', 'politics']),
   tiktok_search: new Set(['memes', 'people', 'music', 'film_tv', 'gaming']),
+  instagram: new Set(['memes', 'people', 'music']),
 };
 const spearman = (a: number[], b: number[]): number => {
   const rank = (v: number[]) => { const idx = v.map((x, i) => [x, i] as const).sort((p, q) => q[0] - p[0]); const r = new Array<number>(v.length); idx.forEach(([, i], k) => (r[i] = k + 1)); return r; };
@@ -59,6 +61,14 @@ async function readSource(name: SourceName, markets: Market[]): Promise<Map<stri
       const reqs = eligible.map((m) => ({ marketId: m.id, term: termOf(m), stored: out.get(m.id) ?? null }));
       if (prefetchTiktokSearch(reqs) === 0) break;
       for (const r of reqs) { if (out.has(r.marketId)) continue; const c = await fetchTiktokSearchSignal(r); if (c) out.set(r.marketId, c); }
+      console.error(`  round ${i + 1}: ${out.size} of ${eligible.length} read`);
+    }
+  } else if (name === 'instagram') {
+    console.error(`instagram: ${eligible.length} markets`);
+    for (let i = 0; i < rounds; i++) {
+      const reqs = eligible.map((m) => { const t = m.vi_components?.tiktok?.meta?.hashtag; return { marketId: m.id, term: m.entity_name, aliases: m.aliases ?? [], tiktokTag: typeof t === 'string' ? t : null, stored: out.get(m.id) ?? null }; });
+      if (prefetchInstagram(reqs) === 0) break;
+      for (const r of reqs) { if (out.has(r.marketId)) continue; const c = await fetchInstagramSignal(r); if (c) out.set(r.marketId, c); }
       console.error(`  round ${i + 1}: ${out.size} of ${eligible.length} read`);
     }
   } else {
@@ -102,7 +112,7 @@ async function main() {
   say(`| before | after | change | ${sources.map((n) => `${n} level`).join(' | ')} | ${sources.map((n) => `${n} share`).join(' | ')} | reading | market |`);
   say(`|---:|---:|---:|${sources.map(() => '---:').join('|')}|${sources.map(() => '---:').join('|')}|---|---|`);
   for (const r of [...rows].sort((p, q) => Math.abs(q.a - q.b) - Math.abs(p.a - p.b))) {
-    const reading = sources.map((n) => { const c = r.got[n]; if (!c) return ''; const m = c.meta ?? {}; return n === 'reddit' ? `${m.engagement_per_day}/d on ${m.posts_week} posts${m.capped ? ' (capped)' : ''}` : `${m.views_per_day ?? '-'} views/d on ${m.posts_read} of ${m.set_size}`; }).filter(Boolean).join('; ');
+    const reading = sources.map((n) => { const c = r.got[n]; if (!c) return ''; const m = c.meta ?? {}; return n === 'reddit' ? `${m.engagement_per_day}/d on ${m.posts_week} posts${m.capped ? ' (capped)' : ''}` : n === 'instagram' ? `${m.views_per_day} views/d on ${m.reels_week} reels #${m.tag}${m.capped ? ' (capped)' : ''}` : `${m.views_per_day ?? '-'} views/d on ${m.posts_read} of ${m.set_size}`; }).filter(Boolean).join('; ');
     const tier = viTier(r.b).label !== viTier(r.a).label ? ` (${viTier(r.b).label} → ${viTier(r.a).label})` : '';
     say(`| ${r.b} | ${r.a} | ${r.a - r.b > 0 ? '+' : ''}${r.a - r.b} | ${sources.map((n) => fmt(r.got[n]?.level ?? null)).join(' | ')} | ${r.share.map((x) => `${(x * 100).toFixed(0)}%`).join(' | ')} | ${reading} | ${r.m.entity_name}${tier} |`);
   }
