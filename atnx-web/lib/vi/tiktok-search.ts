@@ -6,10 +6,12 @@
 // This source asks TikTok's own search for the week's posts naming the
 // phrase and reads their plays, the same unit as the other two.
 //
-// Discovery is one run of clockworks/tiktok-scraper per pass carrying
-// every due phrase as a search query, the video section and the past-week
-// filter: the top posts of the week for each phrase, each row naming the
-// query it answers, with its plays and upload time. That first read
+// Discovery is clockworks/tiktok-scraper with the video section and the
+// past-week filter: the top posts of the week for each phrase, each row
+// naming the query it answers, with its plays and upload time. A pass's
+// due phrases go out a few queries a run, runs in parallel (twenty in one
+// run timed out at three minutes on 2026-10-04); a run that fails loses
+// only its own markets. That first read
 // gives every post its lifetime average (plays over age); from then on
 // the set is re-read every six hours through the cheaper post reader
 // (apidojo, lib/vi/post.ts fetchPostStats) and each post's rate is the
@@ -32,13 +34,15 @@ import { fetchPostStats, postKey, postLevel, postReading, postsForMarkets, type 
 
 const ACTOR = 'clockworks~tiktok-scraper';
 const APIFY = 'https://api.apify.com/v2/acts';
-const RUN_TIMEOUT_S = 180;
+const RUN_TIMEOUT_S = 240;
 const PAUSE_MS = 30 * 60 * 1000;
 const LEDGER_TTL = 5 * 60 * 1000;
 const DEFAULT_RESULTS = 10;
 const DEFAULT_SEARCH_BUDGET = 40;
 const DEFAULT_READ_BUDGET = 400;
-const MAX_SEARCHES_PER_RUN = 20;
+const MAX_SEARCHES_PER_PASS = 24;
+const QUERIES_PER_RUN = 4;
+const PARALLEL_RUNS = 4;
 const MAX_READS_PER_RUN = 150;
 const HOUR = 3600 * 1000;
 // How long a found set stands before the phrase is searched again.
@@ -213,8 +217,11 @@ async function search(queries: string[]): Promise<Map<string, Row[]> | null> {
     signal: AbortSignal.timeout((RUN_TIMEOUT_S + 30) * 1000),
   });
   if (!res.ok) {
-    console.error(`[tiktok_search] ${res.status}: ${(await res.text()).slice(0, 160)}`);
-    pausedUntil = Date.now() + PAUSE_MS;
+    const text = (await res.text()).slice(0, 160);
+    console.error(`[tiktok_search] ${res.status}: ${text}`);
+    // A run that timed out or failed is this run's problem; a refusal
+    // (no credit, a bad token) pauses the source.
+    if (!/run-failed|TIMED-OUT/.test(text)) pausedUntil = Date.now() + PAUSE_MS;
     return null;
   }
   const body = await res.json();
@@ -254,18 +261,25 @@ export function prefetchTiktokSearch(requests: TiktokSearchRequest[], now = Date
     const result = new Map<string, BatchResult>();
     try {
       const left = await budgets();
-      const searching = toSearch.slice(0, Math.max(0, Math.min(MAX_SEARCHES_PER_RUN, left.searches)));
-      if (searching.length < toSearch.length) console.error(`[tiktok_search] ${toSearch.length - searching.length} of ${toSearch.length} searches wait (budget ${tiktokSearchDailyBudget()}/day, run cap ${MAX_SEARCHES_PER_RUN})`);
+      const searching = toSearch.slice(0, Math.max(0, Math.min(MAX_SEARCHES_PER_PASS, left.searches)));
+      if (searching.length < toSearch.length) console.error(`[tiktok_search] ${toSearch.length - searching.length} of ${toSearch.length} searches wait (budget ${tiktokSearchDailyBudget()}/day, run cap ${MAX_SEARCHES_PER_PASS})`);
       searchedThisProcess += searching.length;
       const searchingIds = new Set(searching.map((r) => r.marketId as string));
       const captured = await postsForMarkets(due.map((r) => r.marketId as string));
       const capturedKeys = (id: string) => new Set((captured.get(id) ?? []).map(postKey));
 
-      // Every search of the pass in one run.
-      const byQuery = searching.length > 0 ? await search([...new Set(searching.map((r) => r.term))]) : new Map<string, Row[]>();
+      // The pass's queries, a few a run, runs a few at a time.
+      const queries = [...new Set(searching.map((r) => r.term))];
+      const chunks: string[][] = [];
+      for (let i = 0; i < queries.length; i += QUERIES_PER_RUN) chunks.push(queries.slice(i, i + QUERIES_PER_RUN));
+      const byQuery = new Map<string, Row[]>();
+      for (let i = 0; i < chunks.length; i += PARALLEL_RUNS) {
+        const got = await Promise.all(chunks.slice(i, i + PARALLEL_RUNS).map((c) => search(c).catch(() => null)));
+        for (const g of got) for (const [q, rows] of g ?? []) byQuery.set(q, rows);
+      }
       for (const r of searching) {
         const id = r.marketId as string;
-        const rows = byQuery?.get(r.term);
+        const rows = byQuery.get(r.term);
         if (!rows) continue;
         const parsed = rows.map(rowToPost).filter((x): x is NonNullable<typeof x> => x !== null);
         const set = mergeSet(parsed.map((p) => p.post), decodeSet(r.stored?.meta?.posts), capturedKeys(id), now);
@@ -298,7 +312,7 @@ export function prefetchTiktokSearch(requests: TiktokSearchRequest[], now = Date
     }
     return result;
   })();
-  return Math.min(toSearch.length, MAX_SEARCHES_PER_RUN);
+  return Math.min(toSearch.length, MAX_SEARCHES_PER_PASS);
 }
 
 export async function fetchTiktokSearchSignal(req: TiktokSearchRequest): Promise<SourceComponent | null> {
