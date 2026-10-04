@@ -272,3 +272,47 @@ export async function decideHandle(
   revalidatePath("/admin");
   return { success: true };
 }
+
+// --- The VI tab (read-only) --------------------------------------------------------
+// Each action reads through the service role after the same role check as
+// the moderation actions; nothing is revalidated. The explaining itself is
+// lib/vi/explain.ts; the loaders are lib/vi/diagnostics.ts.
+import { loadViHealth, loadViMarket, loadViOverview, type ViHealth, type ViMarketDetail, type ViOverview } from "@/lib/vi/diagnostics";
+
+export type ViResult<T> = { success: true; data: T } | { success: false; error: string };
+
+async function requireStaff(): Promise<string | null> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return "Not signed in";
+  const { data: profile } = await supabase.from("user_profiles").select("role").eq("id", user.id).maybeSingle();
+  if (!profile || !["admin", "moderator"].includes(profile.role)) return "Not allowed";
+  return null;
+}
+
+async function viAction<T>(load: () => Promise<T>): Promise<ViResult<T>> {
+  const denied = await requireStaff();
+  if (denied) return { success: false, error: denied };
+  try {
+    return { success: true, data: await load() };
+  } catch (err) {
+    return { success: false, error: (err as Error).message };
+  }
+}
+
+export async function loadViOverviewAction(): Promise<ViResult<ViOverview>> {
+  return viAction(() => loadViOverview());
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export async function loadViMarketAction(marketId: string, window: "24h" | "7d"): Promise<ViResult<ViMarketDetail | null>> {
+  if (!UUID.test(marketId)) return { success: false, error: "Bad market id" };
+  if (window !== "24h" && window !== "7d") return { success: false, error: "Bad window" };
+  return viAction(() => loadViMarket(marketId, window));
+}
+
+export async function loadViHealthAction(): Promise<ViResult<ViHealth>> {
+  return viAction(() => loadViHealth());
+}
