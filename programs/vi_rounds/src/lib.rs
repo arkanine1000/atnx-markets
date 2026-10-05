@@ -296,9 +296,10 @@ pub mod vi_rounds {
     /// Pays a settled round's position (or refunds a void one) and closes
     /// the position account, returning its rent.
     pub fn claim(ctx: Context<Claim>) -> Result<()> {
+        let round_key = ctx.accounts.round.key();
         let r = &mut ctx.accounts.round;
         let p = &ctx.accounts.position;
-        let amount = due(r, p)?;
+        let amount = due(r, round_key, p)?;
         if amount > 0 {
             r.paid_out = r.paid_out.checked_add(amount).ok_or(RoundsError::Overflow)?;
             vault_transfer(&ctx.accounts.token_program, &ctx.accounts.vault, &ctx.accounts.holder_usdg, &ctx.accounts.series, amount)?;
@@ -316,7 +317,8 @@ pub mod vi_rounds {
         require!(r.state == RoundState::Settled as u8, RoundsError::NotSettled);
         require!(!s.paused, RoundsError::Paused);
         require!(next.state == RoundState::Presale as u8 && next.index == s.presale_round, RoundsError::NotPresale);
-        let amount = due(r, &ctx.accounts.position)?;
+        let round_key = r.key();
+        let amount = due(r, round_key, &ctx.accounts.position)?;
         require!(amount > 0, RoundsError::NothingToClaim);
         let (fee, finder, platform, net) = fee_split(amount, s.fee_bps, s.finder_bps);
         require!(net > 0, RoundsError::ZeroAmount);
@@ -362,8 +364,8 @@ pub mod vi_rounds {
 // -------------------------------------------------------------- helpers
 
 /// What a position is owed once its round is settled or void.
-fn due(r: &Round, p: &Position) -> Result<u64> {
-    require!(p.round == r.key(), RoundsError::BadRound);
+fn due(r: &Round, round_key: Pubkey, p: &Position) -> Result<u64> {
+    require!(p.round == round_key, RoundsError::BadRound);
     let total_presale = r.presale_up.checked_add(r.presale_down).ok_or(RoundsError::Overflow)?;
     if r.state == RoundState::Void as u8 {
         let refund = p.presale_up as u128 + p.presale_down as u128 + p.stake_up as u128 + p.stake_down as u128;
