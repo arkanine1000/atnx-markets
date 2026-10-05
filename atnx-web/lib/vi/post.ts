@@ -60,6 +60,8 @@ export const MAX_POSTS_PER_MARKET = 5;
 const DEFAULT_DAILY_BUDGET = 300;
 const MAX_POSTS_PER_RUN = 100;
 const TIKTOK_ACTOR = 'apidojo~tiktok-scraper';
+// What one read costs per platform, for spend estimates (the header).
+export const USD_PER_POST_READ_BY_PLATFORM: Record<PostPlatform, number> = { tiktok: 0.0003, instagram: 0.0027, x: 0.00015 };
 const INSTAGRAM_ACTOR = 'apify~instagram-post-scraper';
 const APIFY = 'https://api.apify.com/v2/acts';
 const X_API = 'https://api.twitterapi.io/twitter/tweets';

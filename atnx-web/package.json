@@ -35,7 +35,8 @@
     "rounds:start": "npx --yes tsx --env-file=.env.local scripts/rounds-start.ts",
     "rounds:tick": "npx --yes tsx --env-file=.env.local scripts/rounds-tick.ts",
     "rounds:sol": "npx --yes tsx scripts/rounds-sol.ts",
-    "vi:source-shift": "npx --yes tsx --env-file=.env.local scripts/vi-source-shift.ts"
+    "vi:source-shift": "npx --yes tsx --env-file=.env.local scripts/vi-source-shift.ts",
+    "vi:explain": "npx --yes tsx --env-file=.env.local scripts/vi-explain.ts"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.31.1",
