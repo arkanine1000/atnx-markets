@@ -45,5 +45,5 @@ Every deploy copies the IDL to `programs/<name>.idl.json`. For `vi_rounds` it al
 writes `atnx-web/lib/bm/idl/vi_rounds.json` and `atnx-web/lib/bm/idl/vi_rounds.ts`,
 for the web app and the keeper.
 
-The web app's chain switch does not include Solana yet (`atnx-web/lib/bm/chains.ts`
-is EVM-only).
+The web app reaches the rounds program through a Solana wallet (wallet-adapter)
+beside its EVM chains; `atnx-web/lib/bm/chains.ts` carries the `solana:devnet` entry.

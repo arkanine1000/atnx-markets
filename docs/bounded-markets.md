@@ -1,5 +1,8 @@
 # Bounded UP/DOWN markets
 
+> The first iteration of the hackathon build, superseded on 2026-10-05 by [rolling VI rounds](rounds.md).
+> The contracts and the `bounded_vi` program are still deployed; live bounded markets still resolve, and `BM_AUTO_ROLL=0` stops the keeper from rolling new ones.
+
 The hackathon build: two-outcome markets on the Virality Index, on chain. Mechanics, status and how to operate the keeper. Contract addresses are in the [README](../README.md).
 
 ## How it works

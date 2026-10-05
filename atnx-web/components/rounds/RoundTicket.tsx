@@ -780,7 +780,7 @@ export function ClaimList({
           <div key={c.key.toBase58()} className="text-xs">
             <p className="text-secondary mb-1.5">
               {r.state === "void" ? (
-                <>Round {r.index} was void. Your stake comes back in full.</>
+                <>Round {r.index} was void. Your net stake comes back; the fee stays with the series.</>
               ) : (
                 <>
                   Round {r.index} settled <span className={tone}>{winner?.toUpperCase()}</span>
