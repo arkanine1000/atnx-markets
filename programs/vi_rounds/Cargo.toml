@@ -1,0 +1,21 @@
+[package]
+name = "vi_rounds"
+version = "0.1.0"
+description = "ATNX rolling rounds on the Virality Index: a dynamic pari-mutuel (Pennock 2004, variant I) per round, with a presale, on Solana devnet"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "vi_rounds"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
+
+[dependencies]
+anchor-lang = { version = "0.31.1", features = ["init-if-needed"] }
+anchor-spl = "0.31.1"

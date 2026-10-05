@@ -4,3 +4,4 @@ node_modules/
 *.swo
 programs/artifact/
 docs/private/
+target/

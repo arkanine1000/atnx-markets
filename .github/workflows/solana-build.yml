@@ -1,9 +1,14 @@
 name: solana-build
 
-# Builds the Anchor program on a GitHub runner and uploads the .so, the
-# IDL and the program keypair as artifacts. The local machine's compiler
-# segfaults, so this is where the Solana side gets built; deploying the
-# artifact from a laptop is `solana program deploy bounded_vi.so`.
+# Two Anchor programs live under programs/: bounded_vi (the bounded VI
+# markets port) and vi_rounds (rolling VI rounds, a dynamic pari-mutuel).
+#
+# The test job runs vi_rounds' math unit tests on the host toolchain
+# (`cargo test -p vi_rounds --lib`, no Solana tools needed). The build job
+# runs after it, builds both programs with Anchor and uploads one artifact
+# per program (.so, IDL, TS types). The local machine's compiler segfaults,
+# so this is where the Solana side gets built; `programs/deploy.sh <name>`
+# downloads the artifact and deploys it to devnet from a laptop.
 on:
   push:
     paths:
@@ -14,7 +19,29 @@ on:
   workflow_dispatch:
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: host-test-${{ runner.os }}-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml') }}
+          restore-keys: host-test-${{ runner.os }}-
+
+      - name: vi_rounds unit tests
+        run: cargo test -p vi_rounds --lib
+
   build:
+    needs: test
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
@@ -34,16 +61,27 @@ jobs:
 
       - name: Install Solana CLI
         run: |
-          # Latest stable Agave: its platform-tools rust understands edition 2024,
-          # which v2.3's (rust 1.84) does not and current crates require.
-          sh -c "$(curl -sSfL https://release.anza.xyz/stable/install)"
+          # Agave 4.3.0 is what the last green build used (Oct 1); its
+          # platform-tools rust understands edition 2024, which v2.3's
+          # (rust 1.84) does not and current crates require.
+          sh -c "$(curl -sSfL https://release.anza.xyz/v4.3.0/install)"
           echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
 
+      - name: Cache Anchor CLI
+        id: anchor-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/anchor
+          key: anchor-cli-v0.31.1-${{ runner.os }}
+
       - name: Install Anchor CLI
+        if: steps.anchor-cache.outputs.cache-hit != 'true'
         run: |
           sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev libudev-dev
           cargo install --git https://github.com/coral-xyz/anchor --tag v0.31.1 anchor-cli --locked --force
-          anchor --version
+
+      - name: Anchor version
+        run: anchor --version
 
       - name: Pin crates the platform-tools cargo cannot parse
         # Solana's bundled cargo predates the manifest format toml_datetime 1.x
@@ -60,11 +98,11 @@ jobs:
         run: |
           solana --version
           solana-keygen new --no-bip39-passphrase --silent --outfile ~/.config/solana/id.json
-          # declare_id in lib.rs is the committed devnet keypair's address
-          # (programs/keys); deploys use that keypair with the solana CLI.
+          # declare_id in each lib.rs is the committed devnet keypair's address
+          # (keys/<name>-keypair.json); deploys use that keypair with the solana CLI.
           anchor build
           anchor keys list
-          ls -la target/deploy target/idl
+          ls -la target/deploy target/idl target/types
 
       - uses: actions/upload-artifact@v4
         with:
@@ -73,4 +111,13 @@ jobs:
             target/deploy/bounded_vi.so
             target/idl/bounded_vi.json
             target/types/bounded_vi.ts
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vi_rounds
+          path: |
+            target/deploy/vi_rounds.so
+            target/idl/vi_rounds.json
+            target/types/vi_rounds.ts
           if-no-files-found: error

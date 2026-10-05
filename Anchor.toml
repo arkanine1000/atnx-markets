@@ -7,9 +7,11 @@ skip-lint = false
 
 [programs.devnet]
 bounded_vi = "5xdrKVQPYpCJ4YkzDysTmV3XPQN5vVwHV1RhAQ2xvABG"
+vi_rounds = "5PsYwtsaexsFLGz6pwnVAtBTLzRqmGHxQJFnYWv42aQX"
 
 [programs.localnet]
 bounded_vi = "5xdrKVQPYpCJ4YkzDysTmV3XPQN5vVwHV1RhAQ2xvABG"
+vi_rounds = "5PsYwtsaexsFLGz6pwnVAtBTLzRqmGHxQJFnYWv42aQX"
 
 [registry]
 url = "https://api.apr.dev"
