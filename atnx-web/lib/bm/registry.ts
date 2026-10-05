@@ -185,10 +185,16 @@ export async function logKeeper(entry: {
   detail?: Record<string, unknown> | null;
   error?: string | null;
   txHash?: string | null;
+  seriesId?: string | null;
+  roundId?: string | null;
 }): Promise<void> {
   const { error } = await bm().from('keeper_log').insert({
     run_id: entry.runId,
     bm_market_id: entry.marketId ?? null,
+    // Only sent when set, so bounded-market rows still insert on a
+    // database without 002_rounds.sql.
+    ...(entry.seriesId ? { series_id: entry.seriesId } : {}),
+    ...(entry.roundId ? { round_id: entry.roundId } : {}),
     action: entry.action,
     detail: (entry.detail ?? null) as never,
     error: entry.error ? entry.error.slice(0, 1000) : null,

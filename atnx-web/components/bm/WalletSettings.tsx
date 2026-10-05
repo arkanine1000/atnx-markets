@@ -5,12 +5,30 @@ import { useAccount, useConfig, useDisconnect, useSwitchChain, useWriteContract 
 import { waitForTransactionReceipt } from "wagmi/actions";
 import { mockUsdgAbi } from "@/lib/bm/abi";
 import { BM_CHAINS, USDG_UNIT, chainById, isDeployed } from "@/lib/bm/chains";
+import { SolanaWalletSettings } from "@/components/rounds/SolanaWalletSettings";
 import { ConnectButton } from "./ConnectButton";
 import { shortAddress } from "./format";
 
-// The wallet section of Settings: the address, the network, a mint of
-// mock USDG (the testnet token mints on request) and disconnect.
+// The wallet section of Settings, one block per kind of chain: the EVM
+// testnets (bounded markets, the first iteration) and Solana devnet (the
+// rounds). Each has its address, network, a mock USDG faucet and
+// disconnect.
 export function WalletSettings() {
+  return (
+    <div className="space-y-5">
+      <div>
+        <h3 className="text-[10px] font-mono uppercase tracking-[0.15em] text-tertiary mb-2">Solana devnet · rounds</h3>
+        <SolanaWalletSettings />
+      </div>
+      <div>
+        <h3 className="text-[10px] font-mono uppercase tracking-[0.15em] text-tertiary mb-2">EVM testnets · bounded markets</h3>
+        <EvmWalletSettings />
+      </div>
+    </div>
+  );
+}
+
+function EvmWalletSettings() {
   const { address, chainId, isConnected } = useAccount();
   const { disconnect } = useDisconnect();
   const { switchChain, isPending: switching } = useSwitchChain();
@@ -79,9 +97,6 @@ export function WalletSettings() {
               </button>
             );
           })}
-          <span className="h-8 px-3 inline-flex items-center rounded-full border border-surface text-xs text-tertiary" title="The Anchor program is live on devnet; wallet support in the web app is next">
-            Solana devnet (program live, wallet soon)
-          </span>
         </div>
         {!chain && <p className="text-[11px] text-atnx-magenta mt-2">The wallet is on a network this app does not use. Pick one above.</p>}
       </div>

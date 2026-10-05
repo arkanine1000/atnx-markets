@@ -92,12 +92,12 @@ const STEPS = [
   },
   {
     n: "2",
-    title: "Long or Short",
+    title: "UP or DOWN, round by round",
     cls: "bg-atnx-magenta/10 text-atnx-magenta light:text-atnx-magenta-light border-atnx-magenta/25",
   },
   {
     n: "3",
-    title: "Profit for being right.",
+    title: "Right? Stake back, plus a share.",
     cls: "bg-atnx-yellow/10 text-atnx-yellow light:text-atnx-yellow-light border-atnx-yellow/25",
   },
 ];

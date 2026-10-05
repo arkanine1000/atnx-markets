@@ -13,9 +13,9 @@ Three ways in, one pipeline: the extension, the web form at `/app/submit` (scree
 
 ---
 
-## Bounded UP/DOWN markets on the VI
+## Rounds on the VI, on chain
 
-This repository is the hackathon fork of ATNX for the **Arbitrum / Robinhood Chain Open House (Singapore)** and the **Colosseum Crypto World's Fair**. It replaces the simulated long/short trading with on-chain two-outcome markets on the Virality Index, and keeps everything upstream of trading (capture, identification, the VI pipeline) as it was.
+This repository is the hackathon fork of ATNX for the **Arbitrum / Robinhood Chain Open House (Singapore)** and the **Colosseum Crypto World's Fair**. It replaces the simulated long/short trading with on-chain markets on the Virality Index: first bounded UP/DOWN markets, now rolling rounds with a presale on Solana devnet (see [docs/rounds.md](docs/rounds.md)). Everything upstream of trading (capture, identification, the VI pipeline) stays as it was.
 
 **Prior work disclosure.** The hackathon windows opened on 2026-09-14 (Arbitrum Open House) and 2026-09-15 (Colosseum). The tag [`pre-hackathon`](https://github.com/arkanine1000/atnx-markets/releases/tag/pre-hackathon) marks the last commit before that date; everything after it, the capture pipeline, the Virality Index and the bounded markets alike, was built inside the window: [compare `pre-hackathon...main`](https://github.com/arkanine1000/atnx-markets/compare/pre-hackathon...main). The repository is a public copy of the private upstream `gptdnd/atnx`. The bounded-markets work specifically starts at the tag [`bounded-markets-start`](https://github.com/arkanine1000/atnx-markets/releases/tag/bounded-markets-start): [compare `bounded-markets-start...main`](https://github.com/arkanine1000/atnx-markets/compare/bounded-markets-start...main).
 
@@ -24,17 +24,18 @@ This repository is the hackathon fork of ATNX for the **Arbitrum / Robinhood Cha
 | Live app | https://markets.atnx.app (production ATNX at https://atnx.app) |
 | Contracts | `contracts/` (Foundry). Addresses in the table below. |
 | Design doc | "ATNX devnet market design: bounded VI markets", 2026-09-30 (summarised in *How it works*) |
-| Status | [docs/bounded-markets.md](docs/bounded-markets.md), *Built / not built* |
+| Status | [docs/rounds.md](docs/rounds.md), *Built / not built* |
 
 ### Deployed contracts
 
-| Chain | BoundedVIMarkets | MockUSDG | Explorer |
+| Chain | Contract or program | MockUSDG | Explorer |
 |---|---|---|---|
 | Robinhood Testnet (46630) | [`0x0cDab5681546b887bA8772290869ef9001B2d47C`](https://explorer.testnet.chain.robinhood.com/address/0x0cDab5681546b887bA8772290869ef9001B2d47C) | [`0x3cCAADFa951Cd18fd68c2575402ee28E390Bf641`](https://explorer.testnet.chain.robinhood.com/address/0x3cCAADFa951Cd18fd68c2575402ee28E390Bf641) | deployed 2026-10-01, block 127197452 |
 | Arbitrum Sepolia (421614) | _pending_ | _pending_ | https://sepolia.arbiscan.io |
-| Solana devnet (Anchor program) | [`5xdrKVQPYpCJ4YkzDysTmV3XPQN5vVwHV1RhAQ2xvABG`](https://explorer.solana.com/address/5xdrKVQPYpCJ4YkzDysTmV3XPQN5vVwHV1RhAQ2xvABG?cluster=devnet) | mint [`9cgEJ7nexdmx2n4cDFaC93jvJnfreSNnTjkAXGZtxLEd`](https://explorer.solana.com/address/9cgEJ7nexdmx2n4cDFaC93jvJnfreSNnTjkAXGZtxLEd?cluster=devnet) | deployed 2026-10-01; config PDA `4HuF4aigjHakgQxtfL7S9BmnDxMx1B9sBa1WRavGCQf1` |
+| Solana devnet, `bounded_vi` (Anchor) | [`5xdrKVQPYpCJ4YkzDysTmV3XPQN5vVwHV1RhAQ2xvABG`](https://explorer.solana.com/address/5xdrKVQPYpCJ4YkzDysTmV3XPQN5vVwHV1RhAQ2xvABG?cluster=devnet) | mint [`9cgEJ7nexdmx2n4cDFaC93jvJnfreSNnTjkAXGZtxLEd`](https://explorer.solana.com/address/9cgEJ7nexdmx2n4cDFaC93jvJnfreSNnTjkAXGZtxLEd?cluster=devnet) | deployed 2026-10-01; config PDA `4HuF4aigjHakgQxtfL7S9BmnDxMx1B9sBa1WRavGCQf1` |
+| Solana devnet, `vi_rounds` (Anchor, rolling rounds) | [`5PsYwtsaexsFLGz6pwnVAtBTLzRqmGHxQJFnYWv42aQX`](https://explorer.solana.com/address/5PsYwtsaexsFLGz6pwnVAtBTLzRqmGHxQJFnYWv42aQX?cluster=devnet) | mint [`9LurpUewiUvun2sUiDL4wjRKog91CqRFXXshaTGnXGHx`](https://explorer.solana.com/address/9LurpUewiUvun2sUiDL4wjRKog91CqRFXXshaTGnXGHx?cluster=devnet) | deployed 2026-10-05; config PDA `2w99R2Pr6GsiWXGev8kVcRp52w7kmmivvuB7JUmagnWe`; fee 100 bps, finder 2000 bps of it; authority, keeper and treasury `5a5yfYQBX3QYqWZ55agFTHQoxg5Lc4TvT8g3roMfqa2S` |
 
-How the markets work, what is built and how to run the keeper: [docs/bounded-markets.md](docs/bounded-markets.md).
+How rounds work, what is built and how to run the keeper: [docs/rounds.md](docs/rounds.md). The first iteration, bounded markets (Robinhood Testnet and the `bounded_vi` program, still deployed): [docs/bounded-markets.md](docs/bounded-markets.md).
 
 ---
 
@@ -52,7 +53,8 @@ atnx/
 
 | | |
 |---|---|
-| [docs/bounded-markets.md](docs/bounded-markets.md) | The bounded market: bounds, shares, resolution, auto-roll, keeper operations, build status |
+| [docs/rounds.md](docs/rounds.md) | Rolling VI rounds on Solana devnet: presale, the pari-mutuel maths with a worked example, the ticket, the keeper, build status, operations |
+| [docs/bounded-markets.md](docs/bounded-markets.md) | The first iteration, bounded markets: bounds, shares, resolution, auto-roll, keeper operations, build status |
 | [docs/architecture.md](docs/architecture.md) | The pipeline at a glance and the tech stack |
 | [docs/web-app.md](docs/web-app.md) | Routes, API, key libraries, React context and components, the auth flow |
 | [docs/virality-index.md](docs/virality-index.md) | The VI: sources, cadences, a new market's first day, records, Jev, tuning |

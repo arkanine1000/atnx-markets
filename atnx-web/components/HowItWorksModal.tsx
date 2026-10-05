@@ -20,13 +20,13 @@ const STEPS = [
   {
     n: 2,
     title: "UP or DOWN",
-    body: "Every market has a Virality Index and two lines, one above and one below. Think attention climbs to the top line first? Buy UP. Think it falls to the bottom line first? Buy DOWN. Pick an amount and you're in.",
+    body: "Markets run in rounds. Each round opens at the market's Virality Index of that moment, which becomes its target, and runs for 24 hours. Think attention will be higher at the close? Take UP. Lower? Take DOWN. Commit before the round opens, where everyone on a side pays the same price, or buy while it runs.",
     tone: "magenta" as const,
   },
   {
     n: 3,
     title: "Paid for being right",
-    body: "Your shares trade as the index moves, so you can sell any time. Hold until the index touches your line and every share pays a full USDG.",
+    body: "Trading stops for the round's last 30 minutes, and the close is the index averaged over them, so one late spike cannot decide it. If your side wins, you get your stake back plus a share of the other side's money. Claim it, or roll it into the next round.",
     tone: "yellow" as const,
   },
 ];
@@ -213,9 +213,18 @@ const HIW_CSS = `
 `;
 
 // Mounted only while open (the parent conditionally renders it), so every
-// opening starts fresh at step 1.
-export function HowItWorksModal({ onClose }: { onClose: () => void }) {
-  const [step, setStep] = useState(0);
+// opening starts fresh at step 1, or at `initialStep` (0-based): the
+// rounds ticket's "Show me" opens it on "UP or DOWN".
+export function HowItWorksModal({
+  onClose,
+  initialStep = 0,
+}: {
+  onClose: () => void;
+  initialStep?: number;
+}) {
+  const [step, setStep] = useState(() =>
+    Math.min(STEPS.length - 1, Math.max(0, initialStep)),
+  );
   // Which version of the capture flow to illustrate. Defaults to the device
   // the viewer is on (safe to read the window here: the modal is only ever
   // mounted client-side, on click); the toggle in the header switches it.

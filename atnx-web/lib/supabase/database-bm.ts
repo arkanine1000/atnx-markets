@@ -1,8 +1,9 @@
-// Types for the `bm` schema (supabase/bm/001_schema.sql): the registry of
-// bounded VI markets and the keeper's log. Hand-maintained like
-// database.ts. Read through createAdminClient().schema('bm') on the server
-// and createClient().schema('bm') in the browser; the schema has to be
-// exposed in the project's API settings for either to work.
+// Types for the `bm` schema (supabase/bm/001_schema.sql, 002_rounds.sql):
+// the registry of bounded VI markets, the rolling rounds and the keeper's
+// log. Hand-maintained like database.ts. Read through
+// createAdminClient().schema('bm') on the server and
+// createClient().schema('bm') in the browser; the schema has to be exposed
+// in the project's API settings for either to work.
 
 import type { Json } from './database';
 
@@ -47,7 +48,63 @@ export interface BmKeeperLogRow {
   detail: Json | null;
   error: string | null;
   tx_hash: string | null;
+  series_id: string | null;
+  round_id: string | null;
   created_at: string;
+}
+
+// Rolling VI rounds (supabase/bm/002_rounds.sql).
+export type BmSeriesState = 'pending' | 'active' | 'paused' | 'ended' | 'failed';
+export type BmRoundState = 'presale' | 'opening' | 'live' | 'settling' | 'settled' | 'void' | 'failed';
+export type BmAnteSide = 'up' | 'down' | 'both';
+
+export interface BmSeriesRow {
+  id: string;
+  atnx_market_id: string;
+  chain: string;
+  program_id: string;
+  reference: string;
+  series_pubkey: string | null;
+  finder_wallet: string;
+  finder_user_id: string | null;
+  round_secs: number;
+  settle_window_secs: number;
+  first_presale_secs: number;
+  fee_bps: number;
+  finder_bps: number;
+  ante_usdg: number;
+  fast: boolean;
+  state: BmSeriesState;
+  create_tx: string | null;
+  error: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BmRoundRow {
+  id: string;
+  series_id: string;
+  idx: number;
+  round_pubkey: string | null;
+  state: BmRoundState;
+  opens_at: string;
+  opened_at: string | null;
+  close_at: string | null;
+  trade_until: string | null;
+  target_vi: number | null;
+  settle_vi: number | null;
+  settle_prints: number | null;
+  winner: BmSide | null;
+  presale_up_usdg: number | null;
+  presale_down_usdg: number | null;
+  ante_side: BmAnteSide | null;
+  ante_usdg: number | null;
+  open_tx: string | null;
+  settle_tx: string | null;
+  void_tx: string | null;
+  error: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 type Optional<T> = { [K in keyof T]?: T[K] };
@@ -72,6 +129,23 @@ export type BmSchema = {
       Row: BmKeeperLogRow;
       Insert: Optional<BmKeeperLogRow> & { run_id: string; action: string };
       Update: Optional<BmKeeperLogRow>;
+      Relationships: [];
+    };
+    series: {
+      Row: BmSeriesRow;
+      Insert: Optional<BmSeriesRow> & {
+        atnx_market_id: string;
+        program_id: string;
+        reference: string;
+        finder_wallet: string;
+      };
+      Update: Optional<BmSeriesRow>;
+      Relationships: [];
+    };
+    rounds: {
+      Row: BmRoundRow;
+      Insert: Optional<BmRoundRow> & { series_id: string; idx: number; opens_at: string };
+      Update: Optional<BmRoundRow>;
       Relationships: [];
     };
   };

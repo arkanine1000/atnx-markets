@@ -1,9 +1,9 @@
 import { arbitrumSepolia, robinhoodTestnet, type Chain } from 'viem/chains';
 import type { Address } from 'viem';
 
-// The chains the bounded markets are deployed on. Keys are CAIP-2 style so
-// a Solana entry ('solana:devnet') can join later without renaming
-// anything in the registry. Addresses are filled in after each deploy
+// The chains the bounded markets are deployed on. Keys are CAIP-2 style, so
+// the Solana entry for the rounds ('solana:devnet', SOL_DEVNET below) uses
+// the same scheme in the registry. Addresses are filled in after each deploy
 // (contracts/broadcast/Deploy.s.sol/<chainId>/run-latest.json) and can be
 // overridden per environment without a code change.
 
@@ -94,6 +94,53 @@ export function txUrl(c: BmChain, hash: string): string {
 
 export function addressUrl(c: BmChain, address: string): string {
   return `${c.explorer}/address/${address}`;
+}
+
+// ------------------------------------------------------------ Solana
+
+// The rounds program (programs/vi_rounds) runs on Solana devnet. It is not
+// an EVM chain, so it sits beside BM_CHAINS rather than in it: the wagmi
+// config and the bounded-market code keep reading BM_CHAINS only.
+
+export interface SvmChain {
+  key: 'solana:devnet';
+  kind: 'svm';
+  cluster: 'devnet';
+  label: string;
+  short: string;
+  rpcUrl: string;
+  explorer: string;
+  programId: string;
+  // The mock USDG mint the program created at `initialize`; null until the
+  // deploy has been run and the env var set.
+  usdgMint: string | null;
+}
+
+export type AnyChain = BmChain | SvmChain;
+
+export const SOL_DEVNET: SvmChain = {
+  key: 'solana:devnet',
+  kind: 'svm',
+  cluster: 'devnet',
+  label: 'Solana Devnet',
+  short: 'Solana',
+  rpcUrl: process.env.NEXT_PUBLIC_BM_SOL_RPC || 'https://api.devnet.solana.com',
+  explorer: 'https://explorer.solana.com',
+  programId: process.env.NEXT_PUBLIC_BM_SOL_PROGRAM || '5PsYwtsaexsFLGz6pwnVAtBTLzRqmGHxQJFnYWv42aQX',
+  usdgMint: process.env.NEXT_PUBLIC_BM_SOL_USDG || null,
+};
+
+// Rounds can be traded once the program has a USDG mint to settle in.
+export function isRoundsDeployed(c: SvmChain = SOL_DEVNET): boolean {
+  return !!c.programId && !!c.usdgMint;
+}
+
+export function solTxUrl(signature: string, c: SvmChain = SOL_DEVNET): string {
+  return `${c.explorer}/tx/${signature}?cluster=${c.cluster}`;
+}
+
+export function solAddressUrl(address: string, c: SvmChain = SOL_DEVNET): string {
+  return `${c.explorer}/address/${address}?cluster=${c.cluster}`;
 }
 
 // Mock USDG has 6 decimals, like the real one.
