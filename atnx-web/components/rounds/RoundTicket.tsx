@@ -6,7 +6,7 @@ import { createPortal } from "react-dom";
 import { createAssociatedTokenAccountIdempotentInstruction, getAssociatedTokenAddressSync } from "@solana/spl-token";
 import type { PublicKey, TransactionInstruction } from "@solana/web3.js";
 import { startSeriesAction } from "@/app/app/actions/rounds";
-import { Card, Chip, Segmented } from "@/components/ui";
+import { Card, Segmented } from "@/components/ui";
 import { HowItWorksModal } from "@/components/HowItWorksModal";
 import { fmtCents, fmtUsdg, parseUsdg, shortHash } from "@/components/bm/format";
 import { USDG_UNIT, solTxUrl } from "@/lib/bm/chains";
@@ -307,7 +307,7 @@ function SeriesTicket({ name, score, series, rounds, initialSide = "up", onToast
       {options.length > 1 ? (
         <Segmented ariaLabel="Round" value={shown} onChange={setPane} options={options} className="w-full mb-4" itemClassName="flex-1" />
       ) : options.length === 1 ? (
-        <div className="text-[11px] font-mono uppercase tracking-wider text-tertiary mb-3">{options[0].label}</div>
+        <div className="text-xs font-bold text-secondary mb-3">{options[0].label}</div>
       ) : (
         <p className="text-sm text-secondary mb-3">No open round. The series may be paused or ended.</p>
       )}
@@ -428,17 +428,19 @@ function RegistryLine({ liveRow, presaleRow, now }: { liveRow: BmRoundRow | null
   }
   if (presaleRow) {
     const opens = new Date(presaleRow.opens_at).getTime();
-    return <StatusRow chip={now !== null && now < opens ? `opens in ${fmtLeft(opens - now)}` : null}>Round {presaleRow.idx} · presale</StatusRow>;
+    return <StatusRow chip={now !== null && now < opens ? `Opens in ${fmtLeft(opens - now)}` : null}>Round {presaleRow.idx} · presale</StatusRow>;
   }
   return null;
 }
 
-// One line of numbers on the left, the countdown as a chip on the right.
+// One line of numbers on the left, the countdown as a chip on the right:
+// the neutral Chip's shape in the body face, sentence case, the digits
+// tabular.
 function StatusRow({ chip, children }: { chip: string | null; children: ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-3 text-xs mb-3 min-h-5">
       <span className="text-secondary min-w-0">{children}</span>
-      {chip && <Chip className="tabular-nums shrink-0">{chip}</Chip>}
+      {chip && <span className="shrink-0 inline-flex items-center rounded-md border border-surface bg-elevated px-1.5 py-0.5 text-[11px] font-bold text-secondary tabular-nums whitespace-nowrap">{chip}</span>}
     </div>
   );
 }
@@ -498,7 +500,7 @@ function LivePane({ view, series, score, now, side, setSide, amount, setAmount, 
 
   return (
     <div>
-      <StatusRow chip={now === null ? null : phase === "trading" ? `${fmtLeft(tradeUntil - now)} left` : phase === "averaging" ? `closes in ${fmtLeft(closeAt - now)}` : "settling"}>
+      <StatusRow chip={now === null ? null : phase === "trading" ? `${fmtLeft(tradeUntil - now)} left` : phase === "averaging" ? `Closes in ${fmtLeft(closeAt - now)}` : "Settling"}>
         Target <span className="tabular-nums font-bold text-primary">{target.toFixed(target < 100 ? 1 : 0)}</span>
         <span className="text-tertiary"> · now </span>
         <span className={`tabular-nums font-bold ${viAbove ? "text-atnx-cyan" : "text-atnx-magenta"}`}>{Math.round(score)}</span>
@@ -653,7 +655,7 @@ function PresalePane({
 
   return (
     <div>
-      <StatusRow chip={opensAt === null || now === null ? null : now < opensAt ? `opens in ${fmtLeft(opensAt - now)}` : "opening…"}>
+      <StatusRow chip={opensAt === null || now === null ? null : now < opensAt ? `Opens in ${fmtLeft(opensAt - now)}` : "Opening…"}>
         Pots <span className="text-atnx-cyan tabular-nums font-bold">{fmtUsdg(potUp, 0)}</span> UP ·{" "}
         <span className="text-atnx-magenta tabular-nums font-bold">{fmtUsdg(potDown, 0)}</span> DOWN
       </StatusRow>

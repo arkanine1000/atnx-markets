@@ -6,7 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useConnection } from "@solana/wallet-adapter-react";
 import { PublicKey, type TransactionInstruction } from "@solana/web3.js";
 import { createAssociatedTokenAccountIdempotentInstruction, getAssociatedTokenAddressSync } from "@solana/spl-token";
-import { Card, Chip, EmptyState, StatTile } from "@/components/ui";
+import { Card, EmptyState, StatTile } from "@/components/ui";
 import { fmtUsdg, shortAddress, shortHash } from "@/components/bm/format";
 import { solTxUrl } from "@/lib/bm/chains";
 import {
@@ -222,7 +222,7 @@ const COLS = "grid grid-cols-[minmax(0,1fr)_auto_auto] sm:grid-cols-[minmax(0,1f
 function Section({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div>
-      <div className="text-[10px] font-mono uppercase tracking-[0.15em] text-tertiary mb-2">{label}</div>
+      <h4 className="text-sm font-bold text-primary mb-2">{label}</h4>
       <Card className="overflow-hidden">
         <div className={`${COLS} hidden sm:grid px-4 py-2 border-b border-surface text-[10px] font-mono uppercase tracking-wider text-tertiary`}>
           <span>Market</span>
@@ -305,7 +305,7 @@ function PositionRow({ item, meta, children }: { item: Item & { amount?: bigint 
             ) : (
               <span className="font-bold text-primary text-sm truncate">{name}</span>
             )}
-            {meta?.fast && <Chip className="shrink-0">fast</Chip>}
+            {meta?.fast && <span className="shrink-0 inline-flex items-center rounded-md border border-surface bg-elevated px-1.5 py-0.5 text-[11px] font-bold text-secondary tabular-nums whitespace-nowrap">Fast</span>}
           </div>
           <div className="sm:hidden text-[11px] text-tertiary mt-0.5 tabular-nums">
             Round {r.index} · {sideLabel(up, down)} · {fmtUsdg(stake)}

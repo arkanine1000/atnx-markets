@@ -20,12 +20,15 @@ export interface RoundBadgeInfo {
 // target (UP would win if the round closed now), magenta below.
 export function RoundBadge({ info, vi, compact = false, className = "" }: { info: RoundBadgeInfo; vi: number; compact?: boolean; className?: string }) {
   const now = useNow();
-  const size = compact ? "text-[9px]" : "text-[10px]";
+  // One step up from BoundsRail's mono sizes: the body face runs smaller
+  // than Martian Mono at the same pixel size; the leading keeps the row
+  // the rail's height.
+  const size = compact ? "text-[10px] leading-[1.35]" : "text-[11px] leading-[1.35]";
 
   if (info.state === "presale") {
     const opens = new Date(info.opensAt).getTime();
     return (
-      <div className={`flex items-center gap-1.5 ${size} font-mono tabular-nums text-secondary ${className}`} title={`Round ${info.idx} is taking commits`}>
+      <div className={`flex items-center gap-1.5 ${size} tabular-nums text-secondary ${className}`} title={`Round ${info.idx} is taking commits`}>
         <span className="font-bold">R{info.idx}</span>
         <span className="text-tertiary">·</span>
         <span>presale{now !== null && now < opens ? ` · opens ${fmtLeft(opens - now)}` : ""}</span>
@@ -49,7 +52,7 @@ export function RoundBadge({ info, vi, compact = false, className = "" }: { info
 
   return (
     <div
-      className={`flex items-center gap-1.5 ${size} font-mono tabular-nums ${tone} ${className}`}
+      className={`flex items-center gap-1.5 ${size} tabular-nums ${tone} ${className}`}
       title={target !== null ? `Round ${info.idx}: UP wins if the index ends at or above ${Math.round(target)}. VI now ${Math.round(vi)}.` : `Round ${info.idx}`}
     >
       <span className="font-bold">R{info.idx}</span>
