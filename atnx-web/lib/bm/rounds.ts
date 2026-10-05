@@ -13,8 +13,10 @@ import {
   keeperKeypair,
   pdas,
   readRound,
+  newSeriesRef,
   readSeries,
-  refForSeries,
+  refFromHex,
+  refToHex,
   sendCommit,
   sendCreateSeries,
   sendOpenRound,
@@ -102,9 +104,10 @@ function isoFromUnix(secs: number): string {
   return new Date(secs * 1000).toISOString();
 }
 
+// The series reference as stored at start; never recomputed from the
+// market id, since each series carries its own nonce.
 function refOf(series: BmSeriesRow): Uint8Array {
-  if (/^[0-9a-f]{64}$/i.test(series.reference)) return Uint8Array.from(Buffer.from(series.reference, 'hex'));
-  return refForSeries(series.atnx_market_id, series.fast);
+  return refFromHex(series.reference);
 }
 
 function key(k: PublicKey | string): string {
@@ -180,12 +183,12 @@ export async function startSeries(input: StartInput): Promise<StartResult> {
   }
 
   const params = roundParams(fast);
-  const ref = refForSeries(input.atnxMarketId, fast);
+  const ref = newSeriesRef(input.atnxMarketId, fast);
   const plan: ClaimSeriesInput = {
     atnxMarketId: input.atnxMarketId,
     chain: SOL_CHAIN_KEY,
     programId,
-    reference: Buffer.from(ref).toString('hex'),
+    reference: refToHex(ref),
     finderWallet: finder.toBase58(),
     finderUserId: input.finderUserId ?? (await marketCreator(input.atnxMarketId)),
     fast,
@@ -231,7 +234,8 @@ export async function startSeries(input: StartInput): Promise<StartResult> {
 
 // A pending registry row whose series exists on chain: mark it active and
 // record its presale round. A series account with neither a presale nor
-// a live round has ended; its reference cannot be reused.
+// a live round has ended. References carry a time nonce, so a fresh start
+// never lands on an ended series; the check stays as a guard.
 async function adoptSeries(row: BmSeriesRow, acct: SeriesAccount, sig: string | null): Promise<StartResult> {
   const p = pdas(refOf(row));
   if (acct.presaleRound === 0 && acct.liveRound === 0) {
