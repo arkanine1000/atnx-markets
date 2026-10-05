@@ -70,12 +70,16 @@ export default async function PortfolioPage() {
       </div>
       {isRoundsDeployed() && (
         <div className="mb-10">
-          <h3 className="text-[11px] font-mono uppercase tracking-[0.15em] text-tertiary mb-3">Rounds · Solana devnet</h3>
+          <h3 className="font-display text-lg font-bold text-primary mb-3">
+            Rounds <span className="font-sans text-sm font-normal text-tertiary">· Solana devnet</span>
+          </h3>
           <RoundsPortfolio series={series} />
         </div>
       )}
       {isRoundsDeployed() && (
-        <h3 className="text-[11px] font-mono uppercase tracking-[0.15em] text-tertiary mb-3">Bounded markets · EVM testnets</h3>
+        <h3 className="font-display text-lg font-bold text-primary mb-3">
+          Bounded markets <span className="font-sans text-sm font-normal text-tertiary">· EVM testnets</span>
+        </h3>
       )}
       <OnchainPortfolio markets={markets} />
     </section>

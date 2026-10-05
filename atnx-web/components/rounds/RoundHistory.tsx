@@ -27,9 +27,9 @@ export function RoundHistory({ series, rounds }: { series: BmSeriesRow; rounds: 
         <p className="text-xs text-tertiary">No round has settled yet.</p>
       ) : (
         <div className="overflow-x-auto -mx-1">
-          <table className="w-full text-xs font-mono tabular-nums">
+          <table className="w-full text-xs tabular-nums">
             <thead>
-              <tr className="text-[10px] uppercase tracking-wider text-tertiary text-left">
+              <tr className="text-[10px] font-mono uppercase tracking-wider text-tertiary text-left">
                 <th className="font-normal px-1 py-1.5">Round</th>
                 <th className="font-normal px-1 py-1.5 text-right">Target</th>
                 <th className="font-normal px-1 py-1.5 text-right">Settled</th>

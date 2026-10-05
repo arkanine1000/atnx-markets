@@ -22,7 +22,7 @@ export function RoundChip({ series, rounds, vi }: { series: BmSeriesRow; rounds:
     const pUp = live ? mprUp(live) : null;
     const above = target !== null && vi >= target;
     return (
-      <div className="mt-2 flex items-center gap-x-2 gap-y-1 flex-wrap text-[11px] font-mono tabular-nums">
+      <div className="mt-2 flex items-center gap-x-2 gap-y-1 flex-wrap text-[11px] tabular-nums">
         <span className="text-secondary">Round {idx}</span>
         {pUp !== null && (
           <>
@@ -51,7 +51,7 @@ export function RoundChip({ series, rounds, vi }: { series: BmSeriesRow; rounds:
   if (presaleRow) {
     const opens = new Date(presaleRow.opens_at).getTime();
     return (
-      <div className="mt-2 flex items-center gap-2 text-[11px] font-mono tabular-nums">
+      <div className="mt-2 flex items-center gap-2 text-[11px] tabular-nums">
         <span className="text-secondary">Round {presaleRow.idx}</span>
         <span className="text-tertiary">·</span>
         <span className="text-tertiary">presale{now !== null ? (now < opens ? ` · opens in ${fmtLeft(opens - now)}` : " · opening") : ""}</span>
