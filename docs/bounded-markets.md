@@ -41,15 +41,15 @@ _Updated as the build progresses._
 - [ ] End-to-end on Arbitrum Sepolia (needs testnet gas)
 - [x] Solana program (Colosseum Solana track): `programs/bounded_vi`, built on GitHub Actions, deployed to devnet, scripted end-to-end passes with the same numbers as the EVM run (`npm run bm:sol -- e2e`). Not yet wired into the web app's chain switch (scripts only).
 
-Known limits: Google/X sign-in on the subdomain redirects to the main site, so the hackathon build identifies people by wallet (opening a market needs a connected wallet, no account) and new subjects are captured on https://atnx.app, which the fork lists within minutes; centralised oracle; the VI itself is computed by production ATNX; the "deemed dead" rule for markets with a lower bound of 0 is not implemented; the treasury seed is not recovered; the 50/50 opening price is a product choice (the design doc illustrates a linear price).
+Known limits: Google/X sign-in on the subdomain redirects to the main site, so the hackathon build signs people in with a wallet signature instead (opening a market needs only a connected wallet, no account), and new subjects are captured on https://atnx.app, which the fork lists within minutes; centralised oracle; the VI itself is computed by production ATNX; the "deemed dead" rule for markets with a lower bound of 0 is not implemented; the treasury seed is not recovered; the 50/50 opening price is a product choice (the design doc illustrates a linear price).
 
 ## Operations
 
-- Env vars: see `atnx-web/.env.local.example` plus `CRON_SECRET`, `BM_KEEPER_PRIVATE_KEY`, `NEXT_PUBLIC_BM_DEFAULT_CHAIN`, `BM_SEED_USDG`, `BM_TOUCH_PRINTS`, `BM_MAX_VI_AGE_MIN`, `BM_AUTO_ROLL`.
+- Env vars: `CRON_SECRET`, `BM_KEEPER_PRIVATE_KEY`, `NEXT_PUBLIC_BM_DEFAULT_CHAIN`, `BM_SEED_USDG`, `BM_TOUCH_PRINTS`, `BM_MAX_VI_AGE_MIN`, `BM_AUTO_ROLL`, all listed in `atnx-web/.env.local.example`; the contract addresses default to the Robinhood Testnet deploy and can be overridden with the `NEXT_PUBLIC_BM_*_<chainId>` lines `contracts/deploy.sh` prints.
 - Run the keeper by hand: `curl -H "Authorization: Bearer $CRON_SECRET" https://markets.atnx.app/api/bm/keeper?dry=1`.
 - Tests: `cd contracts && forge test`; `cd atnx-web && npm run test:bm`.
 - Deploy contracts: `contracts/deploy.sh robinhood_testnet` and `contracts/deploy.sh arbitrum_sepolia`; paste the printed `NEXT_PUBLIC_BM_*` lines into the Vercel env (and `atnx-web/.env.local`), then push to `main`: the GitHub integration deploys production.
 - Keeper by hand, locally: `cd atnx-web && npm run bm:keeper:dry` (add `-- --live` for a real tick).
 - Open a market from the keeper: `npm run bm:open` lists candidates, `npm run bm:open -- "Name"` opens one.
 - Keeper rule of thumb: a market's cursor starts at the newest VI print when it opens; only prints made while it is open can resolve it.
-- Vercel: project `atnx-markets`, root `atnx-web`, cron `/api/bm/keeper` every 5 minutes on the production deployment. Logs: Vercel → Logs, filter the path.
+- Vercel: project `atnx-markets`, root `atnx-web`, cron `/api/bm/keeper` every 5 minutes on the production deployment; the same tick runs the rounds step when `BM_ROUNDS_ENABLED=1`. Production has `BM_AUTO_ROLL=0`. Logs: Vercel → Logs, filter the path.

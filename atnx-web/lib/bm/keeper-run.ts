@@ -14,21 +14,31 @@ import { finishCreate, openBoundedMarket } from './open';
 import * as registry from './registry';
 import type { BmMarketRow, BmSide } from '@/lib/supabase/database-bm';
 
-// One keeper tick. Runs from the cron route every five minutes and from
-// scripts/bm-keeper-dry.ts by hand. In dry mode nothing is sent and
-// nothing in the registry changes; the log says what would happen.
+// One keeper tick, for both kinds of on-chain market: the bounded markets
+// of the first iteration (EVM testnets, steps 1–3) and the rolling VI
+// rounds on Solana devnet (step 4). Runs from the cron route
+// (/api/bm/keeper) every five minutes and by hand from
+// scripts/bm-keeper-dry.ts and scripts/rounds-tick.ts. In dry mode nothing
+// is sent and nothing in the registry changes; the log says what would
+// happen.
 //
-//   1. pending rows: the create tx was sent but the open call did not
-//      see it confirm; look the receipt up and finish or fail the row.
-//   2. resolving rows: same for the resolve tx; the chain is the truth.
-//   3. open rows: read the VI prints since the cursor, apply the touch
-//      rule, advance the cursor; on a touch, resolve on-chain, then
-//      auto-roll a new market from the current VI.
-//   4. rolling rounds (BM_ROUNDS_ENABLED=1): see tickRounds in rounds.ts.
-//      It stops starting new work 45 seconds into the tick; the next tick
-//      picks up where it left off.
+//   1. pending bounded markets: the create tx was sent but the open call
+//      did not see it confirm; look the receipt up and finish or fail the
+//      row.
+//   2. resolving bounded markets: same for the resolve tx; the chain is
+//      the truth.
+//   3. open bounded markets: read the VI prints since the cursor, apply
+//      the touch rule, advance the cursor; on a touch, resolve on-chain,
+//      then auto-roll a new market from the current VI (unless
+//      BM_AUTO_ROLL=0).
+//   4. rolling rounds (BM_ROUNDS_ENABLED=1): see tickRounds in rounds.ts
+//      (reconcile, create pending series, settle or void, ante and open,
+//      void the presale of paused series). It stops starting new work 45
+//      seconds into the tick; the next tick picks up where it left off.
 //
-// A failure on one market is logged and the loop moves on.
+// Every non-dry entry lands in bm.keeper_log: bounded entries carry
+// bm_market_id, rounds entries series_id and round_id. A failure on one
+// market or round is logged and the loop moves on.
 
 export const TOUCH_PRINTS = Number(process.env.BM_TOUCH_PRINTS ?? 3);
 export const AUTO_ROLL = (process.env.BM_AUTO_ROLL ?? '1') !== '0';

@@ -25,7 +25,7 @@ Env vars:
 
 Optional overrides (model ids, link and confirm thresholds, the daily market-creation cap and its exemptions) and the `EVAL_*` variables for the eval script are listed in `atnx-web/.env.local.example`.
 
-Rolling rounds on Solana devnet ([rounds.md](rounds.md)). None of these are in `.env.local.example` yet:
+Rolling rounds on Solana devnet ([rounds.md](rounds.md)), also in `.env.local.example`:
 
 | Name | Where | Notes |
 | --- | --- | --- |
@@ -33,10 +33,11 @@ Rolling rounds on Solana devnet ([rounds.md](rounds.md)). None of these are in `
 | `BM_SOL_KEEPER_SECRET` | server only | The keeper's Solana key: a JSON array of 64 numbers (`solana-keygen` format) or the same bytes in base58. On devnet it is also the program's authority and treasury |
 | `NEXT_PUBLIC_BM_SOL_PROGRAM` | client + server | Program id; defaults to the deployed `vi_rounds` |
 | `NEXT_PUBLIC_BM_SOL_USDG` | client + server | The mock USDG mint. Without it the ticket says rounds are not live and the portfolio hides the rounds section |
-| `NEXT_PUBLIC_BM_SOL_RPC` | client + server | Devnet RPC; defaults to `https://api.devnet.solana.com` (rate-limited, a keyed provider is better) |
-| `NEXT_PUBLIC_BM_MOCK_SOL_WALLET` | client, outside production | A base58 address the ticket treats as connected, read-only, for screenshots without a wallet extension |
+| `NEXT_PUBLIC_BM_SOL_RPC` | client + server | Devnet RPC; defaults to `https://api.devnet.solana.com`, which rate-limits. Production uses a Helius devnet endpoint |
+| `NEXT_PUBLIC_BM_MOCK_SOL_WALLET` | client, `next dev` only | A base58 address the ticket treats as connected, read-only, for screenshots without a wallet extension. Ignored on every Vercel deployment, previews included (`NODE_ENV` is `production` there) |
 | `BM_ROUND_SECS`, `BM_SETTLE_WINDOW_SECS`, `BM_FIRST_PRESALE_SECS` | server only | Daily series: 86400, 1800, 3600 |
 | `BM_FAST_ROUND_SECS`, `BM_FAST_SETTLE_WINDOW_SECS`, `BM_FAST_FIRST_PRESALE_SECS` | server only | Fast demo series: 3600, 900, 600 |
+| `BM_FAST_FROM_CLIENT` | server only | `1` lets the ticket start a fast series on a production build; otherwise only `rounds:start --fast` can |
 | `BM_ANTE_USDG` | server only | The keeper's commit on an empty side, default 10 |
 | `BM_SETTLE_DELAY_SECS` | server only | How long after a round's close the keeper settles, default 300 |
 | `BM_AUTO_ROLL` | server only | `0` stops the bounded-market keeper from rolling new bounded markets (the first iteration); resolution goes on |
@@ -79,12 +80,14 @@ Each item becomes a `markets` row, one `captures` row (image is the source page'
 ## Extension
 
 1. `chrome://extensions` → enable **Developer Mode** → **Load unpacked** → select `atnx-extension/`.
-2. Click the toolbar icon to open the side panel, open the gear, and set **Web App URL** to `http://localhost:3000` while developing locally. Chrome will ask to grant the extension access to that origin — accept, or captures can't attach the auth cookie. The field shows only to admins and moderators, so sign in at www.atnx.app with a staff account first (once a local URL is saved it stays visible). Only `*.atnx.app` and `localhost` / `127.0.0.1` are accepted.
-3. Sign in at your web app URL first so the Supabase auth cookie exists. Then `Ctrl+Shift+X` / `Cmd+Shift+X` to capture.
+2. Click the toolbar icon to open the side panel, open the gear, and set **Web App URL** to `http://localhost:3000` while developing locally. Chrome will ask to grant the extension access to that origin — accept, or captures can't attach the auth cookie. The field shows only to admins and moderators, so sign in at markets.atnx.app with a staff account first (once a local URL is saved it stays visible). Only `*.atnx.app` and `localhost` / `127.0.0.1` are accepted.
+3. Sign in at your web app URL first (connect an EVM wallet and sign the message) so the Supabase auth cookie exists. Then `Ctrl+Shift+X` / `Cmd+Shift+X` to capture.
 
 Change the hotkey at `chrome://extensions/shortcuts`.
 
 ## Releasing the extension to the Chrome Web Store
+
+The fork's extension is not published; this is the upstream release flow, kept for reference.
 
 ```bash
 cd atnx-extension
@@ -103,10 +106,23 @@ by the web app at `/privacy`, so deploy the web app before submitting. Bump
 # Deployment
 
 - Hosted on **Vercel**, project `atnx-markets`, domain `markets.atnx.app`, Root Directory `atnx-web`. The GitHub integration builds every push: a pull request gets a preview, a push to `main` deploys production. (Until 2026-10-02 the root directory was `.` and only CLI deploys from inside `atnx-web` worked; a `vercel deploy` from inside `atnx-web` now fails, so link at the repository root if a CLI deploy is ever needed.)
-- `vercel.json` schedules `/api/bm/keeper` every 5 min (bounded markets, then rounds when `BM_ROUNDS_ENABLED=1`); the VI refresh crons stay on production ATNX, whose history this build reads.
-- Solana programs are built on GitHub Actions, never locally: `.github/workflows/solana-build.yml` runs `cargo test -p vi_rounds --lib` on the host toolchain, then `anchor build` for `bounded_vi` and `vi_rounds` with Agave pinned to 4.3.0, and uploads one artifact per program. Deploy from the laptop with `programs/deploy.sh vi_rounds` (needs `gh` and the Solana CLI; pays from `~/.config/solana/devnet.json` unless `PAYER` is set); it deploys the latest green artifact with the committed keypair in `keys/` and copies the IDL and types to `atnx-web/lib/bm/idl/`. Then `npm run rounds:sol -- e2e` checks the deploy, and a commit of the new IDL plus a push to `main` ships it to the site. Details in [programs/README.md](../programs/README.md).
+- `vercel.json` schedules `/api/bm/keeper` every 5 min (bounded markets, then rounds when `BM_ROUNDS_ENABLED=1`); Vercel runs crons on the production deployment only. The VI refresh crons stay on production ATNX, whose history this build reads.
+- Solana programs are built on GitHub Actions, never locally: `.github/workflows/solana-build.yml` runs `cargo test -p vi_rounds --lib` on the host toolchain, then `anchor build` for `bounded_vi` and `vi_rounds` with Agave pinned to 4.3.0, and uploads one artifact per program. Deploy from the laptop with `programs/deploy.sh vi_rounds` (needs `gh` and the Solana CLI; pays from `~/.config/solana/devnet.json` unless `PAYER` is set; `--dry` only fetches the artifact and copies the IDL); it deploys the artifact of the newest green run on the current branch (`BRANCH=main` to pick another) with the committed keypair in `keys/` and copies the IDL and types to `atnx-web/lib/bm/idl/`. Then `npm run rounds:sol -- e2e` checks the deploy (after a fresh program id, `npm run rounds:sol -- init` first, and the printed mint goes in `NEXT_PUBLIC_BM_SOL_USDG`), and a commit of the new IDL plus a push to `main` ships it to the site. Details in [programs/README.md](../programs/README.md).
 - `next.config.ts` is intentionally empty — all routing/CORS lives in `proxy.ts` and route handlers.
-- The extension defaults to `https://atnx.app`; no rebuild needed to switch friends between prod and local.
+- The fork's extension defaults to `https://markets.atnx.app` (the published upstream extension to www.atnx.app); no rebuild needed to switch between it and a local server.
+
+## Preview deployments
+
+Every push to a branch other than `main` builds a preview; the URL is on the pull request.
+
+- Env: previews read Vercel's Preview environment, which can be scoped to one branch. `feat/vi-rounds` (merged 2026-10-05) had its own set: the Solana variables and the keeper key as on production, plus the Supabase variables, with `BM_ROUNDS_ENABLED=0`; a new branch needs its own. Add a variable in the dashboard (Settings → Environment Variables, Preview, pick the branch) or with `vercel env add NAME preview <branch>` from a checkout linked at the repository root, then redeploy.
+- No cron runs on a preview, so nothing ticks there. A preview uses the same database and devnet program as production: a series started on it is real, and its rounds open when production's keeper next runs with rounds enabled.
+- Previews sit behind Vercel deployment protection. For a headless check, create the Protection Bypass for Automation secret (Settings → Deployment Protection) and send it as a header; `x-vercel-set-bypass-cookie: true` keeps the browser through later navigations:
+
+```bash
+curl -H "x-vercel-protection-bypass: $BYPASS" https://<preview-url>/app
+# Playwright: browser.newContext({ extraHTTPHeaders: { 'x-vercel-protection-bypass': BYPASS, 'x-vercel-set-bypass-cookie': 'true' } })
+```
 
 # Known rough edges
 

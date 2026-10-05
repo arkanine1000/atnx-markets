@@ -36,16 +36,16 @@ Trading is on chain; there is no simulated exchange in this build.
 ```
    production ATNX ── vi_history every 5 min ──┐
                                                ▼
-   /api/bm/keeper (Vercel Cron, 5 min) ── lib/bm/keeper-run.ts
+   /api/bm/keeper (Vercel Cron, 5 min, production only) ── lib/bm/keeper-run.ts
       ├─ bounded markets (EVM testnets, first iteration): resolve on a bound touch
-      └─ rolling rounds (Solana devnet, vi_rounds): create series, ante, open, settle, void
+      └─ rolling rounds (Solana devnet, vi_rounds; BM_ROUNDS_ENABLED=1): create series, ante, open, settle, void
                                                │
                      registry: bm.markets, bm.series, bm.rounds, bm.keeper_log (Supabase)
                                                │
    browser ── wagmi (EVM) / Solana wallet adapter ── signs trades and claims directly
 ```
 
-The registry says which on-chain market or series belongs to which ATNX market and where each round stands; the money and the positions live in the contracts and program accounts. Mechanics in [rounds.md](rounds.md) and [bounded-markets.md](bounded-markets.md).
+The registry says which on-chain market or series belongs to which ATNX market and where each round stands; the money and the positions live in the contracts and program accounts. Opening a bounded market and starting a series of rounds go through the server instead: the ticket calls a server action and the keeper key sends the transaction and pays for it, with the connected wallet recorded as opener or finder. Mechanics in [rounds.md](rounds.md) and [bounded-markets.md](bounded-markets.md).
 
 # Tech stack
 
@@ -53,7 +53,7 @@ The registry says which on-chain market or series belongs to which ATNX market a
 | --- | --- |
 | Framework | Next.js 16.2.2 (App Router, Server Actions, `proxy.ts` — renamed from `middleware.ts` in 16) |
 | UI | React 19.2, Tailwind v4, `next-themes`, `recharts` for sparklines |
-| Auth + DB | Supabase (Postgres + RLS + Storage + Google + X OAuth), `@supabase/ssr` 0.10 |
+| Auth + DB | Supabase (Postgres + RLS + Storage; sign-in with an EVM wallet signature through `signInWithWeb3`, no Google or X in the fork), `@supabase/ssr` 0.10 |
 | Signals | `google-trends-api`, Wikipedia REST (opensearch + per-article-daily), YouTube Data API, Bluesky, GDELT on BigQuery, twitterapi.io for X, Apify actors for TikTok hashtags and for TikTok and Instagram posts |
 | Extension | Manifest V3, in-worker `OffscreenCanvas` cropping, Shadow DOM + Popover API overlay, `chrome.storage.local` for config |
 | Models | Vercel AI SDK + AI Gateway: Gemini Flash / Flash-Lite for vision and text, Cohere Embed v4 for embeddings. The extension only ships the cropped image |

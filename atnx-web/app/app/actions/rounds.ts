@@ -18,7 +18,11 @@ export async function startSeriesAction(atnxMarketId: string, wallet: string, fa
   } catch {
     return { ok: false, code: "chain", error: "bad wallet" };
   }
-  const result = await startSeries({ atnxMarketId, finderWallet: finder, fast: fast === true });
+  // A fast series from the browser only where the toggle is shown (next
+  // dev) or where it is allowed on purpose; the laptop script can always
+  // start one. Otherwise a wallet could fill production with hourly series.
+  const fastAllowed = process.env.NODE_ENV !== "production" || process.env.BM_FAST_FROM_CLIENT === "1";
+  const result = await startSeries({ atnxMarketId, finderWallet: finder, fast: fast === true && fastAllowed });
   if (result.ok) {
     revalidatePath(`/app/markets/${atnxMarketId}`);
     revalidatePath("/app");

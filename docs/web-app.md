@@ -14,7 +14,7 @@
 | `/app/settings` | ❌ | The account's handle, and the wallets: the EVM wallet for the bounded markets and a Solana block (address, mock USDG balance, a 1,000 USDG faucet, disconnect) for the rounds |
 | `/admin` | admins only | Moderation: markets (rename, soft-delete, restore, purge a soft-deleted one for good, retire with the name blocked and optionally its aliases, set what a market is about; each row shows where its description came from), captures in review (low-confidence creates and overrides), audit log, waitlist signups (with a copy-all for invites), and a Bounded tab with the bounded-market registry and the keeper log. Rounds have no admin tab yet; `bm.series`, `bm.rounds` and `bm.keeper_log` are the place to look |
 | `/share` | ❌ | Android share-target POST (image, link, or text) → propose → redirect to the review page, or straight to the market with `?shared=<outcome>` for a repeat, which the market page turns into a toast. The service worker (`public/sw.js`) takes the POST over: it answers at once with a "Capturing…" page, shrinks a screenshot to a 1080 px JPEG (raw phone screenshots exceed Vercel's 4.5 MB body limit), uploads with `Accept: application/json` to get the target path back, and moves the window there. A link whose site blocks previews (Facebook, Instagram, TikTok) is tried from its caption, and failing that lands on `/app/submit` prefilled so one screenshot finishes it |
-| `/auth/callback` | — | OAuth return path; exchanges code → session, ensures `user_profiles` / `sim_balances` rows |
+| `/auth/callback` | — | OAuth return path kept from upstream; exchanges code → session, ensures `user_profiles` / `sim_balances` rows. The fork's wallet sign-in does not pass through it |
 
 ## API
 
@@ -56,8 +56,9 @@
 
 ## React context + components
 
-- **`AuthContext`** — `user`, `loading`, `openLoginModal`, `signIn(provider)` (Google or X). Subscribes to `onAuthStateChange` and auto-closes the modal when a session appears.
-- **`LoginModal`** — Google-only right now. Backdrop-blurred. Escape-to-close.
+- **`AuthContext`** — `user`, `loading`, `openLoginModal`, `closeLoginModal`, `signInWithWallet`, `signOut`. `signInWithWallet` builds a Sign-In with Ethereum (EIP-4361) message, has the wallet sign it, hands it to `supabase.auth.signInWithWeb3`, then ensures the profile row with the wallet address (`ensureWalletProfile` in `app/app/actions/auth.ts`). Subscribes to `onAuthStateChange`.
+- **`LoginModal`** — "Sign in with your wallet": connect an EVM wallet if none is connected, then one signature, no transaction. Backdrop-blurred, Escape-to-close. There is no Google or X sign-in in the fork.
+- **`bm/AutoWalletSignIn`** — Connecting an EVM wallet asks for the sign-in signature once per address per page load; a refusal is not retried until the wallet reconnects or the modal is used.
 - **`LiveLogo`** — The brand mark drawn as SVG (the lens, cyan | magenta, black pupil; no light cone). The pupil eases toward the pointer, glances about on its own when nobody is pointing, and the lids blink every few seconds; still under reduced motion. The flat `public/logo_*.png` marks are kept for a revert.
 - **`Nav`** — LiveLogo + ATNX wordmark, UserMenu, theme toggle on the far right. From `sm` up Markets and Portfolio sit in a pill in the header, followed by the market search (`NavSearch`: a magnifying glass that opens into a field; on the markets page the listing follows the text, elsewhere Enter goes there), and Create is a pill beside the avatar with a magenta + and the word; on phones the tabs become a fixed bottom bar (Markets, the +, Portfolio), the search sits beside the account; a market page stacks its trade dock on top of the bar.
 - **`Identicon`** — Generated avatar seeded by the account id: a disc of one ink under blocks of the other two in multiply blend, so overlaps print the secondaries, with a black pupil and a glint set a little off centre per account. Stands in for the handle in the header and on the settings page. The extension draws the same face from the same id (`atnx-extension/identicon.js`).
@@ -69,8 +70,8 @@
 # Auth flow
 
 1. Anyone hits `/` → lands on splash → clicks **Launch Beta** → `/app`.
-2. Guests can browse the dashboard and market detail pages. Trading needs a connected wallet, not an account: the ticket shows a connect button, and `/app/portfolio` reads whichever wallet is connected.
-3. Clicking any Login opens the blurred modal → Google or X OAuth via `supabase.auth.signInWithOAuth`.
-4. `/auth/callback` exchanges the code for a session, sets the auth cookie with `SameSite=None; Secure` (via `proxy.ts`), redirects back.
+2. Guests can browse the dashboard and market detail pages. Trading needs a connected wallet, not an account: the ticket shows a connect button, and `/app/portfolio` reads whichever wallet is connected. Rounds use a Solana wallet, which never signs anyone in; starting a series or committing needs only the wallet.
+3. Connecting an EVM wallet (or clicking Login, which opens the blurred modal) asks for one signature over a Sign-In with Ethereum message; `supabase.auth.signInWithWeb3` turns it into a Supabase session, and the profile row records the address. Google and X sign-in are not offered: on the subdomain they would redirect to atnx.app.
+4. The session cookie is set with `SameSite=None; Secure` (`lib/supabase/cookie-options.ts`); no redirect is involved.
 5. `proxy.ts` only protects `/admin` and `/app/settings`. Everything else is open for guests.
 6. Because the cookie is `SameSite=None; Secure`, the Chrome extension's `fetch(..., { credentials: 'include' })` attaches it when posting captures — the server can attribute the capture to the signed-in user without a token exchange.

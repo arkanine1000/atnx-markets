@@ -646,9 +646,9 @@ function PresalePane({
   const maxBuy = fmtUsdg((usdg * 99n) / 100n, 2).replace(/,/g, "");
   const ante = seriesRow.ante_usdg;
   const anteRow = row?.ante_side
-    ? { k: "Treasury ante", v: `${row.ante_usdg ?? ante} USDG on ${row.ante_side === "both" ? "both sides" : row.ante_side.toUpperCase()}` }
+    ? { k: "Keeper ante", v: `${row.ante_usdg ?? ante} USDG on ${row.ante_side === "both" ? "both sides" : row.ante_side.toUpperCase()}` }
     : ante > 0
-      ? { k: "Treasury ante if a side is empty", v: `${ante} USDG` }
+      ? { k: "Keeper ante if a side is empty", v: `${ante} USDG` }
       : null;
 
   return (
