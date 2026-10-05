@@ -8,6 +8,7 @@ import {
   Keypair,
   PublicKey,
   Transaction,
+  VersionedTransaction,
   sendAndConfirmTransaction,
   type TransactionInstruction,
 } from '@solana/web3.js';
@@ -60,8 +61,25 @@ export function keeperKeypair(): Keypair {
   return keeper;
 }
 
+// Anchor's own Wallet class lives only in its CommonJS build (it is Node-only),
+// so the ESM bundle Turbopack picks has no `Wallet` export. This is the same
+// three methods over a Keypair, which is all AnchorProvider needs.
+function keypairWallet(kp: Keypair) {
+  const signOne = async <T extends Transaction | VersionedTransaction>(tx: T): Promise<T> => {
+    if (tx instanceof VersionedTransaction) tx.sign([kp]);
+    else tx.partialSign(kp);
+    return tx;
+  };
+  return {
+    publicKey: kp.publicKey,
+    payer: kp,
+    signTransaction: signOne,
+    signAllTransactions: async <T extends Transaction | VersionedTransaction>(txs: T[]): Promise<T[]> => Promise.all(txs.map(signOne)),
+  };
+}
+
 export function keeperProgram(): anchor.Program {
-  if (!program) program = roundsProgram(solConnection(), new anchor.Wallet(keeperKeypair()));
+  if (!program) program = roundsProgram(solConnection(), keypairWallet(keeperKeypair()));
   return program;
 }
 
