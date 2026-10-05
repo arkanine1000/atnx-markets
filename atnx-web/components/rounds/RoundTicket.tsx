@@ -1,14 +1,16 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { createAssociatedTokenAccountIdempotentInstruction, getAssociatedTokenAddressSync } from "@solana/spl-token";
 import type { PublicKey, TransactionInstruction } from "@solana/web3.js";
 import { startSeriesAction } from "@/app/app/actions/rounds";
-import { Card, Segmented } from "@/components/ui";
+import { Card, Chip, Segmented } from "@/components/ui";
+import { HowItWorksModal } from "@/components/HowItWorksModal";
 import { fmtCents, fmtUsdg, parseUsdg, shortHash } from "@/components/bm/format";
 import { USDG_UNIT, solTxUrl } from "@/lib/bm/chains";
-import { DpmError, feeSplit, mprUp, presalePrice, quoteBuy, type BuyQuote } from "@/lib/bm/dpm";
+import { DpmError, feeSplit, mprUp, presalePrice, presaleShares, quoteBuy, type BuyQuote } from "@/lib/bm/dpm";
 import { USDG_MINT, type RoundSide, type SeriesAccount } from "@/lib/bm/sol-shared";
 import type { BmRoundRow, BmSeriesRow } from "@/lib/supabase/database-bm";
 import { SolConnectButton } from "./SolConnectButton";
@@ -36,11 +38,19 @@ import {
 // over the round's last minutes, end at or above where it opened? While
 // round N trades, round N+1 takes presale commits; the segmented control
 // switches between the two. Same mount contract as BoundedTicket.
+//
+// It reads like a trade ticket: numbers, one outcome line, a button. How
+// rounds work sits behind the one "How rounds work" disclosure at the
+// bottom of every state, and behind it the Show me modal.
 
 const QUICK = [10, 50, 100];
 const SLIPPAGE_BPS = 100n; // 1% below the quote
 const MAX_VI_AGE_MIN = 30; // lib/bm/open.ts: a series starts only on a fresh VI
 const FAUCET_USDG = 1_000n;
+const DEVNET = "Devnet · mock USDG, no value.";
+// lib/bm/rounds.ts: the averaging window a new series gets.
+const WINDOW_SECS = 1_800;
+const FAST_WINDOW_SECS = 900;
 
 interface Props {
   atnxMarketId: string;
@@ -98,13 +108,14 @@ function StartSeries({ atnxMarketId, name, score, scoring = false, viUpdatedAt, 
   }, [pending, router]);
 
   const roundSecs = fast ? 3_600 : 86_400;
+  const windowSecs = fast ? FAST_WINDOW_SECS : WINDOW_SECS;
   const stale = !!viUpdatedAt && now !== null && now - new Date(viUpdatedAt).getTime() > MAX_VI_AGE_MIN * 60_000;
   const blocked = scoring
-    ? "The first score is still being computed. Rounds can start once it is live."
+    ? "The first score is still being computed."
     : score <= 0
       ? "This market has no score yet."
       : stale
-        ? `The index has not updated in the last ${MAX_VI_AGE_MIN} minutes. Rounds start on a fresh reading.`
+        ? `The index is over ${MAX_VI_AGE_MIN} minutes old. Rounds start on a fresh reading.`
         : null;
 
   function start() {
@@ -126,19 +137,14 @@ function StartSeries({ atnxMarketId, name, score, scoring = false, viUpdatedAt, 
       <Card className="p-4 sm:p-5">
         <Question name={name} roundSecs={series?.round_secs ?? roundSecs} />
         <p className="text-sm text-secondary animate-pulse">Starting rounds on chain…</p>
-        <p className="text-[11px] text-tertiary mt-2">The series and its first presale are being created on Solana devnet. This page updates on its own.</p>
+        <HowRounds roundSecs={series?.round_secs ?? roundSecs} windowSecs={series?.settle_window_secs ?? windowSecs} />
       </Card>
     );
   }
 
   return (
     <Card className="p-4 sm:p-5">
-      <p className="text-sm text-primary font-bold mb-1">Start rounds on {name}</p>
-      <p className="text-sm text-secondary mb-4">
-        Each round asks one question: will the index be higher {fmtSpan(roundSecs)} after the round opens? The first round takes commits for {fast ? "ten minutes" : "an hour"}, then opens at
-        the index of that moment{score > 0 ? <> (now <span className="tabular-nums font-bold text-primary">{Math.round(score)}</span>)</> : null}. Whoever starts the
-        series earns a share of its fees.
-      </p>
+      <Question name={name} roundSecs={roundSecs} />
       {process.env.NODE_ENV !== "production" && (
         <label className="flex items-center gap-2 text-xs text-secondary mb-3 cursor-pointer">
           <input type="checkbox" checked={fast} onChange={(e) => setFast(e.target.checked)} className="accent-[var(--color-atnx-cyan)]" />
@@ -147,23 +153,26 @@ function StartSeries({ atnxMarketId, name, score, scoring = false, viUpdatedAt, 
       )}
       {blocked ? (
         <p className="text-sm text-secondary">{blocked}</p>
-      ) : !wallet.connected ? (
-        <SolConnectButton label="Connect a Solana wallet to start" />
       ) : (
         <>
-          <button
-            type="button"
-            onClick={start}
-            disabled={starting || wallet.mock}
-            className="btn-cyan w-full h-12 rounded-xl font-bold text-sm cursor-pointer disabled:opacity-50"
-          >
-            {starting ? "Starting…" : `Start rounds on ${name}`}
-          </button>
-          {wallet.mock && <p className="text-[11px] text-tertiary mt-2">{MOCK_HINT}</p>}
+          {!wallet.connected ? (
+            <SolConnectButton label="Connect a Solana wallet to start" />
+          ) : (
+            <button
+              type="button"
+              onClick={start}
+              disabled={starting || wallet.mock}
+              className="btn-cyan w-full h-12 rounded-xl font-bold text-sm cursor-pointer disabled:opacity-50"
+            >
+              {starting ? "Starting…" : "Start rounds"}
+            </button>
+          )}
+          <p className="text-[11px] text-tertiary mt-2">You earn a share of every fee in this series.</p>
+          {wallet.mock && <p className="text-[11px] text-tertiary mt-1">{MOCK_HINT}</p>}
         </>
       )}
       {error && <p className="text-xs text-atnx-magenta mt-3 break-words">{error}</p>}
-      <p className="text-[11px] text-tertiary mt-3">Solana devnet. Everything settles in mock USDG, which has no value.</p>
+      <HowRounds roundSecs={roundSecs} windowSecs={windowSecs} />
     </Card>
   );
 }
@@ -251,7 +260,7 @@ function SeriesTicket({ name, score, series, rounds, initialSide = "up", onToast
         <Question name={name} roundSecs={series.round_secs} />
         <RegistryLine liveRow={liveRow} presaleRow={presaleRow} now={now} />
         <SolConnectButton label="Connect Solana wallet to trade" />
-        <p className="text-[11px] text-tertiary mt-3">Solana devnet. Everything settles in mock USDG, which has no value.</p>
+        <HowRounds roundSecs={series.round_secs} windowSecs={series.settle_window_secs} />
       </Card>
     );
   }
@@ -262,6 +271,7 @@ function SeriesTicket({ name, score, series, rounds, initialSide = "up", onToast
         <Question name={name} roundSecs={series.round_secs} />
         <p className="text-sm text-secondary animate-pulse">{state.error ? "Could not read the round." : "Loading the round…"}</p>
         {state.error && <p className="text-[11px] text-atnx-magenta mt-2 break-words">{state.error.message.split("\n")[0]}</p>}
+        <HowRounds roundSecs={series.round_secs} windowSecs={series.settle_window_secs} />
       </Card>
     );
   }
@@ -272,13 +282,13 @@ function SeriesTicket({ name, score, series, rounds, initialSide = "up", onToast
     return (
       <Card className="p-4 sm:p-5">
         <Question name={name} roundSecs={series.round_secs} />
-        <p className="text-sm text-secondary mb-4">You need test USDG to take a side. One click creates your USDG account and puts 1,000 in it.</p>
+        <p className="text-sm text-secondary mb-3">You need test USDG to take a side.</p>
         <button type="button" onClick={faucet} disabled={!!busy || wallet.mock} className="btn-cyan w-full h-12 rounded-xl font-bold text-sm cursor-pointer disabled:opacity-50">
           {busy ?? "Get 1,000 test USDG"}
         </button>
         {wallet.mock && <p className="text-[11px] text-tertiary mt-2">{MOCK_HINT}</p>}
         {error && <p className="text-xs text-atnx-magenta mt-3 break-words">{error}</p>}
-        <p className="text-[11px] text-tertiary mt-3">The wallet pays a small devnet SOL fee. Get devnet SOL at faucet.solana.com if it has none.</p>
+        <HowRounds roundSecs={series.round_secs} windowSecs={series.settle_window_secs} />
       </Card>
     );
   }
@@ -299,7 +309,7 @@ function SeriesTicket({ name, score, series, rounds, initialSide = "up", onToast
       ) : options.length === 1 ? (
         <div className="text-[11px] font-mono uppercase tracking-wider text-tertiary mb-3">{options[0].label}</div>
       ) : (
-        <p className="text-sm text-secondary mb-3">This series has no open round. It may be paused or ended.</p>
+        <p className="text-sm text-secondary mb-3">No open round. The series may be paused or ended.</p>
       )}
 
       {shown === "live" && live && ref ? (
@@ -401,6 +411,7 @@ function SeriesTicket({ name, score, series, rounds, initialSide = "up", onToast
           />
         </div>
       )}
+      <HowRounds roundSecs={acct.roundSecs} windowSecs={acct.settleWindowSecs} />
     </Card>
   );
 }
@@ -410,22 +421,26 @@ function RegistryLine({ liveRow, presaleRow, now }: { liveRow: BmRoundRow | null
   if (liveRow && liveRow.target_vi !== null) {
     const close = liveRow.close_at ? new Date(liveRow.close_at).getTime() : null;
     return (
-      <p className="text-xs text-secondary mb-4">
-        Round {liveRow.idx} is live with a target of <span className="tabular-nums font-bold text-primary">{Math.round(liveRow.target_vi)}</span>
-        {close && now !== null && now < close ? <>, closing in {fmtLeft(close - now)}</> : null}.
-        {presaleRow ? <> Round {presaleRow.idx} is taking commits.</> : null}
-      </p>
+      <StatusRow chip={close && now !== null && now < close ? `${fmtLeft(close - now)} left` : null}>
+        Round {liveRow.idx} · target <span className="tabular-nums font-bold text-primary">{Math.round(liveRow.target_vi)}</span>
+      </StatusRow>
     );
   }
   if (presaleRow) {
     const opens = new Date(presaleRow.opens_at).getTime();
-    return (
-      <p className="text-xs text-secondary mb-4">
-        Round {presaleRow.idx} is taking commits{now !== null && now < opens ? <> and opens in {fmtLeft(opens - now)}</> : null}.
-      </p>
-    );
+    return <StatusRow chip={now !== null && now < opens ? `opens in ${fmtLeft(opens - now)}` : null}>Round {presaleRow.idx} · presale</StatusRow>;
   }
   return null;
+}
+
+// One line of numbers on the left, the countdown as a chip on the right.
+function StatusRow({ chip, children }: { chip: string | null; children: ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-3 text-xs mb-3 min-h-5">
+      <span className="text-secondary min-w-0">{children}</span>
+      {chip && <Chip className="tabular-nums shrink-0">{chip}</Chip>}
+    </div>
+  );
 }
 
 // ------------------------------------------------------------- live pane
@@ -483,14 +498,11 @@ function LivePane({ view, series, score, now, side, setSide, amount, setAmount, 
 
   return (
     <div>
-      <div className="flex items-baseline justify-between gap-3 text-xs mb-3">
-        <span className="text-secondary">
-          Target <span className="tabular-nums font-bold text-primary">{target.toFixed(target < 100 ? 1 : 0)}</span>
-          <span className="text-tertiary"> · index now </span>
-          <span className={`tabular-nums font-bold ${viAbove ? "text-atnx-cyan" : "text-atnx-magenta"}`}>{Math.round(score)}</span>
-        </span>
-        <span className="text-tertiary tabular-nums">{now === null ? "" : phase === "trading" ? `${fmtLeft(tradeUntil - now)} left` : phase === "averaging" ? `closes in ${fmtLeft(closeAt - now)}` : "settling"}</span>
-      </div>
+      <StatusRow chip={now === null ? null : phase === "trading" ? `${fmtLeft(tradeUntil - now)} left` : phase === "averaging" ? `closes in ${fmtLeft(closeAt - now)}` : "settling"}>
+        Target <span className="tabular-nums font-bold text-primary">{target.toFixed(target < 100 ? 1 : 0)}</span>
+        <span className="text-tertiary"> · now </span>
+        <span className={`tabular-nums font-bold ${viAbove ? "text-atnx-cyan" : "text-atnx-magenta"}`}>{Math.round(score)}</span>
+      </StatusRow>
 
       {phase === "trading" ? (
         <>
@@ -515,7 +527,6 @@ function LivePane({ view, series, score, now, side, setSide, amount, setAmount, 
                   </span>
                 </span>
               </div>
-              <p className="text-[11px] text-tertiary mt-1">At the pools as they are now. Later buys on the other side add to it; your stake comes back either way if you are right.</p>
               <button type="button" onClick={() => setDetails((v) => !v)} aria-expanded={details} className="mt-1.5 text-[11px] text-tertiary link-quiet cursor-pointer">
                 {details ? "▾ Hide details" : "▸ Details"}
               </button>
@@ -541,14 +552,11 @@ function LivePane({ view, series, score, now, side, setSide, amount, setAmount, 
           >
             {busy ?? `Buy ${side.toUpperCase()}${units && units > 0n ? ` for ${fmtUsdg(units, 0)} USDG` : ""}`}
           </button>
-          <p className="text-[11px] text-tertiary mt-2">
-            Trading stops {fmtSpan(series.settleWindowSecs)} before the close. The round settles on the index averaged over those last {windowMin} minutes: UP wins at or above the target.
-          </p>
         </>
       ) : phase === "averaging" ? (
-        <p className="text-sm text-secondary animate-pulse">Averaging the last {windowMin} minutes… trading has stopped until the round closes.</p>
+        <p className="text-sm text-secondary animate-pulse">Averaging the last {windowMin} minutes…</p>
       ) : (
-        <p className="text-sm text-secondary animate-pulse">Settling: the keeper averages the last {windowMin} minutes of the index and settles the round on chain.</p>
+        <p className="text-sm text-secondary animate-pulse">Settling…</p>
       )}
 
       {pos && holdsAnything(pos) && <YourPosition pos={pos} round={r} />}
@@ -588,7 +596,6 @@ function YourPosition({ pos, round }: { pos: NonNullable<RoundView["position"]>;
 
 function PresalePane({
   view,
-  series,
   seriesRow,
   now,
   liveCloseAtMs,
@@ -604,6 +611,7 @@ function PresalePane({
   mock,
   onCommit,
 }: PaneBase & { view: RoundView; seriesRow: BmSeriesRow; liveCloseAtMs: number | null; onCommit: () => void }) {
+  const [details, setDetails] = useState(false);
   const r = view.account;
   const row = view.row;
   const potUp = r.presaleUp;
@@ -615,7 +623,8 @@ function PresalePane({
 
   // This commit valued as if the round opened now, at the pots plus it.
   // The payout is linear in a commit, so it reads the same alone or added
-  // to what the wallet already committed.
+  // to what the wallet already committed. A price exists only once the
+  // other side has money too; before that, the line says so instead.
   const preview = useMemo(() => {
     if (net <= 0n) return null;
     const up = side === "up";
@@ -623,25 +632,31 @@ function PresalePane({
     const mine = { presaleUp: up ? net : 0n, presaleDown: up ? 0n : net, stakeUp: 0n, stakeDown: 0n, sharesUp: 0n, sharesDown: 0n };
     const total = after.presaleUp + after.presaleDown;
     const pot = up ? after.presaleUp : after.presaleDown;
-    return { pay: safePayoutIf(mine, asOpened(after), side), price: total > 0n ? Number(pot) / Number(total) : null };
+    const other = up ? potDown : potUp;
+    return {
+      priced: other > 0n,
+      shares: presaleShares(net, pot, total),
+      pay: safePayoutIf(mine, asOpened(after), side),
+      price: total > 0n ? Number(pot) / Number(total) : null,
+    };
   }, [net, r, potUp, potDown, side]);
 
   const insufficient = !!units && units > usdg;
   const canCommit = !!units && units > 0n && net > 0n && !insufficient && !busy && !mock;
   const maxBuy = fmtUsdg((usdg * 99n) / 100n, 2).replace(/,/g, "");
   const ante = seriesRow.ante_usdg;
+  const anteRow = row?.ante_side
+    ? { k: "Treasury ante", v: `${row.ante_usdg ?? ante} USDG on ${row.ante_side === "both" ? "both sides" : row.ante_side.toUpperCase()}` }
+    : ante > 0
+      ? { k: "Treasury ante if a side is empty", v: `${ante} USDG` }
+      : null;
 
   return (
     <div>
-      <div className="flex items-baseline justify-between gap-3 text-xs mb-3">
-        <span className="text-secondary">
-          Pots <span className="text-atnx-cyan tabular-nums font-bold">{fmtUsdg(potUp, 0)}</span> UP ·{" "}
-          <span className="text-atnx-magenta tabular-nums font-bold">{fmtUsdg(potDown, 0)}</span> DOWN
-        </span>
-        <span className="text-tertiary tabular-nums">
-          {opensAt === null || now === null ? "" : now < opensAt ? `opens in ${fmtLeft(opensAt - now)}` : "opening…"}
-        </span>
-      </div>
+      <StatusRow chip={opensAt === null || now === null ? null : now < opensAt ? `opens in ${fmtLeft(opensAt - now)}` : "opening…"}>
+        Pots <span className="text-atnx-cyan tabular-nums font-bold">{fmtUsdg(potUp, 0)}</span> UP ·{" "}
+        <span className="text-atnx-magenta tabular-nums font-bold">{fmtUsdg(potDown, 0)}</span> DOWN
+      </StatusRow>
 
       <div className="grid grid-cols-2 gap-2 mb-4" role="radiogroup" aria-label="Side">
         <SideButton side="up" caption={priceUp === null ? "no commits yet" : `${fmtCents(priceUp)} a share`} selected={side === "up"} onClick={() => setSide("up")} />
@@ -651,19 +666,26 @@ function PresalePane({
 
       {preview && (
         <div className="mt-4 rounded-xl bg-elevated/60 border border-surface px-3 py-2.5">
-          {preview.pay !== null && (
-            <div className="flex items-baseline justify-between gap-3">
-              <span className="text-xs text-secondary">If {side.toUpperCase()} wins, at today&apos;s pots</span>
-              <span>
-                <span className="font-display font-bold text-xl tabular-nums text-primary">{fmtUsdg(preview.pay)}</span>
-                <span className="text-xs text-tertiary"> USDG</span>
-              </span>
-            </div>
+          {preview.priced && preview.price !== null ? (
+            <p className="text-xs text-secondary">
+              At today&apos;s pots your <span className="tabular-nums font-bold text-primary">{fmtUsdg(units ?? 0n, 0)}</span> USDG buys ~
+              <span className="tabular-nums font-bold text-primary">{fmtUsdg(preview.shares)}</span> shares at ~
+              <span className="tabular-nums font-bold text-primary">{fmtCents(preview.price)}</span>
+            </p>
+          ) : (
+            <p className="text-xs text-secondary">Price set when the round opens; nobody pays more for being early.</p>
           )}
-          <p className="text-[11px] text-tertiary mt-1">
-            Everyone on a side clears at the final pot share{preview.price !== null ? <> ({fmtCents(preview.price)} a share with your commit)</> : null}, so this moves
-            until the round opens. Commits are locked until the round settles.
-          </p>
+          <button type="button" onClick={() => setDetails((v) => !v)} aria-expanded={details} className="mt-1.5 text-[11px] text-tertiary link-quiet cursor-pointer">
+            {details ? "▾ Hide details" : "▸ Details"}
+          </button>
+          {details && (
+            <dl className="mt-1.5 pt-2 border-t border-surface space-y-1 text-[11px]">
+              {preview.priced && preview.pay !== null && <Row k={`Pays if ${side.toUpperCase()} wins`} v={`${fmtUsdg(preview.pay)} USDG`} />}
+              <Row k={`Fee (${Number(feeBps) / 100}%)`} v={`${fmtUsdg(units ? units - net : 0n)} USDG`} />
+              <Row k="Finder's share of the fee" v={`${Number(finderBps) / 100}%`} />
+              {anteRow && <Row k={anteRow.k} v={anteRow.v} />}
+            </dl>
+          )}
         </div>
       )}
 
@@ -675,17 +697,6 @@ function PresalePane({
       >
         {busy ?? `Commit${units && units > 0n ? ` ${fmtUsdg(units, 0)} USDG` : ""} to ${side.toUpperCase()}`}
       </button>
-      <p className="text-[11px] text-tertiary mt-2">
-        The round opens at the index of that moment and runs {fmtSpan(series.roundSecs)}. UP wins if the index, averaged over the last{" "}
-        {Math.round(series.settleWindowSecs / 60)} minutes, ends at or above it. Fee {Number(feeBps) / 100}%.
-      </p>
-      {row?.ante_side ? (
-        <p className="text-[11px] text-tertiary mt-1">
-          The treasury committed {row.ante_usdg ?? ante} USDG on {row.ante_side === "both" ? "both sides" : row.ante_side.toUpperCase()} so the round could open.
-        </p>
-      ) : ante > 0 ? (
-        <p className="text-[11px] text-tertiary mt-1">If a side is still empty at the open, the treasury commits {ante} USDG there so the round can open; it can win or lose like anyone.</p>
-      ) : null}
 
       {pos && holdsAnything(pos) && <YourPosition pos={pos} round={r} />}
     </div>
@@ -780,12 +791,12 @@ export function ClaimList({
           <div key={c.key.toBase58()} className="text-xs">
             <p className="text-secondary mb-1.5">
               {r.state === "void" ? (
-                <>Round {r.index} was void. Your net stake comes back; the fee stays with the series.</>
+                <>Round {r.index} · void · stake refunded</>
               ) : (
                 <>
-                  Round {r.index} settled <span className={tone}>{winner?.toUpperCase()}</span>
-                  {r.settleE2 > 0n ? <> at {(Number(r.settleE2) / 100).toFixed(0)} against {(Number(r.targetE2) / 100).toFixed(0)}</> : null}.{" "}
-                  {c.amount > 0n ? "You won." : "Your side lost."}
+                  Round {r.index} · <span className={tone}>{winner?.toUpperCase()}</span> won
+                  {r.settleE2 > 0n ? <span className="tabular-nums"> · {(Number(r.settleE2) / 100).toFixed(0)} vs {(Number(r.targetE2) / 100).toFixed(0)}</span> : null}
+                  {c.amount > 0n ? null : <span className="text-tertiary"> · your side lost</span>}
                 </>
               )}
             </p>
@@ -796,7 +807,13 @@ export function ClaimList({
                     Claim {fmtUsdg(c.amount)} USDG
                   </button>
                   {r.state === "settled" && canRoll && winner && (
-                    <button type="button" disabled={!!busy || mock} onClick={() => onRoll(c)} className="h-8 px-3 rounded-lg border border-surface text-secondary btn-quiet text-xs font-bold cursor-pointer disabled:opacity-50">
+                    <button
+                      type="button"
+                      disabled={!!busy || mock}
+                      onClick={() => onRoll(c)}
+                      title={`Commits the payout, less the fee, to ${winner.toUpperCase()} in round ${series.presaleRound}`}
+                      className="h-8 px-3 rounded-lg border border-surface text-secondary btn-quiet text-xs font-bold cursor-pointer disabled:opacity-50"
+                    >
                       Roll {fmtUsdg(c.amount)} into round {series.presaleRound} ({winner.toUpperCase()})
                     </button>
                   )}
@@ -810,12 +827,44 @@ export function ClaimList({
           </div>
         );
       })}
-      {canRoll && claims.some((c) => c.amount > 0n && c.account.state === "settled") && (
-        <p className="text-[11px] text-tertiary">
-          A roll commits the payout, less the fee, to the same side of the round now in presale (round {series.presaleRound}): the next round opens in the same moment
-          the last one settles, so a roll lands one further on.
-        </p>
+    </div>
+  );
+}
+
+// The one place the ticket explains itself: collapsed by default, the
+// same in every state, with the devnet note beside the toggle. "Show me"
+// opens the walkthrough at its rounds step, portalled to the body so the
+// phone sheet's transform cannot trap it.
+export function HowRounds({ roundSecs, windowSecs }: { roundSecs: number; windowSecs: number }) {
+  const [open, setOpen] = useState(false);
+  const [showMe, setShowMe] = useState(false);
+  const win = fmtSpan(windowSecs);
+  return (
+    <div className="mt-4 pt-3 border-t border-surface text-[11px] text-tertiary">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+        <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} className="link-quiet cursor-pointer">
+          {open ? "▾" : "▸"} How rounds work
+        </button>
+        <span>{DEVNET}</span>
+      </div>
+      {open && (
+        <div className="mt-2">
+          <ul className="list-disc pl-4 space-y-1 text-secondary">
+            <li>A round opens at the index of that moment: that is its target.</li>
+            <li>
+              It runs {fmtSpan(roundSecs)}; trading stops {win} before the close.
+            </li>
+            <li>The close is the index averaged over those {win}. UP wins at or above the target.</li>
+            <li>Winners get their stake back plus a share of the losing side&apos;s money.</li>
+            <li>Claim it, or roll it into the next round.</li>
+          </ul>
+          <p className="mt-2">Each transaction costs a little devnet SOL (faucet.solana.com).</p>
+          <button type="button" onClick={() => setShowMe(true)} className="mt-1.5 link-quiet font-bold cursor-pointer">
+            Show me ›
+          </button>
+        </div>
       )}
+      {showMe && createPortal(<HowItWorksModal initialStep={1} onClose={() => setShowMe(false)} />, document.body)}
     </div>
   );
 }

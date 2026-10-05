@@ -302,6 +302,19 @@ export async function hasOpenRounds(seriesId: string): Promise<boolean> {
 
 // The live and presale rounds of every running series, for the listing
 // badges and /api/bm/rounds.
+// Every series that reached the chain, whatever its state, so a position
+// found on chain can always be named by its market.
+export async function listSeriesWithPubkey(limit = 500): Promise<BmSeriesRow[]> {
+  const { data, error } = await bm()
+    .from('series')
+    .select('*')
+    .not('series_pubkey', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return (data ?? []) as BmSeriesRow[];
+}
+
 export async function listLiveRounds(): Promise<RoundWithSeries[]> {
   const { data, error } = await bm()
     .from('rounds')

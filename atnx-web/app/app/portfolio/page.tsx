@@ -1,7 +1,7 @@
 import { loadMarketMeta } from "@/lib/bm/market-meta";
 import { OnchainPortfolio } from "@/components/bm/OnchainPortfolio";
 import { RoundsPortfolio, type PortfolioSeries } from "@/components/rounds/RoundsPortfolio";
-import { listLiveRounds } from "@/lib/bm/rounds-registry";
+import { listSeriesWithPubkey } from "@/lib/bm/rounds-registry";
 import { listAll } from "@/lib/bm/registry";
 import { BM_CHAINS, isRoundsDeployed } from "@/lib/bm/chains";
 import type { BmMarketListing } from "@/lib/bm/listing";
@@ -44,18 +44,16 @@ async function loadListing(): Promise<BmMarketListing[]> {
 }
 
 // The running rounds series by on-chain key, with the market's name and
-// picture, so a position found on chain can name its market. Series with
-// no presale or live round left (ended) are not listed; their positions
-// show the series key instead.
+// picture, so a position found on chain can name its market, including
+// positions in series that have since ended.
 async function loadSeries(): Promise<PortfolioSeries[]> {
   if (!isRoundsDeployed()) return [];
   try {
-    const rows = await listLiveRounds();
-    const bySeries = new Map(rows.filter((r) => r.series.series_pubkey).map((r) => [r.series.series_pubkey!, r.series]));
-    const names = await loadMarketMeta(Array.from(new Set(Array.from(bySeries.values(), (s) => s.atnx_market_id))));
-    return Array.from(bySeries.entries(), ([key, s]) => {
+    const rows = await listSeriesWithPubkey();
+    const names = await loadMarketMeta(Array.from(new Set(rows.map((s) => s.atnx_market_id))));
+    return rows.map((s) => {
       const m = names.get(s.atnx_market_id);
-      return { seriesPubkey: key, atnxMarketId: s.atnx_market_id, name: m?.name ?? "Unknown market", thumb: m?.thumb ?? null, fast: s.fast };
+      return { seriesPubkey: s.series_pubkey!, atnxMarketId: s.atnx_market_id, name: m?.name ?? "Unknown market", thumb: m?.thumb ?? null, fast: s.fast };
     });
   } catch (err) {
     console.error("[portfolio] rounds series failed", err);
