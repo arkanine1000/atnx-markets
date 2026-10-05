@@ -32,11 +32,16 @@
     "bm:e2e": "npx --yes tsx --env-file=.env.local scripts/bm-e2e.ts",
     "bm:open": "npx --yes tsx --env-file=.env.local scripts/bm-open.ts",
     "bm:sol": "npx --yes tsx scripts/bm-sol.ts",
+    "rounds:start": "npx --yes tsx --env-file=.env.local scripts/rounds-start.ts",
+    "rounds:tick": "npx --yes tsx --env-file=.env.local scripts/rounds-tick.ts",
+    "rounds:sol": "npx --yes tsx scripts/rounds-sol.ts",
     "vi:source-shift": "npx --yes tsx --env-file=.env.local scripts/vi-source-shift.ts"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.31.1",
     "@solana/spl-token": "^0.4.15",
+    "@solana/wallet-adapter-base": "^0.9.28",
+    "@solana/wallet-adapter-react": "^0.15.40",
     "@solana/web3.js": "^1.99.0",
     "@supabase/ssr": "^0.10.2",
     "@supabase/supabase-js": "^2.103.3",

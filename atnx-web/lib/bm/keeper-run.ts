@@ -24,12 +24,19 @@ import type { BmMarketRow, BmSide } from '@/lib/supabase/database-bm';
 //   3. open rows: read the VI prints since the cursor, apply the touch
 //      rule, advance the cursor; on a touch, resolve on-chain, then
 //      auto-roll a new market from the current VI.
+//   4. rolling rounds (BM_ROUNDS_ENABLED=1): see tickRounds in rounds.ts.
+//      It stops starting new work 45 seconds into the tick; the next tick
+//      picks up where it left off.
 //
 // A failure on one market is logged and the loop moves on.
 
 export const TOUCH_PRINTS = Number(process.env.BM_TOUCH_PRINTS ?? 3);
 export const AUTO_ROLL = (process.env.BM_AUTO_ROLL ?? '1') !== '0';
 const RESEND_AFTER_MS = 10 * 60_000;
+const ROUNDS_BUDGET_MS = 45_000;
+// Same test as roundsEnabled() in rounds.ts, kept here so the bounded
+// keeper only loads the Solana client (through rounds.ts) when rounds are on.
+const ROUNDS_ON = () => process.env.BM_ROUNDS_ENABLED === '1';
 
 export interface KeeperReport {
   runId: string;
@@ -39,6 +46,11 @@ export interface KeeperReport {
   rolled: number;
   reconciled: number;
   errors: number;
+  // Rolling rounds (zero unless BM_ROUNDS_ENABLED=1).
+  settled: number;
+  opened: number;
+  anted: number;
+  voided: number;
   notes: string[];
 }
 
@@ -65,15 +77,33 @@ function chainOf(row: BmMarketRow): BmChain {
 
 export async function runKeeper(opts: { dry?: boolean } = {}): Promise<KeeperReport> {
   const dry = !!opts.dry;
+  const startedAt = Date.now();
   const runId = randomUUID();
-  const rep: KeeperReport = { runId, dry, checked: 0, resolved: 0, rolled: 0, reconciled: 0, errors: 0, notes: [] };
+  const rep: KeeperReport = {
+    runId,
+    dry,
+    checked: 0,
+    resolved: 0,
+    rolled: 0,
+    reconciled: 0,
+    errors: 0,
+    settled: 0,
+    opened: 0,
+    anted: 0,
+    voided: 0,
+    notes: [],
+  };
   const log = (entry: Omit<Parameters<typeof registry.logKeeper>[0], 'runId'>) => {
-    rep.notes.push(`${entry.action}${entry.marketId ? ` ${entry.marketId.slice(0, 8)}` : ''}${entry.error ? `: ${entry.error}` : ''}`);
+    const subject = entry.marketId ?? entry.roundId ?? entry.seriesId;
+    // Rounds entries carry their numbers in the note (would-settle's
+    // average, would-open's target) so a dry run reads on its own.
+    const detail = !entry.marketId && subject && entry.detail ? ` ${JSON.stringify(entry.detail)}` : '';
+    rep.notes.push(`${entry.action}${subject ? ` ${subject.slice(0, 8)}` : ''}${detail}${entry.error ? `: ${entry.error}` : ''}`);
     if (!dry) return registry.logKeeper({ runId, ...entry });
     return Promise.resolve();
   };
 
-  await log({ action: 'tick', detail: { dry, touchPrints: TOUCH_PRINTS, autoRoll: AUTO_ROLL } });
+  await log({ action: 'tick', detail: { dry, touchPrints: TOUCH_PRINTS, autoRoll: AUTO_ROLL, rounds: ROUNDS_ON() } });
 
   // 1. pending
   for (const row of await registry.listByState(['pending'])) {
@@ -154,6 +184,17 @@ export async function runKeeper(opts: { dry?: boolean } = {}): Promise<KeeperRep
     } catch (err) {
       rep.errors++;
       await log({ action: 'check', marketId: row.id, error: (err as Error).message });
+    }
+  }
+
+  // 4. rolling rounds
+  if (ROUNDS_ON()) {
+    try {
+      const { tickRounds } = await import('./rounds');
+      await tickRounds({ dry, log, rep, deadline: startedAt + ROUNDS_BUDGET_MS });
+    } catch (err) {
+      rep.errors++;
+      await log({ action: 'rounds', error: (err as Error).message });
     }
   }
 
