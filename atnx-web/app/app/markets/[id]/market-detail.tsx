@@ -16,6 +16,9 @@ import { BoundedTicket } from "@/components/bm/BoundedTicket";
 import { ChainTradeLog } from "@/components/bm/ChainTradeLog";
 import { PriceChip } from "@/components/bm/PriceChip";
 import { useMyTrades } from "@/components/bm/useMyTrades";
+import { RoundTicket } from "@/components/rounds/RoundTicket";
+import { RoundChip } from "@/components/rounds/RoundChip";
+import { RoundHistory } from "@/components/rounds/RoundHistory";
 import { fmtUsdg } from "@/components/bm/format";
 import { ShareButton } from "@/components/ShareButton";
 import {
@@ -33,7 +36,8 @@ import {
 } from "@/components/ui";
 import { sentimentColor, timeAgo, viChange24h } from "@/lib/capture-view";
 import type { Capture, MarketNeighbor, MarketRow } from "@/lib/store";
-import type { BmMarketRow } from "@/lib/supabase/database-bm";
+import type { BmMarketRow, BmRoundRow, BmSeriesRow } from "@/lib/supabase/database-bm";
+import { isRoundsDeployed } from "@/lib/bm/chains";
 import type { TrendsResult } from "@/lib/trends";
 import { viTier } from "@/lib/vi/score";
 import { startPolling } from "@/lib/poll";
@@ -51,6 +55,9 @@ interface Props {
   trends: TrendsResult | null;
   // The bounded UP/DOWN markets on this market, every chain, newest first.
   bounded: BmMarketRow[];
+  // The running rounds series on this market (Solana devnet) and its
+  // rounds, newest first; null when none has been started.
+  rounds?: { series: BmSeriesRow; rounds: BmRoundRow[] } | null;
 }
 
 type Tab = "pulse" | "activity" | "overview";
@@ -198,6 +205,7 @@ export function MarketDetailClient({
   captures,
   trends,
   bounded,
+  rounds = null,
   neighbors,
 }: Props) {
   const router = useRouter();
@@ -247,6 +255,21 @@ export function MarketDetailClient({
     () => bounded.find((b) => b.state === "open" || b.state === "pending" || b.state === "resolving") ?? null,
     [bounded],
   );
+
+  // Rounds replace the bounded markets. A market with a series trades its
+  // rounds; one without trades rounds too (the ticket offers to start a
+  // series) once the program is deployed, unless a bounded market is
+  // still live on it, which keeps its own ticket until it resolves.
+  const series = rounds?.series ?? null;
+  const roundRows = useMemo(() => rounds?.rounds ?? [], [rounds]);
+  const showRounds = !!series || (isRoundsDeployed() && !liveBounded);
+  // The live round's target for the chart.
+  const roundTarget = useMemo(() => {
+    const live = roundRows.find((r) => r.state === "opening" || r.state === "live" || r.state === "settling");
+    return live && live.target_vi !== null
+      ? { value: live.target_vi, label: `ROUND ${live.idx} TARGET ${Math.round(live.target_vi)}` }
+      : null;
+  }, [roundRows]);
 
   // A range tab is only offered when it has something to draw.
   const rangeOptions = useMemo(
@@ -404,7 +427,11 @@ export function MarketDetailClient({
                       )}
                       {analysis.category && <Chip>{analysis.category}</Chip>}
                     </div>
-                    <PriceChip bounded={bounded} vi={viralityScore} />
+                    {series ? (
+                      <RoundChip series={series} rounds={roundRows} vi={viralityScore} />
+                    ) : (
+                      <PriceChip bounded={bounded} vi={viralityScore} />
+                    )}
                     {market.description && (
                       <Description text={market.description} />
                     )}
@@ -468,10 +495,11 @@ export function MarketDetailClient({
                   range={range}
                   height={280}
                   bounds={
-                    liveBounded
+                    liveBounded && !series
                       ? { lower: liveBounded.lower_bound, upper: liveBounded.upper_bound }
                       : null
                   }
+                  target={roundTarget}
                   marks={tradeMarks}
                   scoring={scoring}
                 />
@@ -627,7 +655,15 @@ export function MarketDetailClient({
                   </ul>
                 )}
 
-                {tab === "activity" && <ChainTradeLog bounded={bounded} />}
+                {tab === "activity" &&
+                  (series ? (
+                    <div className="space-y-5">
+                      <RoundHistory series={series} rounds={roundRows} />
+                      {liveBounded && <ChainTradeLog bounded={bounded} />}
+                    </div>
+                  ) : (
+                    <ChainTradeLog bounded={bounded} />
+                  ))}
 
                 {tab === "overview" && (
                   <div className="space-y-4">
@@ -768,14 +804,27 @@ export function MarketDetailClient({
 
           {/* ------------------------------------------------ side column */}
           <aside className="hidden lg:block lg:sticky lg:top-24">
-            <BoundedTicket
-              atnxMarketId={market.id}
-              name={name}
-              score={viralityScore}
-              scoring={scoring}
-              bounded={bounded}
-              onToast={handleToast}
-            />
+            {showRounds ? (
+              <RoundTicket
+                atnxMarketId={market.id}
+                name={name}
+                score={viralityScore}
+                scoring={scoring}
+                viUpdatedAt={market.vi_last_updated}
+                series={series}
+                rounds={roundRows}
+                onToast={handleToast}
+              />
+            ) : (
+              <BoundedTicket
+                atnxMarketId={market.id}
+                name={name}
+                score={viralityScore}
+                scoring={scoring}
+                bounded={bounded}
+                onToast={handleToast}
+              />
+            )}
           </aside>
         </div>
       </div>
@@ -784,18 +833,33 @@ export function MarketDetailClient({
           behind them. Outside the swiped element so the fixed dock does
           not move with the page. */}
       <TradeDock
-        renderTicket={(side) => (
-          <BoundedTicket
-            key={side}
-            atnxMarketId={market.id}
-            name={name}
-            score={viralityScore}
-            scoring={scoring}
-            bounded={bounded}
-            onToast={handleToast}
-            initialSide={side}
-          />
-        )}
+        renderTicket={(side) =>
+          showRounds ? (
+            <RoundTicket
+              key={side}
+              atnxMarketId={market.id}
+              name={name}
+              score={viralityScore}
+              scoring={scoring}
+              viUpdatedAt={market.vi_last_updated}
+              series={series}
+              rounds={roundRows}
+              onToast={handleToast}
+              initialSide={side}
+            />
+          ) : (
+            <BoundedTicket
+              key={side}
+              atnxMarketId={market.id}
+              name={name}
+              score={viralityScore}
+              scoring={scoring}
+              bounded={bounded}
+              onToast={handleToast}
+              initialSide={side}
+            />
+          )
+        }
       />
 
       {toast && (

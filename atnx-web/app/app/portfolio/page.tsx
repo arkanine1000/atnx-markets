@@ -1,7 +1,9 @@
 import { loadMarketMeta } from "@/lib/bm/market-meta";
 import { OnchainPortfolio } from "@/components/bm/OnchainPortfolio";
+import { RoundsPortfolio, type PortfolioSeries } from "@/components/rounds/RoundsPortfolio";
+import { listLiveRounds } from "@/lib/bm/rounds-registry";
 import { listAll } from "@/lib/bm/registry";
-import { BM_CHAINS } from "@/lib/bm/chains";
+import { BM_CHAINS, isRoundsDeployed } from "@/lib/bm/chains";
 import type { BmMarketListing } from "@/lib/bm/listing";
 
 export const dynamic = "force-dynamic";
@@ -41,13 +43,42 @@ async function loadListing(): Promise<BmMarketListing[]> {
   }
 }
 
+// The running rounds series by on-chain key, with the market's name and
+// picture, so a position found on chain can name its market. Series with
+// no presale or live round left (ended) are not listed; their positions
+// show the series key instead.
+async function loadSeries(): Promise<PortfolioSeries[]> {
+  if (!isRoundsDeployed()) return [];
+  try {
+    const rows = await listLiveRounds();
+    const bySeries = new Map(rows.filter((r) => r.series.series_pubkey).map((r) => [r.series.series_pubkey!, r.series]));
+    const names = await loadMarketMeta(Array.from(new Set(Array.from(bySeries.values(), (s) => s.atnx_market_id))));
+    return Array.from(bySeries.entries(), ([key, s]) => {
+      const m = names.get(s.atnx_market_id);
+      return { seriesPubkey: key, atnxMarketId: s.atnx_market_id, name: m?.name ?? "Unknown market", thumb: m?.thumb ?? null, fast: s.fast };
+    });
+  } catch (err) {
+    console.error("[portfolio] rounds series failed", err);
+    return [];
+  }
+}
+
 export default async function PortfolioPage() {
-  const markets = await loadListing();
+  const [markets, series] = await Promise.all([loadListing(), loadSeries()]);
   return (
     <section>
       <div className="mb-5">
         <h2 className="font-display text-xl sm:text-2xl font-bold text-primary tracking-tight">Portfolio</h2>
       </div>
+      {isRoundsDeployed() && (
+        <div className="mb-10">
+          <h3 className="text-[11px] font-mono uppercase tracking-[0.15em] text-tertiary mb-3">Rounds · Solana devnet</h3>
+          <RoundsPortfolio series={series} />
+        </div>
+      )}
+      {isRoundsDeployed() && (
+        <h3 className="text-[11px] font-mono uppercase tracking-[0.15em] text-tertiary mb-3">Bounded markets · EVM testnets</h3>
+      )}
       <OnchainPortfolio markets={markets} />
     </section>
   );

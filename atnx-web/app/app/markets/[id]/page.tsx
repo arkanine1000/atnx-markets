@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { getMarketDetail } from "@/lib/store";
 import { getBoundedMarkets } from "@/lib/bm/registry";
+import { getSeriesForMarket } from "@/lib/bm/rounds-registry";
 import { MarketDetailClient } from "./market-detail";
 
 export const dynamic = "force-dynamic";
@@ -13,12 +14,17 @@ export default async function MarketPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const [detail, bounded] = await Promise.all([
+  const [detail, bounded, rounds] = await Promise.all([
     getMarketDetail(id),
     getBoundedMarkets(id).catch((err) => {
       // The registry schema not being reachable must not take the page down.
       console.error("[market] bounded markets failed", err);
       return [];
+    }),
+    // The running rounds series on this market, if any, with its rounds.
+    getSeriesForMarket(id).catch((err) => {
+      console.error("[market] rounds series failed", err);
+      return null;
     }),
   ]);
   if (!detail) notFound();
@@ -32,6 +38,7 @@ export default async function MarketPage({
       captures={detail.captures}
       trends={detail.trends}
       bounded={bounded}
+      rounds={rounds}
     />
   );
 }

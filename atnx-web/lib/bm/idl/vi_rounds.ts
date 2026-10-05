@@ -1,7 +1,13 @@
-{
+/**
+ * Program IDL in camelCase format in order to be used in JS/TS.
+ *
+ * Note that this is only a type helper and is not the actual IDL. The original
+ * IDL can be found at `target/idl/vi_rounds.json`.
+ */
+export type ViRounds = {
   "address": "5PsYwtsaexsFLGz6pwnVAtBTLzRqmGHxQJFnYWv42aQX",
   "metadata": {
-    "name": "vi_rounds",
+    "name": "viRounds",
     "version": "0.1.0",
     "spec": "0.1.0",
     "description": "ATNX rolling rounds on the Virality Index: a dynamic pari-mutuel (Pennock 2004, variant I) per round, with a presale, on Solana devnet"
@@ -61,7 +67,7 @@
               {
                 "kind": "account",
                 "path": "series.reference",
-                "account": "Series"
+                "account": "series"
               }
             ]
           }
@@ -88,7 +94,7 @@
               {
                 "kind": "account",
                 "path": "round.index",
-                "account": "Round"
+                "account": "round"
               }
             ]
           }
@@ -140,7 +146,7 @@
           }
         },
         {
-          "name": "holder_usdg",
+          "name": "holderUsdg",
           "writable": true
         },
         {
@@ -149,11 +155,11 @@
           "signer": true
         },
         {
-          "name": "token_program",
+          "name": "tokenProgram",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         },
         {
-          "name": "system_program",
+          "name": "systemProgram",
           "address": "11111111111111111111111111111111"
         }
       ],
@@ -167,7 +173,7 @@
           "type": "u64"
         },
         {
-          "name": "min_shares",
+          "name": "minShares",
           "type": "u64"
         }
       ]
@@ -225,7 +231,7 @@
               {
                 "kind": "account",
                 "path": "series.reference",
-                "account": "Series"
+                "account": "series"
               }
             ]
           }
@@ -252,7 +258,7 @@
               {
                 "kind": "account",
                 "path": "round.index",
-                "account": "Round"
+                "account": "round"
               }
             ]
           }
@@ -304,7 +310,7 @@
           }
         },
         {
-          "name": "holder_usdg",
+          "name": "holderUsdg",
           "writable": true
         },
         {
@@ -313,14 +319,14 @@
           "signer": true
         },
         {
-          "name": "token_program",
+          "name": "tokenProgram",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         }
       ],
       "args": []
     },
     {
-      "name": "claim_rollover",
+      "name": "claimRollover",
       "docs": [
         "Like `claim`, but the payout stays in the vault as a presale commit",
         "on the winning side of the series' current presale round."
@@ -373,7 +379,7 @@
               {
                 "kind": "account",
                 "path": "series.reference",
-                "account": "Series"
+                "account": "series"
               }
             ]
           }
@@ -400,13 +406,13 @@
               {
                 "kind": "account",
                 "path": "round.index",
-                "account": "Round"
+                "account": "round"
               }
             ]
           }
         },
         {
-          "name": "next_round",
+          "name": "nextRound",
           "writable": true,
           "pda": {
             "seeds": [
@@ -427,7 +433,7 @@
               {
                 "kind": "account",
                 "path": "next_round.index",
-                "account": "Round"
+                "account": "round"
               }
             ]
           }
@@ -457,7 +463,7 @@
           }
         },
         {
-          "name": "next_position",
+          "name": "nextPosition",
           "writable": true,
           "pda": {
             "seeds": [
@@ -471,7 +477,7 @@
               },
               {
                 "kind": "account",
-                "path": "next_round"
+                "path": "nextRound"
               },
               {
                 "kind": "account",
@@ -486,7 +492,7 @@
           "signer": true
         },
         {
-          "name": "system_program",
+          "name": "systemProgram",
           "address": "11111111111111111111111111111111"
         }
       ],
@@ -545,7 +551,7 @@
               {
                 "kind": "account",
                 "path": "series.reference",
-                "account": "Series"
+                "account": "series"
               }
             ]
           }
@@ -572,7 +578,7 @@
               {
                 "kind": "account",
                 "path": "round.index",
-                "account": "Round"
+                "account": "round"
               }
             ]
           }
@@ -624,7 +630,7 @@
           }
         },
         {
-          "name": "holder_usdg",
+          "name": "holderUsdg",
           "writable": true
         },
         {
@@ -633,11 +639,11 @@
           "signer": true
         },
         {
-          "name": "token_program",
+          "name": "tokenProgram",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         },
         {
-          "name": "system_program",
+          "name": "systemProgram",
           "address": "11111111111111111111111111111111"
         }
       ],
@@ -653,7 +659,7 @@
       ]
     },
     {
-      "name": "create_series",
+      "name": "createSeries",
       "docs": [
         "Starts a series: its vault and round 1 in presale. The fee terms are",
         "copied from the config so a later config change does not move the",
@@ -766,7 +772,7 @@
           }
         },
         {
-          "name": "usdg_mint",
+          "name": "usdgMint",
           "relations": [
             "config"
           ]
@@ -780,11 +786,11 @@
           ]
         },
         {
-          "name": "token_program",
+          "name": "tokenProgram",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         },
         {
-          "name": "system_program",
+          "name": "systemProgram",
           "address": "11111111111111111111111111111111"
         },
         {
@@ -803,11 +809,11 @@
           }
         },
         {
-          "name": "round_secs",
+          "name": "roundSecs",
           "type": "u32"
         },
         {
-          "name": "settle_window_secs",
+          "name": "settleWindowSecs",
           "type": "u32"
         },
         {
@@ -855,7 +861,7 @@
           }
         },
         {
-          "name": "usdg_mint",
+          "name": "usdgMint",
           "writable": true,
           "relations": [
             "config"
@@ -866,7 +872,7 @@
           "writable": true
         },
         {
-          "name": "token_program",
+          "name": "tokenProgram",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         }
       ],
@@ -915,7 +921,7 @@
           }
         },
         {
-          "name": "usdg_mint",
+          "name": "usdgMint",
           "writable": true,
           "signer": true
         },
@@ -925,11 +931,11 @@
           "signer": true
         },
         {
-          "name": "token_program",
+          "name": "tokenProgram",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         },
         {
-          "name": "system_program",
+          "name": "systemProgram",
           "address": "11111111111111111111111111111111"
         },
         {
@@ -939,17 +945,17 @@
       ],
       "args": [
         {
-          "name": "fee_bps",
+          "name": "feeBps",
           "type": "u16"
         },
         {
-          "name": "finder_bps",
+          "name": "finderBps",
           "type": "u16"
         }
       ]
     },
     {
-      "name": "open_round",
+      "name": "openRound",
       "docs": [
         "Opens the presale round for trading at the current VI and creates",
         "the next round's presale. Both pots must hold money: the pot shares",
@@ -1005,7 +1011,7 @@
               {
                 "kind": "account",
                 "path": "series.reference",
-                "account": "Series"
+                "account": "series"
               }
             ]
           }
@@ -1032,13 +1038,13 @@
               {
                 "kind": "account",
                 "path": "round.index",
-                "account": "Round"
+                "account": "round"
               }
             ]
           }
         },
         {
-          "name": "next_round",
+          "name": "nextRound",
           "writable": true,
           "pda": {
             "seeds": [
@@ -1058,7 +1064,7 @@
               },
               {
                 "kind": "arg",
-                "path": "next_index"
+                "path": "nextIndex"
               }
             ]
           }
@@ -1072,23 +1078,23 @@
           ]
         },
         {
-          "name": "system_program",
+          "name": "systemProgram",
           "address": "11111111111111111111111111111111"
         }
       ],
       "args": [
         {
-          "name": "target_e2",
+          "name": "targetE2",
           "type": "u64"
         },
         {
-          "name": "next_index",
+          "name": "nextIndex",
           "type": "u32"
         }
       ]
     },
     {
-      "name": "set_config",
+      "name": "setConfig",
       "discriminator": [
         108,
         158,
@@ -1141,13 +1147,13 @@
           }
         },
         {
-          "name": "fee_bps",
+          "name": "feeBps",
           "type": {
             "option": "u16"
           }
         },
         {
-          "name": "finder_bps",
+          "name": "finderBps",
           "type": {
             "option": "u16"
           }
@@ -1155,7 +1161,7 @@
       ]
     },
     {
-      "name": "set_series",
+      "name": "setSeries",
       "docs": [
         "Pauses or resumes a series, moves the finder, or changes the ante.",
         "The authority or the keeper."
@@ -1208,7 +1214,7 @@
               {
                 "kind": "account",
                 "path": "series.reference",
-                "account": "Series"
+                "account": "series"
               }
             ]
           }
@@ -1295,7 +1301,7 @@
               {
                 "kind": "account",
                 "path": "series.reference",
-                "account": "Series"
+                "account": "series"
               }
             ]
           }
@@ -1322,7 +1328,7 @@
               {
                 "kind": "account",
                 "path": "round.index",
-                "account": "Round"
+                "account": "round"
               }
             ]
           }
@@ -1337,7 +1343,7 @@
       ],
       "args": [
         {
-          "name": "settle_e2",
+          "name": "settleE2",
           "type": "u64"
         },
         {
@@ -1352,7 +1358,7 @@
       ]
     },
     {
-      "name": "void_round",
+      "name": "voidRound",
       "docs": [
         "Voids a round. A live round past its close with no VI prints to",
         "settle on: everyone gets their net stakes back and the series goes",
@@ -1407,7 +1413,7 @@
               {
                 "kind": "account",
                 "path": "series.reference",
-                "account": "Series"
+                "account": "series"
               }
             ]
           }
@@ -1434,7 +1440,7 @@
               {
                 "kind": "account",
                 "path": "round.index",
-                "account": "Round"
+                "account": "round"
               }
             ]
           }
@@ -1450,7 +1456,7 @@
       "args": []
     },
     {
-      "name": "withdraw_fees",
+      "name": "withdrawFees",
       "docs": [
         "Pays accrued fees: the finder's counter to the finder, the",
         "platform's to the treasury, whichever of the two is signing (both",
@@ -1504,7 +1510,7 @@
               {
                 "kind": "account",
                 "path": "series.reference",
-                "account": "Series"
+                "account": "series"
               }
             ]
           }
@@ -1540,7 +1546,7 @@
           "signer": true
         },
         {
-          "name": "token_program",
+          "name": "tokenProgram",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         }
       ],
@@ -1549,7 +1555,7 @@
   ],
   "accounts": [
     {
-      "name": "Config",
+      "name": "config",
       "discriminator": [
         155,
         12,
@@ -1562,7 +1568,7 @@
       ]
     },
     {
-      "name": "Position",
+      "name": "position",
       "discriminator": [
         170,
         188,
@@ -1575,7 +1581,7 @@
       ]
     },
     {
-      "name": "Round",
+      "name": "round",
       "discriminator": [
         87,
         127,
@@ -1588,7 +1594,7 @@
       ]
     },
     {
-      "name": "Series",
+      "name": "series",
       "discriminator": [
         240,
         97,
@@ -1603,7 +1609,7 @@
   ],
   "events": [
     {
-      "name": "Bought",
+      "name": "bought",
       "discriminator": [
         193,
         56,
@@ -1616,7 +1622,7 @@
       ]
     },
     {
-      "name": "Claimed",
+      "name": "claimed",
       "discriminator": [
         217,
         192,
@@ -1629,7 +1635,7 @@
       ]
     },
     {
-      "name": "Committed",
+      "name": "committed",
       "discriminator": [
         70,
         158,
@@ -1642,7 +1648,7 @@
       ]
     },
     {
-      "name": "FeesWithdrawn",
+      "name": "feesWithdrawn",
       "discriminator": [
         234,
         15,
@@ -1655,7 +1661,7 @@
       ]
     },
     {
-      "name": "Opened",
+      "name": "opened",
       "discriminator": [
         166,
         172,
@@ -1668,7 +1674,7 @@
       ]
     },
     {
-      "name": "SeriesCreated",
+      "name": "seriesCreated",
       "discriminator": [
         2,
         164,
@@ -1681,7 +1687,7 @@
       ]
     },
     {
-      "name": "Settled",
+      "name": "settled",
       "discriminator": [
         232,
         210,
@@ -1694,7 +1700,7 @@
       ]
     },
     {
-      "name": "Voided",
+      "name": "voided",
       "discriminator": [
         32,
         48,
@@ -1710,108 +1716,108 @@
   "errors": [
     {
       "code": 6000,
-      "name": "FeeTooHigh",
+      "name": "feeTooHigh",
       "msg": "fee above the cap"
     },
     {
       "code": 6001,
-      "name": "MintTooLarge",
+      "name": "mintTooLarge",
       "msg": "mint above the per-call cap"
     },
     {
       "code": 6002,
-      "name": "BadSide",
+      "name": "badSide",
       "msg": "side must be 0 (UP) or 1 (DOWN)"
     },
     {
       "code": 6003,
-      "name": "ZeroAmount",
+      "name": "zeroAmount",
       "msg": "amount is zero"
     },
     {
       "code": 6004,
-      "name": "BadWindow",
+      "name": "badWindow",
       "msg": "settlement window must be shorter than the round, round at least 20 s"
     },
     {
       "code": 6005,
-      "name": "BadRound",
+      "name": "badRound",
       "msg": "round index or state does not fit this call"
     },
     {
       "code": 6006,
-      "name": "NotPresale",
+      "name": "notPresale",
       "msg": "round is not the series' presale round"
     },
     {
       "code": 6007,
-      "name": "NotLive",
+      "name": "notLive",
       "msg": "round is not the series' live round"
     },
     {
       "code": 6008,
-      "name": "NotSettled",
+      "name": "notSettled",
       "msg": "round is not settled"
     },
     {
       "code": 6009,
-      "name": "TradingClosed",
+      "name": "tradingClosed",
       "msg": "trading closed for the settlement window"
     },
     {
       "code": 6010,
-      "name": "TooEarly",
+      "name": "tooEarly",
       "msg": "round has not reached its close"
     },
     {
       "code": 6011,
-      "name": "Paused",
+      "name": "paused",
       "msg": "series is paused"
     },
     {
       "code": 6012,
-      "name": "NotPaused",
+      "name": "notPaused",
       "msg": "series is not paused"
     },
     {
       "code": 6013,
-      "name": "LiveRoundExists",
+      "name": "liveRoundExists",
       "msg": "a live round already exists"
     },
     {
       "code": 6014,
-      "name": "EmptySide",
+      "name": "emptySide",
       "msg": "both sides need money before a round can open"
     },
     {
       "code": 6015,
-      "name": "Slippage",
+      "name": "slippage",
       "msg": "fewer shares than the minimum you set"
     },
     {
       "code": 6016,
-      "name": "RatioTooLarge",
+      "name": "ratioTooLarge",
       "msg": "a single buy may not exceed 1000x the money on its side"
     },
     {
       "code": 6017,
-      "name": "Overflow",
+      "name": "overflow",
       "msg": "arithmetic overflow"
     },
     {
       "code": 6018,
-      "name": "NothingToClaim",
+      "name": "nothingToClaim",
       "msg": "nothing to claim"
     },
     {
       "code": 6019,
-      "name": "Unauthorized",
+      "name": "unauthorized",
       "msg": "not the authority or the keeper"
     }
   ],
   "types": [
     {
-      "name": "Bought",
+      "name": "bought",
       "type": {
         "kind": "struct",
         "fields": [
@@ -1844,26 +1850,26 @@
             "type": "u64"
           },
           {
-            "name": "m_up",
+            "name": "mUp",
             "type": "u64"
           },
           {
-            "name": "m_down",
+            "name": "mDown",
             "type": "u64"
           },
           {
-            "name": "n_up",
+            "name": "nUp",
             "type": "u64"
           },
           {
-            "name": "n_down",
+            "name": "nDown",
             "type": "u64"
           }
         ]
       }
     },
     {
-      "name": "Claimed",
+      "name": "claimed",
       "type": {
         "kind": "struct",
         "fields": [
@@ -1887,7 +1893,7 @@
       }
     },
     {
-      "name": "Committed",
+      "name": "committed",
       "type": {
         "kind": "struct",
         "fields": [
@@ -1916,18 +1922,18 @@
             "type": "u64"
           },
           {
-            "name": "presale_up",
+            "name": "presaleUp",
             "type": "u64"
           },
           {
-            "name": "presale_down",
+            "name": "presaleDown",
             "type": "u64"
           }
         ]
       }
     },
     {
-      "name": "Config",
+      "name": "config",
       "type": {
         "kind": "struct",
         "fields": [
@@ -1944,19 +1950,19 @@
             "type": "pubkey"
           },
           {
-            "name": "usdg_mint",
+            "name": "usdgMint",
             "type": "pubkey"
           },
           {
-            "name": "fee_bps",
+            "name": "feeBps",
             "type": "u16"
           },
           {
-            "name": "finder_bps",
+            "name": "finderBps",
             "type": "u16"
           },
           {
-            "name": "series_count",
+            "name": "seriesCount",
             "type": "u64"
           },
           {
@@ -1967,7 +1973,7 @@
       }
     },
     {
-      "name": "FeesWithdrawn",
+      "name": "feesWithdrawn",
       "type": {
         "kind": "struct",
         "fields": [
@@ -1991,7 +1997,7 @@
       }
     },
     {
-      "name": "Opened",
+      "name": "opened",
       "type": {
         "kind": "struct",
         "fields": [
@@ -2004,15 +2010,15 @@
             "type": "u32"
           },
           {
-            "name": "target_e2",
+            "name": "targetE2",
             "type": "u64"
           },
           {
-            "name": "m_up",
+            "name": "mUp",
             "type": "u64"
           },
           {
-            "name": "m_down",
+            "name": "mDown",
             "type": "u64"
           },
           {
@@ -2020,22 +2026,22 @@
             "type": "u64"
           },
           {
-            "name": "close_at",
+            "name": "closeAt",
             "type": "i64"
           },
           {
-            "name": "trade_until",
+            "name": "tradeUntil",
             "type": "i64"
           },
           {
-            "name": "next_round",
+            "name": "nextRound",
             "type": "pubkey"
           }
         ]
       }
     },
     {
-      "name": "Position",
+      "name": "position",
       "type": {
         "kind": "struct",
         "fields": [
@@ -2048,27 +2054,27 @@
             "type": "pubkey"
           },
           {
-            "name": "presale_up",
+            "name": "presaleUp",
             "type": "u64"
           },
           {
-            "name": "presale_down",
+            "name": "presaleDown",
             "type": "u64"
           },
           {
-            "name": "stake_up",
+            "name": "stakeUp",
             "type": "u64"
           },
           {
-            "name": "stake_down",
+            "name": "stakeDown",
             "type": "u64"
           },
           {
-            "name": "shares_up",
+            "name": "sharesUp",
             "type": "u64"
           },
           {
-            "name": "shares_down",
+            "name": "sharesDown",
             "type": "u64"
           },
           {
@@ -2079,7 +2085,7 @@
       }
     },
     {
-      "name": "Round",
+      "name": "round",
       "type": {
         "kind": "struct",
         "fields": [
@@ -2100,47 +2106,47 @@
             "type": "u8"
           },
           {
-            "name": "presale_up",
+            "name": "presaleUp",
             "type": "u64"
           },
           {
-            "name": "presale_down",
+            "name": "presaleDown",
             "type": "u64"
           },
           {
-            "name": "m_up",
+            "name": "mUp",
             "type": "u64"
           },
           {
-            "name": "m_down",
+            "name": "mDown",
             "type": "u64"
           },
           {
-            "name": "n_up",
+            "name": "nUp",
             "type": "u64"
           },
           {
-            "name": "n_down",
+            "name": "nDown",
             "type": "u64"
           },
           {
-            "name": "opened_at",
+            "name": "openedAt",
             "type": "i64"
           },
           {
-            "name": "close_at",
+            "name": "closeAt",
             "type": "i64"
           },
           {
-            "name": "trade_until",
+            "name": "tradeUntil",
             "type": "i64"
           },
           {
-            "name": "target_e2",
+            "name": "targetE2",
             "type": "u64"
           },
           {
-            "name": "settle_e2",
+            "name": "settleE2",
             "type": "u64"
           },
           {
@@ -2153,7 +2159,7 @@
             }
           },
           {
-            "name": "paid_out",
+            "name": "paidOut",
             "type": "u64"
           },
           {
@@ -2161,7 +2167,7 @@
             "type": "u8"
           },
           {
-            "name": "_reserved",
+            "name": "reserved",
             "type": {
               "array": [
                 "u8",
@@ -2173,7 +2179,7 @@
       }
     },
     {
-      "name": "Series",
+      "name": "series",
       "type": {
         "kind": "struct",
         "fields": [
@@ -2195,19 +2201,19 @@
             "type": "u64"
           },
           {
-            "name": "round_secs",
+            "name": "roundSecs",
             "type": "u32"
           },
           {
-            "name": "settle_window_secs",
+            "name": "settleWindowSecs",
             "type": "u32"
           },
           {
-            "name": "fee_bps",
+            "name": "feeBps",
             "type": "u16"
           },
           {
-            "name": "finder_bps",
+            "name": "finderBps",
             "type": "u16"
           },
           {
@@ -2219,23 +2225,23 @@
             "type": "bool"
           },
           {
-            "name": "live_round",
+            "name": "liveRound",
             "type": "u32"
           },
           {
-            "name": "presale_round",
+            "name": "presaleRound",
             "type": "u32"
           },
           {
-            "name": "finder_fees",
+            "name": "finderFees",
             "type": "u64"
           },
           {
-            "name": "platform_fees",
+            "name": "platformFees",
             "type": "u64"
           },
           {
-            "name": "vault_bump",
+            "name": "vaultBump",
             "type": "u8"
           },
           {
@@ -2243,7 +2249,7 @@
             "type": "u8"
           },
           {
-            "name": "_reserved",
+            "name": "reserved",
             "type": {
               "array": [
                 "u8",
@@ -2255,7 +2261,7 @@
       }
     },
     {
-      "name": "SeriesCreated",
+      "name": "seriesCreated",
       "type": {
         "kind": "struct",
         "fields": [
@@ -2277,18 +2283,18 @@
             "type": "pubkey"
           },
           {
-            "name": "round_secs",
+            "name": "roundSecs",
             "type": "u32"
           },
           {
-            "name": "settle_window_secs",
+            "name": "settleWindowSecs",
             "type": "u32"
           }
         ]
       }
     },
     {
-      "name": "Settled",
+      "name": "settled",
       "type": {
         "kind": "struct",
         "fields": [
@@ -2305,18 +2311,18 @@
             "type": "u8"
           },
           {
-            "name": "settle_e2",
+            "name": "settleE2",
             "type": "u64"
           },
           {
-            "name": "target_e2",
+            "name": "targetE2",
             "type": "u64"
           }
         ]
       }
     },
     {
-      "name": "Voided",
+      "name": "voided",
       "type": {
         "kind": "struct",
         "fields": [
@@ -2332,4 +2338,4 @@
       }
     }
   ]
-}
+};

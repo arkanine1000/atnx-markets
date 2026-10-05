@@ -5,6 +5,7 @@ import { ViSparkline, deltaColor } from "@/components/charts/ViArea";
 import { LogoImage } from "@/components/LogoImage";
 import { Chip, DeltaChip, ScoreBadge } from "@/components/ui";
 import { BoundsRail } from "@/components/bm/BoundsRail";
+import { RoundBadge, type RoundBadgeInfo } from "@/components/rounds/RoundBadge";
 import { viChange24h } from "@/lib/capture-view";
 import type { Capture } from "@/lib/store";
 
@@ -16,6 +17,8 @@ interface Props {
   compact?: boolean;
   /** The live UP/DOWN market's bounds, when one is open. */
   bounds?: { lower: number; upper: number };
+  /** The market's current round, when a rounds series runs on it. */
+  round?: RoundBadgeInfo;
 }
 
 // The picture on a tile: the curated market image when the slow refresh
@@ -39,7 +42,7 @@ export function tileImage(capture: Capture): { src: string; logo: boolean; portr
 // Grid tile: the market image is the hero and the VI history is drawn
 // straight over its lower half, the way pump.fun overlays a chart on the coin
 // art. Name, category, score and 24h delta sit underneath.
-export function MarketCard({ capture, rank, compact, bounds }: Props) {
+export function MarketCard({ capture, rank, compact, bounds, round }: Props) {
   const { analysis, trends, viralityScore, marketId } = capture;
   const points = trends?.dataPoints ?? [];
   const change24h = viChange24h(points, viralityScore);
@@ -98,9 +101,17 @@ export function MarketCard({ capture, rank, compact, bounds }: Props) {
         </div>
       </div>
 
-      {/* The open UP/DOWN market, as a rail from the lower bound to the
+      {/* The current round (round number, time left, target), else the
+          open bounded UP/DOWN market as a rail from the lower bound to the
           upper with the VI's position on it. */}
-      {bounds && (
+      {round ? (
+        <RoundBadge
+          info={round}
+          vi={viralityScore}
+          compact={compact}
+          className={`${compact ? "px-3" : "px-3.5"} pt-2.5 -mb-1`}
+        />
+      ) : bounds && (
         <BoundsRail
           lower={bounds.lower}
           upper={bounds.upper}
@@ -145,7 +156,7 @@ export function MarketCard({ capture, rank, compact, bounds }: Props) {
 }
 
 // Compact row for the list view.
-export function MarketRow({ capture, rank, bounds }: Props) {
+export function MarketRow({ capture, rank, bounds, round }: Props) {
   const { analysis, trends, viralityScore, marketId } = capture;
   const points = trends?.dataPoints ?? [];
   const change24h = viChange24h(points, viralityScore);
@@ -180,7 +191,9 @@ export function MarketRow({ capture, rank, bounds }: Props) {
         <div className="text-xs text-tertiary truncate">
           {analysis.category || "—"}
         </div>
-        {bounds && (
+        {round ? (
+          <RoundBadge info={round} vi={viralityScore} compact className="mt-1" />
+        ) : bounds && (
           <BoundsRail lower={bounds.lower} upper={bounds.upper} vi={viralityScore} compact className="mt-1 max-w-[14rem]" />
         )}
       </div>

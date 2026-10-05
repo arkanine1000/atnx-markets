@@ -24,6 +24,10 @@ export interface ViPoint {
 
 export const UP = "#00D4FF";
 export const DOWN = "#FF00E5";
+// The round target: neither side's colour, the index's own yellow (the
+// darker one on the light theme, where #FFE500 on white does not read).
+const TARGET = "#FFE500";
+const TARGET_LIGHT = "#D4BE00";
 
 export function polarityColor(points: ViPoint[]): string {
   if (points.length < 2) return UP;
@@ -214,6 +218,7 @@ export function ViChart({
   range,
   height = 280,
   bounds,
+  target,
   marks = [],
   scoring = false,
 }: {
@@ -222,6 +227,8 @@ export function ViChart({
   height?: number;
   /** Bounds of the open bounded market: UP pays at `upper`, DOWN at `lower`. */
   bounds?: { lower: number; upper: number } | null;
+  /** The live round's target: UP wins if the index ends at or above it. */
+  target?: { value: number; label: string } | null;
   /** The viewer's own trades, drawn as dots at the nearest VI print; `label` is the hover text. */
   marks?: Array<{ time: number; side: "up" | "down"; kind: "buy" | "sell"; label?: string }>;
   /** The market has no VI yet; the empty chart says so instead of blaming the range. */
@@ -440,6 +447,25 @@ export function ViChart({
                 value: `UP PAYS @ ${bounds.upper}`,
                 position: "insideTopLeft",
                 fill: UP,
+                fontSize: 10,
+                fontWeight: 700,
+              }}
+            />
+          )}
+          {/* The live round's target, the VI it opened at. The domain
+              stretches to include it, like the bounds. */}
+          {target && (
+            <ReferenceLine
+              y={target.value}
+              stroke={t.light ? TARGET_LIGHT : TARGET}
+              strokeWidth={1}
+              strokeDasharray="4 3"
+              strokeOpacity={0.8}
+              ifOverflow="extendDomain"
+              label={{
+                value: target.label,
+                position: "insideTopLeft",
+                fill: t.light ? TARGET_LIGHT : TARGET,
                 fontSize: 10,
                 fontWeight: 700,
               }}

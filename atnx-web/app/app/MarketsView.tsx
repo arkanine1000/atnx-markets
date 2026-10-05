@@ -24,6 +24,7 @@ import {
 } from "@/lib/markets-query";
 import { CATEGORY_LABELS, type Category } from "@/lib/categories";
 import type { MarketsPage } from "@/lib/store";
+import type { RoundBadgeInfo } from "@/components/rounds/RoundBadge";
 
 // A new VI point lands every five minutes; thirty seconds is plenty to
 // catch a fresh capture. Behind it the server memoizes the feed for 15 s,
@@ -112,14 +113,18 @@ const ListIcon = (
 
 // Bounds of the live bounded market per atnx market id, for the tile badge.
 export type BoundsMap = Record<string, { lower: number; upper: number }>;
+// The current round per atnx market id (registry only), for the tile badge.
+export type RoundsMap = Record<string, RoundBadgeInfo>;
 
 export function MarketsView({
   initial,
   query,
   bounded = {},
+  rounds = {},
 }: {
   initial: MarketsPage;
   bounded?: BoundsMap;
+  rounds?: RoundsMap;
   // What the server rendered: order, search term (from the nav's search
   // box; empty lists everything), category filter and how many to show.
   query: MarketsQuery;
@@ -362,6 +367,7 @@ export function MarketsView({
                 captureCount={c.captureCount ?? 1}
                 rank={i + 1}
                 bounds={c.marketId ? bounded[c.marketId] : undefined}
+                round={c.marketId ? rounds[c.marketId] : undefined}
                 compact
               />
             ))}
@@ -389,6 +395,7 @@ export function MarketsView({
                   captureCount={c.captureCount ?? 1}
                   rank={i + 1}
                   bounds={c.marketId ? bounded[c.marketId] : undefined}
+                  round={c.marketId ? rounds[c.marketId] : undefined}
                 />
               ))}
             </div>
