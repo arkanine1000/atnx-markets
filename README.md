@@ -2,11 +2,11 @@
 
 **Live at [markets.atnx.app](https://markets.atnx.app).**
 
-A Chrome extension + Next.js web app for capturing any content on the internet, identifying it with a vision model, and trading a simulated Virality Index (VI) on what you capture. Your friends' screenshots become markets; markets have a live VI; you can go long or short.
+A Chrome extension + Next.js web app for capturing any content on the internet, identifying it with a vision model, and trading rounds on the Virality Index (VI) of what you capture. Your friends' screenshots become markets; markets have a live VI; each round asks whether it will be higher when the round closes, and you take UP or DOWN.
 
 ```
 Ctrl+Shift+X → drag a selection → the model identifies it → you review: add to a market, or create one
-                → VI updates every 5 min → trade long / short on it
+                → VI updates every 5 min → rounds on it: UP or DOWN, settled on the averaged close
 ```
 
 Three ways in, one pipeline: the extension, the web form at `/app/submit` (screenshot, link, or text), and the Android share sheet. Every one of them stops at a review step before anything lands: the model's proposal, the existing markets it could belong to, and the choices the submitter may make, all bounded (no free text, beyond an optional link to the post that is checked against the platform). A repeat of something captured before is answered outright.
@@ -17,13 +17,13 @@ Three ways in, one pipeline: the extension, the web form at `/app/submit` (scree
 
 This repository is the hackathon fork of ATNX for the **Arbitrum / Robinhood Chain Open House (Singapore)** and the **Colosseum Crypto World's Fair**. It replaces the simulated long/short trading with on-chain markets on the Virality Index: first bounded UP/DOWN markets, now rolling rounds with a presale on Solana devnet (see [docs/rounds.md](docs/rounds.md)). Everything upstream of trading (capture, identification, the VI pipeline) stays as it was.
 
-**Prior work disclosure.** The hackathon windows opened on 2026-09-14 (Arbitrum Open House) and 2026-09-15 (Colosseum). The tag [`pre-hackathon`](https://github.com/arkanine1000/atnx-markets/releases/tag/pre-hackathon) marks the last commit before that date; everything after it, the capture pipeline, the Virality Index and the bounded markets alike, was built inside the window: [compare `pre-hackathon...main`](https://github.com/arkanine1000/atnx-markets/compare/pre-hackathon...main). The repository is a public copy of the private upstream `gptdnd/atnx`. The bounded-markets work specifically starts at the tag [`bounded-markets-start`](https://github.com/arkanine1000/atnx-markets/releases/tag/bounded-markets-start): [compare `bounded-markets-start...main`](https://github.com/arkanine1000/atnx-markets/compare/bounded-markets-start...main).
+**Prior work disclosure.** The hackathon windows opened on 2026-09-14 (Arbitrum Open House) and 2026-09-15 (Colosseum). The tag [`pre-hackathon`](https://github.com/arkanine1000/atnx-markets/releases/tag/pre-hackathon) marks the last commit before that date; everything after it, the capture pipeline, the Virality Index, the bounded markets and the rounds alike, was built inside the window: [compare `pre-hackathon...main`](https://github.com/arkanine1000/atnx-markets/compare/pre-hackathon...main). The repository is a public copy of the private upstream `gptdnd/atnx`. The on-chain work, the bounded markets and then the rounds, starts at the tag [`bounded-markets-start`](https://github.com/arkanine1000/atnx-markets/releases/tag/bounded-markets-start): [compare `bounded-markets-start...main`](https://github.com/arkanine1000/atnx-markets/compare/bounded-markets-start...main).
 
 | | |
 |---|---|
 | Live app | https://markets.atnx.app (production ATNX at https://atnx.app) |
-| Contracts | `contracts/` (Foundry). Addresses in the table below. |
-| Design doc | "ATNX devnet market design: bounded VI markets", 2026-09-30 (summarised in *How it works*) |
+| Programs and contracts | `programs/` (Anchor, Solana) and `contracts/` (Foundry, EVM). Addresses in the table below. |
+| Design | Rolling rounds: [docs/rounds.md](docs/rounds.md) (Pennock's dynamic pari-mutuel market). Bounded markets, the first iteration: "ATNX devnet market design: bounded VI markets", 2026-09-30, summarised in [docs/bounded-markets.md](docs/bounded-markets.md) |
 | Status | [docs/rounds.md](docs/rounds.md), *Built / not built* |
 
 ### Deployed contracts
@@ -62,5 +62,5 @@ atnx/
 | [docs/database.md](docs/database.md) | Supabase tables, RPCs, storage |
 | [docs/extension.md](docs/extension.md) | The Chrome extension's moving parts, permissions and config |
 | [docs/development.md](docs/development.md) | Local setup, env vars, checking the pipeline, seeding, extension dev and release, deployment, known rough edges |
-| [contracts/README.md](contracts/README.md), [programs/README.md](programs/README.md) | The EVM contracts and the Solana program |
+| [contracts/README.md](contracts/README.md), [programs/README.md](programs/README.md) | The EVM contracts and the two Solana programs, with build and deploy steps |
 | [atnx-web/README.md](atnx-web/README.md) | How a submission is decided, stage by stage |

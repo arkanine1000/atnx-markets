@@ -31,7 +31,9 @@ KEYPAIR=keys/$NAME-keypair.json
 PAYER=${PAYER:-$HOME/.config/solana/devnet.json}
 OUT=programs/artifact/$NAME
 rm -rf "$OUT" && mkdir -p "$OUT"
-RID=$(gh run list --repo arkanine1000/atnx-markets --workflow solana-build --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+BRANCH=${BRANCH:-$(git rev-parse --abbrev-ref HEAD)}
+RID=$(gh run list --repo arkanine1000/atnx-markets --workflow solana-build --branch "$BRANCH" --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+[ -n "$RID" ] || { echo "no green solana-build run on branch $BRANCH (set BRANCH=... to pick another)"; exit 1; }
 echo "artifact $NAME from run $RID"
 gh run download --repo arkanine1000/atnx-markets "$RID" --name "$NAME" --dir "$OUT"
 find "$OUT" -type f | sed 's/^/  /'

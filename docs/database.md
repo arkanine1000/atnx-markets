@@ -12,8 +12,8 @@
 | `market_handles` | A market's own platform accounts, one row per platform, with how they were found and whether they are verified; only verified rows feed the score. |
 | `blocked_terms` | Names that may not become markets again, filled when an admin retires a market; the capture pipeline rejects a matching proposal. |
 | `user_profiles` | `id` (= auth.uid), `handle` (fixed), `email`, `role` (`user` / `moderator` / `admin`). |
-| `sim_balances` | Per-user simulated USD balance, realized PnL, trade count, fees earned and paid. |
-| `positions` | Open + closed trades: `direction`, `size_usd`, `leverage`, `entry_vi`, `exit_vi`, `realized_pnl`, `fee_usd`, `liquidated`, `status`. |
+| `sim_balances` | Per-user simulated USD balance, realized PnL, trade count, fees earned and paid. Upstream's simulated exchange; the fork trades on chain and only creates the row at sign-in. |
+| `positions` | Upstream's simulated trades, unused in the fork: open + closed trades: `direction`, `size_usd`, `leverage`, `entry_vi`, `exit_vi`, `realized_pnl`, `fee_usd`, `liquidated`, `status`. |
 | `fee_events`, `sim_treasury` | The fee ledger (1% of every open, half to the market's creator, half to the treasury) and the treasury's one row. |
 | `moderation_log` | Admin audit trail. |
 | `waitlist` | Landing-page signups: `email` (unique, case-insensitive), `source`, `created_at`. Written by the server, admin-readable. |
@@ -25,3 +25,14 @@
 Schema changes are numbered SQL files in `atnx-web/supabase/`, applied by hand in order; see that README for the list.
 
 Storage: the `captures` bucket (public) holds capture images under `{user_id}/`, review drafts' parked images under `{user_id}/pending/` (removed on commit or expiry), and curated market images under `markets/{id}/`; public URLs are stored on the rows. Text-only submissions have no image.
+
+## On-chain market registry (`bm` schema)
+
+Numbered SQL files in `atnx-web/supabase/bm/`, applied by hand. The schema must be exposed in Supabase's API settings, or every query fails with PGRST106. Everyone may read; only the service role writes. This is the registry, not the ledger: stakes, shares and payouts live in the contracts and program accounts.
+
+| Table | Purpose |
+| --- | --- |
+| `bm.markets` | Bounded markets (first iteration, `001_schema.sql`): chain, contract, on-chain id, start VI, bounds, seed, state (`pending` / `open` / `resolving` / `resolved` / `failed`), the keeper's VI cursor and touch streak, the wallet that opened it, `rolled_from`. |
+| `bm.series` | Rolling rounds (`002_rounds.sql`): one row per series, with the 32-byte reference (hex) that seeds the series account, the finder wallet, round length, settlement window, first presale, ante, `fast`, and state (`pending` / `active` / `paused` / `ended` / `failed`). One running series per market, chain and speed. |
+| `bm.rounds` | One row per round: state (`presale` / `opening` / `live` / `settling` / `settled` / `void`), when it may open, open and close times, `trade_until`, target VI, settlement average and print count, winner, presale pots, the keeper's ante, and the open, settle and void transactions. One presale and one round in flight or live per series. |
+| `bm.keeper_log` | One row per keeper action with `run_id`, `action`, `detail`, `error`, `tx_hash`, pointing at a bounded market (`bm_market_id`) or a series and round (`series_id`, `round_id`). |
