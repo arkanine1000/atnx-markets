@@ -100,7 +100,7 @@ export function UserMenu() {
             <Link
               href="/app/settings"
               onClick={() => setOpen(false)}
-              className="block px-3 py-2 text-xs text-primary hover:bg-surface transition-colors"
+              className="block px-3 py-2 text-xs text-primary hover-sink transition-colors"
             >
               Settings
             </Link>
@@ -109,7 +109,7 @@ export function UserMenu() {
             <Link
               href="/admin"
               onClick={() => setOpen(false)}
-              className="block px-3 py-2 text-xs text-atnx-yellow hover:bg-surface transition-colors"
+              className="block px-3 py-2 text-xs text-atnx-yellow hover-sink transition-colors"
             >
               Admin
             </Link>
@@ -121,7 +121,7 @@ export function UserMenu() {
               disconnect();
               if (user) void signOut();
             }}
-            className="w-full text-left px-3 py-2 text-xs text-atnx-magenta hover:bg-surface transition-colors cursor-pointer"
+            className="w-full text-left px-3 py-2 text-xs text-atnx-magenta hover-sink transition-colors cursor-pointer"
           >
             {user ? "Sign out" : "Disconnect"}
           </button>

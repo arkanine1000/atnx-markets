@@ -131,7 +131,7 @@ export function AdminDashboard({
             className={`px-4 py-2 border-b-2 -mb-px cursor-pointer transition-colors ${
               tab === t
                 ? "border-atnx-magenta text-atnx-magenta font-bold"
-                : "border-transparent text-secondary hover:text-primary"
+                : "border-transparent text-secondary link-quiet"
             }`}
           >
             {t === "markets"

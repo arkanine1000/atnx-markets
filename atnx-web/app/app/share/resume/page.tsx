@@ -143,7 +143,7 @@ export default function ShareResumePage() {
               await clearPending();
               router.replace("/app");
             }}
-            className="block mx-auto mt-4 text-xs text-tertiary hover:text-primary cursor-pointer"
+            className="block mx-auto mt-4 text-xs text-tertiary link-quiet cursor-pointer"
           >
             Discard the capture
           </button>

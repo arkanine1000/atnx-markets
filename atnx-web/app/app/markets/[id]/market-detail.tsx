@@ -24,9 +24,12 @@ import { ShareButton } from "@/components/ShareButton";
 import {
   ViChart,
   RANGES,
+  isPreset,
   sliceRange,
+  type ChartRange,
   type Range,
 } from "@/components/charts/ViArea";
+import { DateRangePicker } from "@/components/DateRangePicker";
 import {
   Card,
   Chip,
@@ -221,7 +224,17 @@ export function MarketDetailClient({
     [myTrades],
   );
   const [selectedIdx, setSelectedIdx] = useState(0);
-  const [range, setRange] = useState<Range>("ALL");
+  const [range, setRange] = useState<ChartRange>("ALL");
+  // The tab to return to when a calendar window is cleared.
+  const lastPreset = useRef<Range>("ALL");
+  const pickRange = useCallback((r: ChartRange | null) => {
+    if (r === null) {
+      setRange(lastPreset.current);
+      return;
+    }
+    if (isPreset(r)) lastPreset.current = r;
+    setRange(r);
+  }, []);
   const [tab, setTab] = useState<Tab>("pulse");
   const [showRaw, setShowRaw] = useState(false);
   const [toast, setToast] = useState<{
@@ -281,6 +294,12 @@ export function MarketDetailClient({
       })),
     [points],
   );
+  // The calendar offers the days the series covers (lib/store loads the
+  // last 90 days), from the first point to today.
+  const firstPointMs = useMemo(() => {
+    const t = points.length ? new Date(points[0].date).getTime() : NaN;
+    return Number.isFinite(t) ? t : undefined;
+  }, [points]);
 
   const handleToast = useCallback(
     (message: string, detail: string | undefined, type: "up" | "down") => {
@@ -382,7 +401,7 @@ export function MarketDetailClient({
             {prev ? (
               <Link
                 href={`/app/markets/${prev.id}`}
-                className="min-w-0 inline-flex items-center gap-1 hover:text-primary transition-colors"
+                className="min-w-0 inline-flex items-center gap-1 link-quiet transition-colors"
               >
                 <span aria-hidden="true">{"‹"}</span>
                 <span className="truncate">{prev.name}</span>
@@ -393,7 +412,7 @@ export function MarketDetailClient({
             {next ? (
               <Link
                 href={`/app/markets/${next.id}`}
-                className="min-w-0 inline-flex items-center gap-1 text-right hover:text-primary transition-colors"
+                className="min-w-0 inline-flex items-center gap-1 text-right link-quiet transition-colors"
               >
                 <span className="truncate">{next.name}</span>
                 <span aria-hidden="true">{"›"}</span>
@@ -466,13 +485,26 @@ export function MarketDetailClient({
 
               {/* Chart */}
               <div className="px-2 sm:px-3 pb-3">
-                <div className="flex items-center justify-between px-2 mb-1">
-                  <Segmented
-                    ariaLabel="Chart range"
-                    value={range}
-                    onChange={setRange}
-                    options={rangeOptions}
-                  />
+                <div className="flex items-center justify-between gap-2 px-2 mb-1">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    {/* The tabs scroll on the narrowest phones; the calendar
+                        stays put beside them so its popover is never clipped. */}
+                    <div className="min-w-0 overflow-x-auto scrollbar-none">
+                      <Segmented
+                        ariaLabel="Chart range"
+                        value={isPreset(range) ? range : null}
+                        onChange={pickRange}
+                        options={rangeOptions}
+                      />
+                    </div>
+                    <DateRangePicker
+                      value={isPreset(range) ? null : range}
+                      onChange={pickRange}
+                      min={firstPointMs}
+                      disabled={points.length < 2}
+                      className="shrink-0"
+                    />
+                  </div>
                   {trends && (
                     <div className="hidden sm:flex items-center gap-3 text-[11px] text-tertiary font-mono">
                       <span>
@@ -565,7 +597,7 @@ export function MarketDetailClient({
                       className={`px-3 sm:px-4 py-3 text-xs font-bold whitespace-nowrap -mb-px border-b-2 transition-colors cursor-pointer ${
                         active
                           ? "border-atnx-cyan text-primary"
-                          : "border-transparent text-secondary hover:text-primary"
+                          : "border-transparent text-secondary link-quiet"
                       }`}
                     >
                       {label}

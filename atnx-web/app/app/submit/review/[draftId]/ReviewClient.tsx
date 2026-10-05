@@ -272,7 +272,7 @@ function CropModal({
             onClick={onClose}
             disabled={busy}
             aria-label="Close"
-            className="text-secondary hover:text-primary text-xl leading-none px-1 cursor-pointer disabled:opacity-40"
+            className="text-secondary link-quiet text-xl leading-none px-1 cursor-pointer disabled:opacity-40"
           >
             ×
           </button>
@@ -284,7 +284,7 @@ function CropModal({
               type="button"
               onClick={() => onChange(null)}
               disabled={busy}
-              className="text-secondary hover:text-primary cursor-pointer disabled:opacity-40"
+              className="text-secondary link-quiet cursor-pointer disabled:opacity-40"
             >
               Clear
             </button>
@@ -603,7 +603,7 @@ export function ReviewClient({ initial }: { initial: ReviewDraftView }) {
                         className={`rounded-full border px-3 py-1 text-xs font-bold cursor-pointer ${
                           name === n
                             ? "border-atnx-cyan bg-atnx-cyan/10 text-primary"
-                            : "border-surface text-secondary hover:text-primary"
+                            : "border-surface text-secondary link-quiet"
                         }`}
                       >
                         {n}
@@ -781,7 +781,7 @@ export function ReviewClient({ initial }: { initial: ReviewDraftView }) {
           >
             {busy === "commit" ? "Saving…" : commitLabel}
           </button>
-          <Link href="/app/submit" className="text-sm text-secondary hover:text-primary">
+          <Link href="/app/submit" className="text-sm text-secondary link-quiet">
             Discard
           </Link>
         </div>

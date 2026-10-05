@@ -115,10 +115,12 @@ body {
   background: var(--color-light-elevated);
 }
 
-/* Quiet bordered button (amount presets, Sell, Mint): on hover the fill
-   steps up, the edge takes a faint accent and the label goes to full ink.
-   Written as CSS because the ink helpers below are unlayered, so Tailwind
-   never generates hover: variants of them. */
+/* The ink helpers below (.text-primary and friends) are plain unlayered
+   CSS, so Tailwind never generates hover: variants of them and they
+   override layered hover utilities. These carry the hover instead. */
+
+/* Quiet bordered button: the fill steps up, the edge takes a faint
+   accent and the label goes to full ink. */
 .btn-quiet {
   transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
 }
@@ -136,7 +138,7 @@ body {
   transform: translateY(1px);
 }
 
-/* Quiet text button (Details, Back to buying): the label goes to full ink. */
+/* Quiet text button or link: the label goes to full ink. */
 .link-quiet {
   transition: color 150ms ease;
 }
@@ -145,6 +147,28 @@ body {
 }
 .light .link-quiet:hover:not(:disabled) {
   color: #0A0A0A;
+}
+
+/* Softer: tertiary ink goes to secondary. */
+.link-soft {
+  transition: color 150ms ease;
+}
+.link-soft:hover:not(:disabled) {
+  color: #999999;
+}
+.light .link-soft:hover:not(:disabled) {
+  color: #555555;
+}
+
+/* Menu rows on an elevated surface: the fill steps down one level. */
+.hover-sink {
+  transition: background-color 150ms ease;
+}
+.hover-sink:hover:not(:disabled) {
+  background: var(--color-dark-surface);
+}
+.light .hover-sink:hover:not(:disabled) {
+  background: var(--color-light-surface);
 }
 
 /* Interactive card: lift + cyan edge on hover */
@@ -375,4 +399,13 @@ a .recharts-wrapper {
 
 .animate-live-pulse {
   animation: live-pulse 2s ease-in-out infinite;
+}
+
+/* Scrolls sideways without a scrollbar: the chart's tab row on a narrow
+   phone, where the tabs run past the edge. */
+.scrollbar-none {
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
 }

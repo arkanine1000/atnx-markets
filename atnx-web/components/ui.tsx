@@ -15,7 +15,8 @@ interface SegmentedOption<T extends string> {
 }
 
 interface SegmentedProps<T extends string> {
-  value: T;
+  /** null selects nothing, e.g. when a control beside the tabs is in force. */
+  value: T | null;
   onChange: (v: T) => void;
   options: SegmentedOption<T>[];
   /** "accent" paints the active pill magenta; "neutral" lifts it to the elevated surface. */
@@ -60,7 +61,7 @@ export function Segmented<T extends string>({
             title={o.title}
             onClick={() => onChange(o.value)}
             className={`${pad} ${itemClassName} inline-flex items-center justify-center rounded-full font-bold whitespace-nowrap transition-colors cursor-pointer disabled:opacity-35 disabled:cursor-not-allowed ${
-              active ? activeCls : "text-secondary hover:text-primary"
+              active ? activeCls : "text-secondary link-quiet"
             }`}
           >
             {o.label}

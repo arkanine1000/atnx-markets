@@ -287,7 +287,7 @@ export function SubmitForm({
           <button
             type="button"
             onClick={() => setNoticeDismissed(true)}
-            className="text-secondary hover:text-primary shrink-0 cursor-pointer"
+            className="text-secondary link-quiet shrink-0 cursor-pointer"
             aria-label="Dismiss"
           >
             {"✕"}
@@ -352,7 +352,7 @@ export function SubmitForm({
                   e.stopPropagation();
                   setFile(null);
                 }}
-                className="mt-2 text-xs text-secondary hover:text-primary cursor-pointer"
+                className="mt-2 text-xs text-secondary link-quiet cursor-pointer"
               >
                 Remove
               </button>
@@ -392,7 +392,7 @@ export function SubmitForm({
                 e.stopPropagation();
                 cameraRef.current?.click();
               }}
-              className="sm:hidden mt-3 inline-flex items-center gap-1.5 rounded-full border border-surface bg-elevated px-3 py-1.5 text-xs font-bold text-secondary hover:text-primary cursor-pointer"
+              className="sm:hidden mt-3 inline-flex items-center gap-1.5 rounded-full border border-surface bg-elevated px-3 py-1.5 text-xs font-bold text-secondary link-quiet cursor-pointer"
             >
               <svg viewBox="0 0 24 24" width={14} height={14} aria-hidden="true">
                 <path
@@ -455,7 +455,7 @@ export function SubmitForm({
           <button
             type="button"
             onClick={reset}
-            className="text-sm text-secondary hover:text-primary cursor-pointer"
+            className="text-sm text-secondary link-quiet cursor-pointer"
           >
             Clear
           </button>

@@ -171,7 +171,7 @@ export function Nav() {
                   className={`inline-flex items-center justify-center w-28 py-1.5 rounded-full font-bold whitespace-nowrap transition-colors ${
                     active
                       ? "bg-atnx-magenta text-white shadow-[0_0_16px_rgba(255,0,229,0.25)]"
-                      : "text-secondary hover:text-primary"
+                      : "text-secondary link-quiet"
                   }`}
                 >
                   {l.label}
