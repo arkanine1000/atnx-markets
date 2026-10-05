@@ -400,3 +400,12 @@ a .recharts-wrapper {
 .animate-live-pulse {
   animation: live-pulse 2s ease-in-out infinite;
 }
+
+/* Scrolls sideways without a scrollbar: the chart's tab row on a narrow
+   phone, where the tabs run past the edge. */
+.scrollbar-none {
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}

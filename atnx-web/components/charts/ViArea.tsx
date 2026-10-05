@@ -12,6 +12,7 @@ import {
   YAxis,
 } from "recharts";
 import { useTheme } from "next-themes";
+import type { DateRange } from "@/components/DateRangePicker";
 
 // Virality Index over time, drawn as a 2px line over a soft gradient wash.
 // One series, so colour carries polarity only: cyan when the visible range
@@ -175,21 +176,46 @@ const RANGE_MS: Record<Range, number> = {
   ALL: Infinity,
 };
 
+// What the chart shows: a preset tab, or the days picked on the calendar
+// (components/DateRangePicker), as the instants the window runs between.
+export type ChartRange = Range | DateRange;
+
+export function isPreset(range: ChartRange): range is Range {
+  return typeof range === "string";
+}
+
 export function sliceRange(
   points: ViPoint[],
-  range: Range,
+  range: ChartRange,
   now = Date.now(),
 ): ViPoint[] {
+  if (!isPreset(range)) {
+    return points.filter((p) => {
+      const t = new Date(p.date).getTime();
+      return t >= range.from && t <= range.to;
+    });
+  }
   if (range === "ALL") return points;
   const cutoff = now - RANGE_MS[range];
   return points.filter((p) => new Date(p.date).getTime() >= cutoff);
 }
 
-function fmtTime(iso: string, range: Range): string {
+// The tick label for a window: clock time inside a day, day and time up
+// to a few days (a bare "14:00" twice over says nothing), the date beyond.
+function fmtTime(iso: string, range: ChartRange): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
-  if (range === "1H" || range === "4H" || range === "1D") {
+  const spanMs = isPreset(range) ? RANGE_MS[range] : range.to - range.from;
+  if (spanMs <= RANGE_MS["1D"]) {
     return d.toLocaleTimeString(undefined, {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+  if (spanMs <= 3 * RANGE_MS["1D"]) {
+    return d.toLocaleString(undefined, {
+      month: "short",
+      day: "numeric",
       hour: "2-digit",
       minute: "2-digit",
     });
@@ -223,7 +249,7 @@ export function ViChart({
   scoring = false,
 }: {
   dataPoints: ViPoint[];
-  range: Range;
+  range: ChartRange;
   height?: number;
   /** Bounds of the open bounded market: UP pays at `upper`, DOWN at `lower`. */
   bounds?: { lower: number; upper: number } | null;
@@ -308,8 +334,14 @@ export function ViChart({
           </>
         ) : (
           <>
-            <span>Not enough history for this range.</span>
-            <span className="text-[11px]">Try a wider range.</span>
+            <span>
+              {isPreset(range)
+                ? "Not enough history for this range."
+                : "Not enough history between those dates."}
+            </span>
+            <span className="text-[11px]">
+              {isPreset(range) ? "Try a wider range." : "Try a wider window."}
+            </span>
           </>
         )}
       </div>

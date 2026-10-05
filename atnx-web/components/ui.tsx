@@ -15,7 +15,8 @@ interface SegmentedOption<T extends string> {
 }
 
 interface SegmentedProps<T extends string> {
-  value: T;
+  /** null selects nothing, e.g. when a control beside the tabs is in force. */
+  value: T | null;
   onChange: (v: T) => void;
   options: SegmentedOption<T>[];
   /** "accent" paints the active pill magenta; "neutral" lifts it to the elevated surface. */
