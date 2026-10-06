@@ -54,7 +54,7 @@ export function RoundChip({ series, rounds, vi }: { series: BmSeriesRow; rounds:
       <div className="mt-2 flex items-center gap-2 text-[11px] tabular-nums">
         <span className="text-secondary">Round {presaleRow.idx}</span>
         <span className="text-tertiary">·</span>
-        <span className="text-tertiary">presale{now !== null ? (now < opens ? ` · opens in ${fmtLeft(opens - now)}` : " · opening") : ""}</span>
+        <span className="text-tertiary">{now !== null ? (now < opens ? `opens in ${fmtLeft(opens - now)}` : "opening") : "opens soon"}</span>
       </div>
     );
   }

@@ -99,7 +99,7 @@ Source: D. M. Pennock, "A Dynamic Pari-Mutuel Market for Hedging, Wagering, and 
 
 ## What the trader sees
 
-One rule runs through the ticket and the cards: plain words for someone who has never traded, no tabs or jargon. The ticket shows one round, not a switch between rounds; the cards show a status pill and one line of verdict. "Presale" is the word this document and the code use for a round waiting to open; the ticket and the cards say "Opens soon", "Opens in 42m" or "Starts in 42m" instead, with two leftovers: the ticket's status line before a wallet connects ("Round N · presale") and the market header's chip ("Round N · presale · opens in …").
+One rule runs through the ticket and the cards: plain words for someone who has never traded, no tabs or jargon. The ticket shows one round, not a switch between rounds; the cards show a status pill and one line of verdict. "Presale" is the word this document and the code use for a round waiting to open; the ticket and the cards say "Opens soon", "Opens in 42m" or "Starts in 42m" instead.
 
 ### The ticket
 
@@ -111,7 +111,7 @@ Every state ends in the same footer: a collapsed "How rounds work" disclosure (f
 
 1. No program configured: "Rounds are not live on Solana devnet yet."
 2. No series on the market: the question ("Will {name}'s index be higher in 24 hours?"), a "Start rounds" button and "You earn a share of every fee in this series." It is blocked while the market is still being scored, has no score, or its VI is over 30 minutes old. Starting needs a connected Solana wallet, which becomes the finder; the keeper pays for the accounts. Then "Starting rounds on chain…" until the registry row appears.
-3. A series, no wallet: the question, one status line for the round the ticket will show with a countdown chip, and a connect button. With a live round the line is "Round N · target T" with the live pane's chip ("Xh Ym left" until trading stops, then "Closes in …", then "Settling") and the button reads "Connect Solana wallet to trade"; with only a round waiting to open it is "Round N · presale" with an "Opens in …" or "Opening…" chip and the button reads "Connect Solana wallet to commit".
+3. A series, no wallet: the question, one status line for the round the ticket will show with a countdown chip, and a connect button. With a live round the line is "Round N · target T" with the live pane's chip ("Xh Ym left" until trading stops, then "Closes in …", then "Settling") and the button reads "Connect Solana wallet to trade"; with only a round waiting to open it is "Round N · opens soon" with an "Opens in …" or "Opening…" chip and the button reads "Connect Solana wallet to commit".
 4. Wallet connected, no USDG: "You need test USDG to take a side." and one button that creates the USDG account and mints 1,000 test USDG.
 5. The ticket proper: a "Round N · Live" or "Round N · Opens soon" label over one pane.
    - Live: "Target T · now V" with a time-left chip, UP and DOWN with their chance ("61% UP"), the spend with quick amounts and Max, "If UP wins you get X USDG" with the profit, and details (shares, average price, fee, finder's share, both pools and the chance of UP before and after). The button reads "Buy UP for 25 USDG".
@@ -137,7 +137,7 @@ The markets list (`/app`) has two tabs with counts over the whole list under the
 
 ### Elsewhere
 
-- Market header: `RoundChip`, "Round 12 · UP 61% · target 143 · 3h 12m" (time to the close, then "settling"), or "Round N · presale · opens in …" before a round opens. A market with no series shows no chip.
+- Market header: `RoundChip`, "Round 12 · UP 61% · target 143 · 3h 12m" (time to the close, then "settling"), or "Round N · opens in 42m" (then "opening") before a round opens. A market with no series shows no chip.
 - Chart: the live round's target as a line.
 - Activity tab: settled rounds with their transactions (`RoundHistory`), or "No rounds yet on this market."
 - `/app/portfolio`: the wallet's round positions across every series (one row per position, named by market: round, side, net stake, what it is now, one action; open rounds above settled ones), then the bounded-market positions on the EVM testnets.
@@ -221,7 +221,6 @@ As of 2026-10-06.
 - The program times trading and settlement by the chain clock, which ran about six seconds behind the wall clock on devnet; a countdown on the page is a few seconds early.
 - Pausing a series through the registry ends it: on the next tick the series is paused on chain and its presale round voided, and from then on buys on the live round and rollovers are refused; the live round still settles and can be claimed, and the series cannot be resumed. A new series on the same market gets a new reference from its nonce.
 - A market can run a daily and a fast series at the same time, but the market page shows only the daily one. A card shows one round, a live one before one waiting to open and then the daily series first, so a live fast round can stand in for a daily round that has not opened.
-- The word "presale" still shows in two places: the ticket's status line before a wallet connects ("Round N · presale") and the market header's chip.
 - A bounded market still open on a subject has no ticket on the market page once rounds are deployed: its holders see it in the portfolio's EVM section, which redeems a win once it resolves, but its "Trade" link opens the market page, so an open bounded position cannot be sold from the site.
 - The faucet and series start are open to anyone (testnet only): one running series per market and speed, the keeper pays the rent.
 - The ticket's fast toggle renders only under `next dev` (`NODE_ENV` is `production` on every Vercel deployment, previews included), and `startSeriesAction` ignores `fast=true` on a production build unless `BM_FAST_FROM_CLIENT=1` is set, so a wallet cannot fill production with hourly series. On production the intended route is `rounds:start -- <uuid> --fast` from the laptop.
