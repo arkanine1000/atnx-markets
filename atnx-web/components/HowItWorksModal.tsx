@@ -20,7 +20,7 @@ const STEPS = [
   {
     n: 2,
     title: "UP or DOWN",
-    body: "Markets run in rounds. Each round opens at the market's Virality Index of that moment, which becomes its target, and runs for 24 hours. Think attention will be higher at the close? Take UP. Lower? Take DOWN. Commit before the round opens, where everyone on a side pays the same price, or buy while it runs.",
+    body: "Markets run in rounds. Each round opens at the market's Virality Index of that moment, which becomes its target, and runs for 24 hours. Think attention will be higher at the close? Take UP. Lower? Take DOWN. Buy while the round runs. Before a market's first round opens, early commits on a side all pay the same price.",
     tone: "magenta" as const,
   },
   {
