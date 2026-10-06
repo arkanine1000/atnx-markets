@@ -18,13 +18,15 @@ import { startPolling } from "@/lib/poll";
 import {
   MAX_LIMIT,
   PAGE_SIZE,
+  SORTS,
   marketsHref,
   type MarketsQuery,
+  type MarketsTab,
   type SortMode,
 } from "@/lib/markets-query";
 import { CATEGORY_LABELS, type Category } from "@/lib/categories";
-import type { MarketsPage } from "@/lib/store";
-import type { RoundBadgeInfo } from "@/components/rounds/RoundBadge";
+import type { Capture, MarketsPage } from "@/lib/store";
+import type { RoundsMap } from "@/lib/bm/round-badges";
 
 // A new VI point lands every five minutes; thirty seconds is plenty to
 // catch a fresh capture. Behind it the server memoizes the feed for 15 s,
@@ -113,8 +115,120 @@ const ListIcon = (
 
 // Bounds of the live bounded market per atnx market id, for the tile badge.
 export type BoundsMap = Record<string, { lower: number; upper: number }>;
-// The current round per atnx market id (registry only), for the tile badge.
-export type RoundsMap = Record<string, RoundBadgeInfo>;
+
+// A tabbed listing from /api/markets carries the round badges with it.
+type Listing = MarketsPage & { rounds?: RoundsMap };
+
+const SORT_LABELS: Record<SortMode, string> = {
+  virality: "Virality",
+  closing: "Closing soonest",
+  newest: "Newest",
+};
+// On phones the control shrinks to an icon and a word.
+const SORT_SHORT: Record<SortMode, string> = {
+  virality: "Virality",
+  closing: "Closing",
+  newest: "Newest",
+};
+
+const SortIcon = (
+  <svg
+    viewBox="0 0 16 16"
+    width="13"
+    height="13"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M5 13V3M2.5 5.5 5 3l2.5 2.5M11 3v10M8.5 10.5 11 13l2.5-2.5" />
+  </svg>
+);
+
+const Chevron = (
+  <svg
+    viewBox="0 0 12 12"
+    width="10"
+    height="10"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M2.5 4.5 6 8l3.5-3.5" />
+  </svg>
+);
+
+// The order, as a small pill at the end of the tab row: "Sort Virality",
+// and on phones the icon and the word. A native select sits over it, so
+// the menu is the platform's own (a sheet on phones).
+function SortControl({
+  value,
+  onChange,
+}: {
+  value: SortMode;
+  onChange: (next: SortMode) => void;
+}) {
+  return (
+    <label className="relative inline-flex shrink-0 items-center gap-1.5 rounded-full border border-surface bg-surface hover-lift pl-3 pr-2.5 py-2 text-xs font-bold whitespace-nowrap cursor-pointer text-secondary focus-within:border-atnx-magenta/50">
+      <span className="sm:hidden">{SortIcon}</span>
+      <span className="hidden sm:inline font-normal text-tertiary">Sort</span>
+      <span className="text-primary">
+        <span className="sm:hidden">{SORT_SHORT[value]}</span>
+        <span className="hidden sm:inline">{SORT_LABELS[value]}</span>
+      </span>
+      {Chevron}
+      <select
+        aria-label="Sort markets"
+        value={value}
+        onChange={(e) => onChange(e.target.value as SortMode)}
+        className="absolute inset-0 h-full w-full cursor-pointer appearance-none opacity-0"
+      >
+        {SORTS.map((s) => (
+          <option key={s} value={s}>
+            {SORT_LABELS[s]}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function TabLabel({ label, count, pulse }: { label: string; count?: number; pulse?: boolean }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      {pulse && (
+        <span className="relative inline-flex h-1.5 w-1.5" aria-hidden="true">
+          <span className="absolute inline-flex h-full w-full rounded-full bg-atnx-cyan opacity-60 animate-live-pulse" />
+          <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-atnx-cyan" />
+        </span>
+      )}
+      {label}
+      {count !== undefined && (
+        <span className="font-mono text-[10px] tabular-nums opacity-60">{count}</span>
+      )}
+    </span>
+  );
+}
+
+// "Closing soonest": live rounds by their close, the rest after them in
+// the order the server sent (virality). Only the markets loaded are
+// ordered; on the Live tab that is all of them until there are more than
+// a page of live rounds.
+function byClose(items: Capture[], rounds: RoundsMap): Capture[] {
+  const closeOf = (c: Capture) => {
+    const r = c.marketId ? rounds[c.marketId] : undefined;
+    return r?.state === "live" && r.closeAt ? Date.parse(r.closeAt) : Infinity;
+  };
+  return items
+    .map((c, i) => ({ c, i, at: closeOf(c) }))
+    .sort((a, b) => (a.at === b.at ? a.i - b.i : a.at < b.at ? -1 : 1))
+    .map(({ c }) => c);
+}
 
 export function MarketsView({
   initial,
@@ -122,7 +236,7 @@ export function MarketsView({
   bounded = {},
   rounds = {},
 }: {
-  initial: MarketsPage;
+  initial: Listing;
   bounded?: BoundsMap;
   rounds?: RoundsMap;
   // What the server rendered: order, search term (from the nav's search
@@ -130,10 +244,13 @@ export function MarketsView({
   query: MarketsQuery;
 }) {
   const router = useRouter();
-  const [data, setData] = useState<MarketsPage>(initial);
-  // The order and filter as last clicked. They lead the URL while its
-  // navigation is in flight, so a second tick builds on the first.
+  const [data, setData] = useState<Listing>(initial);
+  // The order, tab and filter as last clicked. They lead the URL while its
+  // navigation is in flight, so a second tick builds on the first. A tab
+  // of null is the page's default (Live when any market is live), which
+  // the listing reports back as `tab`.
   const [sort, setSortState] = useState(query.sort);
+  const [tab, setTabState] = useState<MarketsTab | null>(query.tab);
   const [categories, setCategories] = useState<Category[]>(query.categories);
   // True while "Show more" is the navigation in flight: the list keeps its
   // full opacity then, since nothing on it is about to change.
@@ -152,12 +269,16 @@ export function MarketsView({
     setRendered(initial);
     setData(initial);
     setSortState(query.sort);
+    setTabState(query.tab);
     setCategories(query.categories);
     setMore(false);
   }
 
   const limit = query.limit;
   const catsKey = query.categories.join(",");
+  // The poll asks for the tab the server picked, so a default of Live
+  // stays Live (and the API sends the counts and badges with it).
+  const pollTab = query.tab ?? rendered.tab ?? null;
 
   // Poll the listing while the tab is visible, backing off while the API
   // is failing. The first fetch waits a full interval: the page arrived
@@ -165,12 +286,12 @@ export function MarketsView({
   useEffect(() => {
     let live = true;
     async function fetchListing() {
-      const res = await fetch(`/api/markets${marketsHref(query, "")}`);
+      const res = await fetch(`/api/markets${marketsHref({ ...query, tab: pollTab }, "")}`);
       if (!res.ok) throw new Error(`markets ${res.status}`);
       const body = await res.text();
       // A tick that set off before the query or limit changed is stale.
       if (!live || body === lastBody.current) return;
-      const next = JSON.parse(body) as MarketsPage;
+      const next = JSON.parse(body) as Listing;
       if (Array.isArray(next.items)) {
         lastBody.current = body;
         setData(next);
@@ -186,11 +307,11 @@ export function MarketsView({
     };
     // query is rebuilt every render; these are what it is made of.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [limit, query.sort, query.q, catsKey]);
+  }, [limit, query.sort, query.q, catsKey, pollTab]);
 
   const navigate = (next: Partial<MarketsQuery>) =>
     startTransition(() =>
-      router.replace(marketsHref({ sort, q: query.q, categories, ...next }), {
+      router.replace(marketsHref({ sort, q: query.q, categories, tab, ...next }), {
         scroll: false,
       }),
     );
@@ -206,25 +327,37 @@ export function MarketsView({
     navigate({ limit: Math.min(MAX_LIMIT, limit + PAGE_SIZE) });
   };
 
-  // A new order or filter starts again from the top of the list.
+  // A new order, tab or filter starts again from the top of the list.
   const setSort = (next: SortMode) => {
     setSortState(next);
     navigate({ sort: next });
+  };
+  const setTab = (next: MarketsTab) => {
+    setTabState(next);
+    navigate({ tab: next });
   };
   const setFilter = (next: Category[]) => {
     setCategories(next);
     navigate({ categories: next });
   };
 
-  const { items, featured, total, categoryCounts } = data;
+  const { featured, total, categoryCounts, tabCounts } = data;
+  const roundsNow = data.rounds ?? rounds;
+  const items = sort === "closing" ? byClose(data.items, roundsNow) : data.items;
+  // The tab as clicked, else the one the server listed.
+  const shownTab: MarketsTab = tab ?? data.tab ?? "live";
+  const otherTab: MarketsTab = shownTab === "live" ? "next" : "live";
+  const otherCount = tabCounts?.[otherTab] ?? 0;
+  // Markets under the search and filter, both tabs together.
+  const all = tabCounts ? tabCounts.live + tabCounts.next : total;
   const q = query.q;
   const filtered = query.categories.length > 0;
   const filterNames = query.categories.map((c) => CATEGORY_LABELS[c]).join(", ");
   const canShowMore = items.length < total && limit < MAX_LIMIT;
 
-  // Clears the search, keeps the order and filter.
-  const clearSearch = marketsHref({ sort, categories });
-  const clearFilter = marketsHref({ sort, q });
+  // Clears the search, keeps the order, tab and filter.
+  const clearSearch = marketsHref({ sort, categories, tab });
+  const clearFilter = marketsHref({ sort, q, tab });
 
   return (
     <div>
@@ -256,7 +389,7 @@ export function MarketsView({
           <p className="text-xs text-tertiary mt-1 flex items-center gap-2 flex-wrap">
             {q ? (
               <>
-                {total} {total === 1 ? "market" : "markets"} match
+                {all} {all === 1 ? "market" : "markets"} match
                 {filtered && <> in {filterNames}</>}
                 <Link
                   href={clearSearch}
@@ -271,7 +404,7 @@ export function MarketsView({
                   <span className="absolute inline-flex h-full w-full rounded-full bg-atnx-cyan opacity-60 animate-live-pulse" />
                   <span className="relative inline-flex h-2 w-2 rounded-full bg-atnx-cyan" />
                 </span>
-                {total} live {total === 1 ? "market" : "markets"}
+                {all} {all === 1 ? "market" : "markets"}
                 {filtered ? <> in {filterNames}</> : ", refreshed every 30s"}
                 {filtered && (
                   <Link
@@ -288,16 +421,6 @@ export function MarketsView({
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          <Segmented
-            ariaLabel="Sort markets"
-            itemClassName="w-24"
-            value={sort}
-            onChange={setSort}
-            options={[
-              { value: "virality", label: "Virality" },
-              { value: "newest", label: "Newest" },
-            ]}
-          />
           <CategoryFilter
             selected={categories}
             counts={categoryCounts}
@@ -315,11 +438,50 @@ export function MarketsView({
         </div>
       </div>
 
+      {/* Live: a round is open now. Up next: a round waiting to open, or
+          none yet. The order is a small control at the end of the row. */}
+      <div className="flex items-center justify-between gap-2 mb-4">
+        <Segmented
+          ariaLabel="Markets by round"
+          value={shownTab}
+          onChange={setTab}
+          options={[
+            {
+              value: "live",
+              label: <TabLabel label="Live" count={tabCounts?.live} pulse={(tabCounts?.live ?? 0) > 0} />,
+            },
+            {
+              value: "next",
+              label: <TabLabel label="Up next" count={tabCounts?.next} />,
+            },
+          ]}
+        />
+        <SortControl value={sort} onChange={setSort} />
+      </div>
+
       <div
         aria-busy={pending}
         className={`transition-opacity duration-200 ${pending && !more ? "opacity-50" : ""}`}
       >
-        {items.length === 0 && (q || filtered) ? (
+        {items.length === 0 && otherCount > 0 ? (
+          <EmptyState
+            title={shownTab === "live" ? "Nothing is live right now" : "Every market here is live"}
+            body={
+              shownTab === "live"
+                ? `No market${q || filtered ? " here" : ""} has a round open. ${otherCount} ${otherCount === 1 ? "is" : "are"} up next.`
+                : `Each market${q || filtered ? " here" : ""} has a round open right now.`
+            }
+            action={
+              <button
+                type="button"
+                onClick={() => setTab(otherTab)}
+                className="inline-flex items-center rounded-full border border-surface bg-surface hover-lift px-4 py-2 text-xs font-bold text-primary cursor-pointer"
+              >
+                {shownTab === "live" ? "See up next" : "See live"}
+              </button>
+            }
+          />
+        ) : items.length === 0 && (q || filtered) ? (
           <EmptyState
             title="No markets match"
             body={
@@ -367,7 +529,7 @@ export function MarketsView({
                 captureCount={c.captureCount ?? 1}
                 rank={i + 1}
                 bounds={c.marketId ? bounded[c.marketId] : undefined}
-                round={c.marketId ? rounds[c.marketId] : undefined}
+                round={c.marketId ? roundsNow[c.marketId] : undefined}
                 compact
               />
             ))}
@@ -395,7 +557,7 @@ export function MarketsView({
                   captureCount={c.captureCount ?? 1}
                   rank={i + 1}
                   bounds={c.marketId ? bounded[c.marketId] : undefined}
-                  round={c.marketId ? rounds[c.marketId] : undefined}
+                  round={c.marketId ? roundsNow[c.marketId] : undefined}
                 />
               ))}
             </div>
