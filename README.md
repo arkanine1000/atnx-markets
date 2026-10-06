@@ -24,7 +24,7 @@ This repository is the hackathon fork of ATNX for the **Arbitrum / Robinhood Cha
 | Live app | https://markets.atnx.app (production ATNX at https://atnx.app) |
 | Programs and contracts | `programs/` (Anchor, Solana) and `contracts/` (Foundry, EVM). Addresses in the table below. |
 | Design | Rolling rounds: [docs/rounds.md](docs/rounds.md) (Pennock's dynamic pari-mutuel market). Bounded markets, the first iteration: "ATNX devnet market design: bounded VI markets", 2026-09-30, summarised in [docs/bounded-markets.md](docs/bounded-markets.md) |
-| Status | [docs/rounds.md](docs/rounds.md), *Built / not built* |
+| Status | Rounds live on production since 2026-10-05: four daily series, the first settlements due on the evening of 2026-10-06 (UTC). Details in [docs/rounds.md](docs/rounds.md), *Built / not built* |
 
 ### Deployed contracts
 

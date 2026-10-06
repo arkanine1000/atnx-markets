@@ -431,7 +431,7 @@ function RegistryLine({ liveRow, presaleRow, now }: { liveRow: BmRoundRow | null
   }
   if (presaleRow) {
     const opens = new Date(presaleRow.opens_at).getTime();
-    return <StatusRow chip={now === null ? null : now < opens ? `Opens in ${fmtLeft(opens - now)}` : "Opening…"}>Round {presaleRow.idx} · presale</StatusRow>;
+    return <StatusRow chip={now === null ? null : now < opens ? `Opens in ${fmtLeft(opens - now)}` : "Opening…"}>Round {presaleRow.idx} · opens soon</StatusRow>;
   }
   return null;
 }
