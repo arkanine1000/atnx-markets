@@ -5,7 +5,7 @@ import { ViSparkline, deltaColor } from "@/components/charts/ViArea";
 import { LogoImage } from "@/components/LogoImage";
 import { Chip, DeltaChip, ScoreBadge } from "@/components/ui";
 import { BoundsRail } from "@/components/bm/BoundsRail";
-import { RoundBadge, type RoundBadgeInfo } from "@/components/rounds/RoundBadge";
+import { RoundPill, RoundVerdict, type RoundBadgeInfo } from "@/components/rounds/RoundBadge";
 import { viChange24h } from "@/lib/capture-view";
 import type { Capture } from "@/lib/store";
 
@@ -89,7 +89,10 @@ export function MarketCard({ capture, rank, compact, bounds, round }: Props) {
         <span className="absolute top-2 left-2 h-6 min-w-6 px-1.5 inline-flex items-center justify-center rounded-md bg-black/60 backdrop-blur text-white text-[11px] font-bold font-mono tabular-nums">
           #{rank}
         </span>
+        {/* The round's status opposite the rank: live and its time left,
+            or when the next round opens. */}
         <div className="absolute top-2 right-2 flex items-center gap-1">
+          {round && <RoundPill info={round} vi={viralityScore} />}
           {pending && (
             <Chip
               tone="neutral"
@@ -101,17 +104,10 @@ export function MarketCard({ capture, rank, compact, bounds, round }: Props) {
         </div>
       </div>
 
-      {/* The current round (round number, time left, target), else the
-          open bounded UP/DOWN market as a rail from the lower bound to the
-          upper with the VI's position on it. */}
-      {round ? (
-        <RoundBadge
-          info={round}
-          vi={viralityScore}
-          compact={compact}
-          className={`${compact ? "px-3" : "px-3.5"} pt-2.5 -mb-1`}
-        />
-      ) : bounds && (
+      {/* Without a round, an open bounded UP/DOWN market from the first
+          iteration shows as a rail from the lower bound to the upper with
+          the VI's position on it. */}
+      {!round && bounds && (
         <BoundsRail
           lower={bounds.lower}
           upper={bounds.upper}
@@ -127,6 +123,16 @@ export function MarketCard({ capture, rank, compact, bounds, round }: Props) {
           >
             {analysis.name || "Untitled"}
           </div>
+          {/* Which side the round favours now. It takes the height the
+              old round line took above the name (19.5px compact), so a
+              tile with a round is no taller than before. */}
+          {round && (
+            <RoundVerdict
+              info={round}
+              vi={viralityScore}
+              className={`mt-0.5 leading-[1.35] ${compact ? "text-[13px]" : "text-sm"}`}
+            />
+          )}
           <div className={`text-tertiary truncate mt-0.5 ${compact ? "text-[13px]" : "text-sm"}`}>
             {analysis.category || "—"}
           </div>
@@ -188,15 +194,23 @@ export function MarketRow({ capture, rank, bounds, round }: Props) {
           <span className="truncate">{analysis.name || "Untitled"}</span>
           {pending && <Chip>processing</Chip>}
         </div>
+        {round && (
+          <RoundVerdict info={round} vi={viralityScore} className="mt-0.5 text-xs leading-[1.3]" />
+        )}
         <div className="text-xs text-tertiary truncate">
           {analysis.category || "—"}
         </div>
-        {round ? (
-          <RoundBadge info={round} vi={viralityScore} compact className="mt-1" />
-        ) : bounds && (
+        {!round && bounds && (
           <BoundsRail lower={bounds.lower} upper={bounds.upper} vi={viralityScore} compact className="mt-1 max-w-[14rem]" />
         )}
       </div>
+      {/* The round's status at the right of the name, from sm up; on
+          phones it sits above the score instead (below). */}
+      {round && (
+        <span className="hidden sm:flex shrink-0">
+          <RoundPill info={round} vi={viralityScore} variant="inline" />
+        </span>
+      )}
       <div className="hidden sm:block w-28 shrink-0">
         <ViSparkline
           dataPoints={points}
@@ -207,7 +221,14 @@ export function MarketRow({ capture, rank, bounds, round }: Props) {
       <div className="hidden xs:block sm:w-20 shrink-0 text-right">
         <DeltaChip value={change24h} />
       </div>
-      <ScoreBadge value={viralityScore} scoring={capture.viScoring} className="w-14 sm:w-16" />
+      <div className="flex flex-col items-end gap-1 shrink-0">
+        {round && (
+          <span className="flex sm:hidden">
+            <RoundPill info={round} vi={viralityScore} variant="inline" />
+          </span>
+        )}
+        <ScoreBadge value={viralityScore} scoring={capture.viScoring} className="w-14 sm:w-16" />
+      </div>
       <span
         className="text-tertiary text-sm w-3 text-center shrink-0"
         aria-hidden="true"

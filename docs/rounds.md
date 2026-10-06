@@ -112,7 +112,7 @@ The ticket is `atnx-web/components/rounds/RoundTicket.tsx`, in the market page's
 7. Settling: "Settling…" after the close, until the keeper settles; the page re-reads itself every 8 seconds. Once the round settles, the presale round takes its place until the keeper opens it.
 8. Claims, one row for each settled or void round where the wallet still has a position ("Round N · UP won · 820 vs 812", "Round N · void · stake refunded"): "Claim X USDG", "Roll X into round N+2 (UP)" for a winner, or "Close position (returns rent)" for a loser.
 
-Elsewhere: the market header shows a round chip (round, chance of UP, target, time left), the chart draws the live round's target, the Activity tab lists settled rounds with their transactions, listing cards carry a round badge, `/app/portfolio` lists the wallet's round positions across every series (one row per position, named by market: round, side, net stake, what it is now, one action; open rounds above settled ones), and Settings has a Solana wallet block with the faucet.
+Elsewhere: the market header shows a round chip (round, chance of UP, target, time left), the chart draws the live round's target, the Activity tab lists settled rounds with their transactions, listing cards carry a status pill on the image ("LIVE · 3h 55m", "OPENS IN 42m") and a line under the name saying which side would win if the round closed now ("UP is winning"), with the target in the hover text, `/app/portfolio` lists the wallet's round positions across every series (one row per position, named by market: round, side, net stake, what it is now, one action; open rounds above settled ones), and Settings has a Solana wallet block with the faucet.
 
 ## Keeper
 

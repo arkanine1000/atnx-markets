@@ -16,58 +16,140 @@ export interface RoundBadgeInfo {
   fast: boolean;
 }
 
-// "R12 · 3h left · target 143": cyan while the index is at or above the
-// target (UP would win if the round closed now), magenta below.
-export function RoundBadge({ info, vi, compact = false, className = "" }: { info: RoundBadgeInfo; vi: number; compact?: boolean; className?: string }) {
-  const now = useNow();
-  // One step up from BoundsRail's mono sizes: the body face runs smaller
-  // than Martian Mono at the same pixel size; the leading keeps the row
-  // the rail's height.
-  const size = compact ? "text-[10px] leading-[1.35]" : "text-[11px] leading-[1.35]";
+// Where the round stands for the card. `left` is the time to the close
+// (live) or to the opening (waiting); null until the clock has hydrated.
+type Phase =
+  | { kind: "live"; left: number | null }
+  | { kind: "closing" }
+  | { kind: "settling" }
+  | { kind: "waiting"; left: number | null }
+  | { kind: "opening" };
 
-  if (info.state === "presale") {
-    const opens = new Date(info.opensAt).getTime();
-    return (
-      <div className={`flex items-center gap-1.5 ${size} tabular-nums text-secondary ${className}`} title={`Round ${info.idx} is taking commits`}>
-        <span className="font-bold">R{info.idx}</span>
-        <span className="text-tertiary">·</span>
-        <span>presale{now !== null && now < opens ? ` · opens ${fmtLeft(opens - now)}` : ""}</span>
-      </div>
-    );
+function roundPhase(info: RoundBadgeInfo, now: number | null): Phase | null {
+  switch (info.state) {
+    case "presale": {
+      if (now === null) return { kind: "waiting", left: null };
+      const opens = Date.parse(info.opensAt);
+      return now < opens ? { kind: "waiting", left: opens - now } : { kind: "opening" };
+    }
+    case "opening":
+      return { kind: "opening" };
+    case "settling":
+      return { kind: "settling" };
+    case "live": {
+      const close = info.closeAt ? Date.parse(info.closeAt) : null;
+      const tradeUntil = info.tradeUntil ? Date.parse(info.tradeUntil) : null;
+      if (now === null || close === null) return { kind: "live", left: null };
+      if (now >= close) return { kind: "settling" };
+      if (tradeUntil !== null && now >= tradeUntil) return { kind: "closing" };
+      return { kind: "live", left: close - now };
+    }
+    default:
+      return null;
   }
+}
 
-  const target = info.target;
-  const above = target !== null && vi >= target;
-  const tone = target === null ? "text-secondary" : above ? "text-atnx-cyan light:text-atnx-cyan-light" : "text-atnx-magenta light:text-atnx-magenta-light";
-  const close = info.closeAt ? new Date(info.closeAt).getTime() : null;
-  const tradeUntil = info.tradeUntil ? new Date(info.tradeUntil).getTime() : null;
-  const when =
-    now === null || close === null
-      ? null
-      : now >= close || info.state === "settling"
-        ? "settling"
-        : tradeUntil !== null && now >= tradeUntil
-          ? "averaging"
-          : `${fmtLeft(close - now)} left`;
+// The hover text: the round number and, once set, the target the cards
+// no longer print.
+function roundTitle(info: RoundBadgeInfo, vi: number): string {
+  if (info.state === "presale") return `Round ${info.idx} is taking commits`;
+  if (info.target === null) return `Round ${info.idx}`;
+  return `Round ${info.idx}: UP wins if the index ends at or above ${Math.round(info.target)}. VI now ${Math.round(vi)}.`;
+}
+
+const CYAN = "text-atnx-cyan light:text-atnx-cyan-light";
+const MAGENTA = "text-atnx-magenta light:text-atnx-magenta-light";
+
+// The status pill: "LIVE · 3h 55m" in cyan while a round runs, "LIVE ·
+// closing" in the averaging window, "SETTLING", "OPENS IN 42m" and
+// "OPENING" in grey. `overlay` sits on the tile's image beside the rank
+// chip and matches it (always on a dark ground, so no light-theme
+// colours); `inline` is the list row's, on the card surface.
+export function RoundPill({
+  info,
+  vi,
+  variant = "overlay",
+  className = "",
+}: {
+  info: RoundBadgeInfo;
+  vi: number;
+  variant?: "overlay" | "inline";
+  className?: string;
+}) {
+  const now = useNow();
+  const phase = roundPhase(info, now);
+  if (!phase) return null;
+
+  const text =
+    phase.kind === "live"
+      ? phase.left === null ? "LIVE" : `LIVE · ${fmtLeft(phase.left)}`
+      : phase.kind === "closing"
+        ? "LIVE · closing"
+        : phase.kind === "settling"
+          ? "SETTLING"
+          : phase.kind === "waiting"
+            ? phase.left === null ? "OPENS SOON" : `OPENS IN ${fmtLeft(phase.left)}`
+            : "OPENING";
+  const live = phase.kind === "live" || phase.kind === "closing";
+  const shape =
+    variant === "overlay"
+      ? `h-6 text-[11px] bg-black/60 backdrop-blur ${live ? "text-atnx-cyan" : "text-white/70"}`
+      : `h-5 text-[10px] border border-surface bg-elevated ${live ? CYAN : "text-secondary"}`;
 
   return (
-    <div
-      className={`flex items-center gap-1.5 ${size} tabular-nums ${tone} ${className}`}
-      title={target !== null ? `Round ${info.idx}: UP wins if the index ends at or above ${Math.round(target)}. VI now ${Math.round(vi)}.` : `Round ${info.idx}`}
+    <span
+      className={`px-1.5 inline-flex items-center rounded-md font-bold font-mono tabular-nums whitespace-nowrap ${shape} ${className}`}
+      title={roundTitle(info, vi)}
     >
-      <span className="font-bold">R{info.idx}</span>
-      {when && (
+      {text}
+    </span>
+  );
+}
+
+// The line under the market name: which side would win if the round
+// closed now (the index at or above the target is UP), "Closing now" in
+// the averaging window, "Settling", or "Starts in 42m" for a round
+// waiting to open. The card sets the size to match its category label.
+export function RoundVerdict({
+  info,
+  vi,
+  className = "",
+}: {
+  info: RoundBadgeInfo;
+  vi: number;
+  className?: string;
+}) {
+  const now = useNow();
+  const phase = roundPhase(info, now);
+  if (!phase) return null;
+
+  let tone = "text-secondary";
+  let body: React.ReactNode;
+  if (phase.kind === "live") {
+    if (info.target === null) {
+      body = "Round live";
+    } else {
+      const up = vi >= info.target;
+      tone = up ? CYAN : MAGENTA;
+      body = (
         <>
-          <span className="opacity-60">·</span>
-          <span>{when}</span>
+          <span className="font-bold">{up ? "UP" : "DOWN"}</span> is winning
         </>
-      )}
-      {target !== null && (
-        <>
-          <span className="opacity-60">·</span>
-          <span>target {Math.round(target)}</span>
-        </>
-      )}
+      );
+    }
+  } else if (phase.kind === "closing") {
+    body = "Closing now";
+  } else if (phase.kind === "settling") {
+    body = "Settling";
+  } else if (phase.kind === "waiting") {
+    body = phase.left === null ? "Starts soon" : `Starts in ${fmtLeft(phase.left)}`;
+  } else {
+    body = "Starting";
+  }
+
+  return (
+    <div className={`truncate tabular-nums ${tone} ${className}`} title={roundTitle(info, vi)}>
+      {body}
     </div>
   );
 }
