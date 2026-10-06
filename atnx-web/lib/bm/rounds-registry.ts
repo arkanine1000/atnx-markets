@@ -288,6 +288,26 @@ export async function listPausedWithPresale(): Promise<RoundWithSeries[]> {
   return ((data ?? []) as BmRoundRow[]).map((r) => ({ ...r, series: byId.get(r.series_id)! }));
 }
 
+// Settled or void rounds the keeper anted on, finished in the last
+// `sinceDays` (by updated_at), newest first: its position on each may
+// still hold a payout or refund and the account's rent. Rounds already
+// claimed stay in the list; the caller skips them when the position
+// account is gone.
+export async function listRoundsToClaim(sinceDays = 7): Promise<RoundWithSeries[]> {
+  const since = new Date(Date.now() - sinceDays * 86_400_000).toISOString();
+  const { data, error } = await bm()
+    .from('rounds')
+    .select('*')
+    .in('state', ['settled', 'void'])
+    .not('ante_side', 'is', null)
+    .or('settle_tx.not.is.null,void_tx.not.is.null')
+    .gte('updated_at', since)
+    .order('updated_at', { ascending: false })
+    .limit(50);
+  if (error) throw error;
+  return withSeries((data ?? []) as BmRoundRow[]);
+}
+
 // Whether a series still has a round that is not finished.
 export async function hasOpenRounds(seriesId: string): Promise<boolean> {
   const { data, error } = await bm()

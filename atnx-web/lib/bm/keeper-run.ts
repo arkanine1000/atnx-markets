@@ -61,6 +61,7 @@ export interface KeeperReport {
   opened: number;
   anted: number;
   voided: number;
+  claimed: number;
   notes: string[];
 }
 
@@ -101,6 +102,7 @@ export async function runKeeper(opts: { dry?: boolean } = {}): Promise<KeeperRep
     opened: 0,
     anted: 0,
     voided: 0,
+    claimed: 0,
     notes: [],
   };
   const log = (entry: Omit<Parameters<typeof registry.logKeeper>[0], 'runId'>) => {

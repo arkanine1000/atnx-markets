@@ -12,11 +12,13 @@ import {
   ensureKeeperUsdg,
   keeperKeypair,
   pdas,
+  readPosition,
   readRound,
   newSeriesRef,
   readSeries,
   refFromHex,
   refToHex,
+  sendClaim,
   sendCommit,
   sendCreateSeries,
   sendOpenRound,
@@ -43,7 +45,9 @@ import {
 //      settle (or void when no print arrived 30 minutes after the close);
 //   4. presale rounds whose time has come → ante an empty side → open at
 //      the current VI → insert the next presale, opening at the close;
-//   5. paused series → void their presale round (refunds; the series ends).
+//   5. paused series → void their presale round (refunds; the series ends);
+//   6. settled or void rounds the keeper anted on → claim its position
+//      (payout or refund, and the account's rent).
 //
 // Dry mode reads everything and logs `would-*`, and writes nothing.
 
@@ -284,6 +288,7 @@ export interface RoundsCounts {
   opened: number;
   anted: number;
   voided: number;
+  claimed: number;
   reconciled: number;
   errors: number;
 }
@@ -603,6 +608,30 @@ export async function tickRounds(ctx: TickContext): Promise<void> {
       await maybeEndSeries(r.series);
     } catch (err) {
       await fail('void', err, { action: 'void', ...ids(r) });
+    }
+  }
+
+  // 6. the keeper's antes on finished rounds: claim the payout (or the
+  // refund on a void round) and the position's rent. A position account
+  // that is gone was claimed already.
+  for (const r of await rr.listRoundsToClaim()) {
+    if (late()) break;
+    try {
+      const ref = refOf(r.series);
+      const p = pdas(ref);
+      const pos = await readPosition(p.position(p.round(r.idx), keeperKeypair().publicKey));
+      if (!pos) continue;
+      const detail = { idx: r.idx, side: r.ante_side, usdg: r.ante_usdg };
+      if (dry) {
+        rep.claimed++;
+        await log({ action: 'would-claim-ante', ...ids(r), detail });
+        continue;
+      }
+      const sig = await sendClaim({ ref, roundIndex: r.idx });
+      rep.claimed++;
+      await log({ action: 'claimed-ante', ...ids(r), txHash: sig, detail });
+    } catch (err) {
+      await fail('claim-ante', err, { action: 'claim-ante', ...ids(r) });
     }
   }
 

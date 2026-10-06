@@ -17,6 +17,7 @@ import {
   RPC_URL,
   anchorErrorName,
   computeBudgetIxs,
+  fetchPosition,
   fetchRound,
   fetchRounds,
   fetchSeries,
@@ -26,6 +27,7 @@ import {
   pdas,
   roundsProgram,
   txLogs,
+  type PositionAccount,
   type RoundAccount,
   type RoundSide,
   type SeriesAccount,
@@ -93,6 +95,10 @@ export function readRound(key: PublicKey): Promise<RoundAccount | null> {
   return fetchRound(solConnection(), key);
 }
 
+export function readPosition(key: PublicKey): Promise<PositionAccount | null> {
+  return fetchPosition(solConnection(), key);
+}
+
 export function readRounds(keys: PublicKey[]): Promise<(RoundAccount | null)[]> {
   return fetchRounds(solConnection(), keys);
 }
@@ -142,6 +148,18 @@ export async function sendCreateSeries(args: {
 export async function sendCommit(args: { ref: Uint8Array; roundIndex: number; side: RoundSide; amount: bigint }): Promise<string> {
   const ix = await instructionBuilders(keeperProgram()).commit({ ...args, holder: keeperKeypair().publicKey });
   return send('commit', [ix]);
+}
+
+// The keeper claims its own position (an ante) on a settled or void
+// round: the payout or refund goes to its USDG account (created if
+// missing) and the position's rent comes back. A losing position pays
+// nothing but still closes.
+export async function sendClaim(args: { ref: Uint8Array; roundIndex: number }): Promise<string> {
+  const owner = keeperKeypair().publicKey;
+  const mint = await fetchUsdgMint(solConnection());
+  const ata = getAssociatedTokenAddressSync(mint, owner);
+  const ix = await instructionBuilders(keeperProgram()).claim({ ...args, holder: owner });
+  return send('claim', [createAssociatedTokenAccountIdempotentInstruction(owner, ata, owner, mint), ix]);
 }
 
 export async function sendOpenRound(args: { ref: Uint8Array; roundIndex: number; targetE2: bigint }): Promise<{ sig: string; nextRound: PublicKey }> {
