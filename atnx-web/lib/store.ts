@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createAdminClient } from './supabase/admin';
 import { forget, forgetPrefix, memo } from './memo';
-import type { MarketsQuery, SortMode } from './markets-query';
+import type { MarketsQuery, MarketsTab, SortMode } from './markets-query';
 import { isCategory, type Category } from './categories';
 import type { TrendsResult } from './trends';
 import type { Database, Json } from './supabase/database';
@@ -628,9 +628,20 @@ export interface MarketsPage {
   // Markets matching the search and category filter, listed or not.
   total: number;
   limit: number;
-  // Live markets per category under the current search, whatever the
-  // category filter, for the filter's menu. Categories with none are absent.
+  // Live markets per category under the current search (and tab, when the
+  // listing has one), whatever the category filter, for the filter's menu.
+  // Categories with none are absent.
   categoryCounts: Partial<Record<Category, number>>;
+  // With a tab: which one is listed, and how many markets each holds under
+  // the current search and category filter, the whole list, not the page.
+  tab?: MarketsTab;
+  tabCounts?: Record<MarketsTab, number>;
+}
+
+// What a tabbed listing is cut by: the tab, and the markets live now.
+interface TabCut {
+  tab: MarketsTab;
+  liveIds: readonly string[];
 }
 
 const MARKETS_PREFIX = 'markets:';
@@ -648,7 +659,7 @@ function likePattern(term: string): string {
   return `%${term.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 }
 
-function marketsQuery(sort: SortMode, search = '', categories: readonly Category[] = []) {
+function marketsQuery(sort: SortMode, search = '', categories: readonly Category[] = [], cut?: TabCut) {
   let q = createAdminClient()
     .from('markets')
     .select(
@@ -661,8 +672,13 @@ function marketsQuery(sort: SortMode, search = '', categories: readonly Category
     .limit(1, { referencedTable: 'captures' });
   if (search) q = q.ilike('entity_name', likePattern(search));
   if (categories.length) q = q.in('category', categories);
+  // Market ids are uuids, so the list needs no quoting.
+  if (cut?.tab === 'live') q = q.in('id', cut.liveIds);
+  if (cut?.tab === 'next' && cut.liveIds.length) q = q.not('id', 'in', `(${cut.liveIds.join(',')})`);
   switch (sort) {
+    // Closing soonest is ordered by the rounds in the view, over this.
     case 'virality':
+    case 'closing':
       q = q.order('current_vi', { ascending: false }).order('created_at', { ascending: false });
       break;
     case 'newest':
@@ -677,15 +693,18 @@ async function loadMarketRows(
   from: number,
   to: number,
   search = '',
-  categories: readonly Category[] = []
+  categories: readonly Category[] = [],
+  cut?: TabCut
 ): Promise<{ items: Capture[]; total: number }> {
-  const { data, error, count } = await marketsQuery(sort, search, categories)
+  // Nothing is live: an empty Live tab, without asking.
+  if (cut?.tab === 'live' && cut.liveIds.length === 0) return { items: [], total: 0 };
+  const { data, error, count } = await marketsQuery(sort, search, categories, cut)
     .range(from, to)
     .returns<MarketPageRow[]>();
   // A page past the end is an empty page, not an error; PostgREST answers
   // such a range with 416. The count is then re-read on its own.
   if (error?.code === 'PGRST103') {
-    const { count: total } = await marketsQuery(sort, search, categories).limit(0);
+    const { count: total } = await marketsQuery(sort, search, categories, cut).limit(0);
     return { items: [], total: total ?? 0 };
   }
   if (error) throw error;
@@ -710,38 +729,79 @@ async function loadMarketRows(
 // A search narrows the listing to markets whose name contains the term
 // (case-insensitive), the category filter to markets filed under one of
 // the categories; the hero's featured set is unaffected by either.
-export function getMarketsPage({ limit, sort, q, categories }: MarketsQuery): Promise<MarketsPage> {
-  const key = `${MARKETS_PREFIX}${sort}:${limit}:${categories.join(',')}:${q}`;
-  return memo(key, FEED_TTL_MS, async () => {
-    const [listing, featured, categoryCounts] = await Promise.all([
-      loadMarketRows(sort, 0, limit - 1, q, categories),
-      getFeaturedMarkets(),
-      getCategoryCounts(q),
-    ]);
-    return { items: listing.items, featured, total: listing.total, limit, categoryCounts };
-  });
+//
+// Without `liveIds` the listing is every market (the extension's read).
+// With them it is one tab: the query's, or, when it names none, Live if
+// any market under the search and filter is live and Up next otherwise.
+export async function getMarketsPage(
+  { limit, sort, q, categories, tab }: MarketsQuery,
+  liveIds?: readonly string[]
+): Promise<MarketsPage> {
+  // Closing soonest reads the same rows as virality.
+  const dbSort: SortMode = sort === 'closing' ? 'virality' : sort;
+  const live = liveIds ? new Set(liveIds) : null;
+  const loadPage = (cut?: TabCut) => {
+    const key = `${MARKETS_PREFIX}${dbSort}:${limit}:${categories.join(',')}:${q}:${cut ? `${cut.tab}:${cut.liveIds.join(',')}` : ''}`;
+    return memo(key, FEED_TTL_MS, async () => {
+      const [listing, featured] = await Promise.all([
+        loadMarketRows(dbSort, 0, limit - 1, q, categories, cut),
+        getFeaturedMarkets(),
+      ]);
+      return { items: listing.items, featured, total: listing.total, limit };
+    });
+  };
+  if (!live) {
+    const [page, listed] = await Promise.all([loadPage(), getListedMarkets(q)]);
+    return { ...page, categoryCounts: countCategories(listed) };
+  }
+  const cutFor = (picked: MarketsTab): TabCut => ({ tab: picked, liveIds: [...live].sort() });
+
+  // The listing waits on the counts only when the tab is the default's.
+  const early = tab ? loadPage(cutFor(tab)) : null;
+  const listed = await getListedMarkets(q);
+
+  const inFilter = categories.length
+    ? listed.filter((m) => m.category !== null && (categories as string[]).includes(m.category))
+    : listed;
+  const liveCount = inFilter.filter((m) => live.has(m.id)).length;
+  const tabCounts = { live: liveCount, next: inFilter.length - liveCount };
+  const picked: MarketsTab = tab ?? (liveCount > 0 ? 'live' : 'next');
+  const page = await (early ?? loadPage(cutFor(picked)));
+  // The filter's menu counts the markets in this tab, in any category.
+  const categoryCounts = countCategories(listed.filter((m) => live.has(m.id) === (picked === 'live')));
+  return { ...page, categoryCounts, tab: picked, tabCounts };
 }
 
-// One small row per live market (same inner join as the listing, so the
-// numbers agree with its total). PostgREST caps a response at max-rows,
-// 1000 by default; past that many markets this wants a grouped RPC.
-function getCategoryCounts(search: string): Promise<Partial<Record<Category, number>>> {
+interface ListedMarket {
+  id: string;
+  category: string | null;
+}
+
+// One small row per live market under a search (same inner join as the
+// listing, so the numbers agree with its total), for the category and tab
+// counts. PostgREST caps a response at max-rows, 1000 by default; past that
+// many markets this wants a grouped RPC.
+function getListedMarkets(search: string): Promise<ListedMarket[]> {
   return memo(`${MARKETS_PREFIX}counts:${search}`, FEED_TTL_MS, async () => {
     let q = createAdminClient()
       .from('markets')
-      .select('category, captures!inner(id)')
+      .select('id, category, captures!inner(id)')
       .is('deleted_at', null)
       .is('captures.deleted_at', null)
       .limit(1, { referencedTable: 'captures' });
     if (search) q = q.ilike('entity_name', likePattern(search));
-    const { data, error } = await q.returns<{ category: string | null }[]>();
+    const { data, error } = await q.returns<ListedMarket[]>();
     if (error) throw error;
-    const counts: Partial<Record<Category, number>> = {};
-    for (const { category } of data ?? []) {
-      if (category && isCategory(category)) counts[category] = (counts[category] ?? 0) + 1;
-    }
-    return counts;
+    return (data ?? []).map(({ id, category }) => ({ id, category }));
   });
+}
+
+function countCategories(markets: readonly ListedMarket[]): Partial<Record<Category, number>> {
+  const counts: Partial<Record<Category, number>> = {};
+  for (const { category } of markets) {
+    if (category && isCategory(category)) counts[category] = (counts[category] ?? 0) + 1;
+  }
+  return counts;
 }
 
 // The hero's showcase: the most viral markets, whatever page is open.
