@@ -5,6 +5,9 @@
 
 The hackathon build: two-outcome markets on the Virality Index, on chain. Mechanics, status and how to operate the keeper. Contract addresses are in the [README](../README.md).
 
+
+Since 2026-10-06 market pages and listing badges show rounds only. The bounded markets still open on Robinhood Testnet (nine on that date) stay tradeable from the portfolio's EVM section and resolve on their own when the index touches a bound; the keeper keeps checking for touches.
+
 ## How it works
 
 Each market is a two-outcome market on one subject's VI, with an **upper and a lower bound** fixed from the VI at opening (`atnx-web/lib/bm/bounds.ts`):

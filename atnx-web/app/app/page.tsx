@@ -2,6 +2,7 @@ import { getMarketsPage, type MarketsPage } from "@/lib/store";
 import { parseMarketsQuery } from "@/lib/markets-query";
 import { MarketsView, type BoundsMap, type RoundsMap } from "./MarketsView";
 import { listLive } from "@/lib/bm/registry";
+import { isRoundsDeployed } from "@/lib/bm/chains";
 import { listLiveRounds } from "@/lib/bm/rounds-registry";
 
 // Rendered on the server with the listing already in it, so the first paint
@@ -27,10 +28,13 @@ export default async function MarketsPage({
   try {
     const [page, live, liveRounds] = await Promise.all([
       getMarketsPage(query),
-      listLive().catch((err) => {
-        console.error("[markets] bounded list failed", err);
-        return [];
-      }),
+      // Bounded markets no longer badge the list once rounds are deployed.
+      isRoundsDeployed()
+        ? Promise.resolve([])
+        : listLive().catch((err) => {
+            console.error("[markets] bounded list failed", err);
+            return [];
+          }),
       listLiveRounds().catch((err) => {
         console.error("[markets] rounds list failed", err);
         return [];
