@@ -305,7 +305,7 @@ function SeriesTicket({ name, score, series, rounds, initialSide = "up", onToast
       {live ? (
         <div className="text-xs font-bold text-secondary mb-3">Round {live.account.index} · Live</div>
       ) : presale ? (
-        <div className="text-xs font-bold text-secondary mb-3">Round {presale.account.index} · Presale</div>
+        <div className="text-xs font-bold text-secondary mb-3">Round {presale.account.index} · Opens soon</div>
       ) : (
         <p className="text-sm text-secondary mb-3">No open round. The series may be paused or ended.</p>
       )}
