@@ -300,7 +300,6 @@ export async function listRoundsToClaim(sinceDays = 7): Promise<RoundWithSeries[
     .select('*')
     .in('state', ['settled', 'void'])
     .not('ante_side', 'is', null)
-    .or('settle_tx.not.is.null,void_tx.not.is.null')
     .gte('updated_at', since)
     .order('updated_at', { ascending: false })
     .limit(50);
