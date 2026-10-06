@@ -6,7 +6,7 @@ import { createPortal } from "react-dom";
 import { createAssociatedTokenAccountIdempotentInstruction, getAssociatedTokenAddressSync } from "@solana/spl-token";
 import type { PublicKey, TransactionInstruction } from "@solana/web3.js";
 import { startSeriesAction } from "@/app/app/actions/rounds";
-import { Card, Segmented } from "@/components/ui";
+import { Card } from "@/components/ui";
 import { HowItWorksModal } from "@/components/HowItWorksModal";
 import { fmtCents, fmtUsdg, parseUsdg, shortHash } from "@/components/bm/format";
 import { USDG_UNIT, solTxUrl } from "@/lib/bm/chains";
@@ -35,9 +35,12 @@ import {
 } from "./useRounds";
 
 // The rounds ticket. One question per round: will the index, averaged
-// over the round's last minutes, end at or above where it opened? While
-// round N trades, round N+1 takes presale commits; the segmented control
-// switches between the two. Same mount contract as BoundedTicket.
+// over the round's last minutes, end at or above where it opened? The
+// ticket shows one round: the live one when the series has it, otherwise
+// the presale round (round 1 before it opens, or the few minutes between
+// a settle and the next open). Commits to the next round are not offered
+// while one is live; a position already there shows as one line. Same
+// mount contract as BoundedTicket.
 //
 // It reads like a trade ticket: numbers, one outcome line, a button. How
 // rounds work sits behind the one "How rounds work" disclosure at the
@@ -179,8 +182,6 @@ function StartSeries({ atnxMarketId, name, score, scoring = false, viUpdatedAt, 
 
 // ------------------------------------------------------------- the ticket
 
-type Pane = "live" | "presale";
-
 function SeriesTicket({ name, score, series, rounds, initialSide = "up", onToast }: Props & { series: BmSeriesRow }) {
   const router = useRouter();
   const wallet = useSolWallet();
@@ -191,7 +192,6 @@ function SeriesTicket({ name, score, series, rounds, initialSide = "up", onToast
 
   const liveRow = liveRoundRow(rounds);
   const presaleRow = presaleRoundRow(rounds);
-  const [pane, setPane] = useState<Pane>(liveRow ? "live" : "presale");
   const [side, setSide] = useState<RoundSide>(initialSide);
   const [amount, setAmount] = useState("25");
   const [busy, setBusy] = useState<string | null>(null);
@@ -202,7 +202,6 @@ function SeriesTicket({ name, score, series, rounds, initialSide = "up", onToast
   const live = snap?.live ?? null;
   const presale = snap?.presale ?? null;
   const acct = snap?.series ?? null;
-  const shown: Pane = pane === "live" && live ? "live" : presale ? "presale" : live ? "live" : "presale";
 
   // Waiting on the keeper: a live round past its close, a row it is
   // moving (opening, settling), or a presale whose opening time passed.
@@ -259,7 +258,7 @@ function SeriesTicket({ name, score, series, rounds, initialSide = "up", onToast
       <Card className="p-4 sm:p-5">
         <Question name={name} roundSecs={series.round_secs} />
         <RegistryLine liveRow={liveRow} presaleRow={presaleRow} now={now} />
-        <SolConnectButton label="Connect Solana wallet to trade" />
+        <SolConnectButton label={!liveRow && presaleRow ? "Connect Solana wallet to commit" : "Connect Solana wallet to trade"} />
         <HowRounds roundSecs={series.round_secs} windowSecs={series.settle_window_secs} />
       </Card>
     );
@@ -296,23 +295,22 @@ function SeriesTicket({ name, score, series, rounds, initialSide = "up", onToast
   const feeBps = BigInt(acct.feeBps);
   const finderBps = BigInt(acct.finderBps);
   const ref = state.ref;
-  const options = [
-    ...(live ? [{ value: "live" as const, label: `Round ${live.account.index} · Live` }] : []),
-    ...(presale ? [{ value: "presale" as const, label: `Round ${presale.account.index} · Presale` }] : []),
-  ];
+  // A position the wallet already holds in the next round (a rollover or
+  // an earlier commit), shown under the live pane as one line.
+  const nextPos = live && presale && holdsAnything(presale.position) ? presale.position : null;
 
   return (
     <Card className="p-4 sm:p-5">
       <Question name={name} roundSecs={acct.roundSecs} />
-      {options.length > 1 ? (
-        <Segmented ariaLabel="Round" value={shown} onChange={setPane} options={options} className="w-full mb-4" itemClassName="flex-1" />
-      ) : options.length === 1 ? (
-        <div className="text-xs font-bold text-secondary mb-3">{options[0].label}</div>
+      {live ? (
+        <div className="text-xs font-bold text-secondary mb-3">Round {live.account.index} · Live</div>
+      ) : presale ? (
+        <div className="text-xs font-bold text-secondary mb-3">Round {presale.account.index} · Opens soon</div>
       ) : (
         <p className="text-sm text-secondary mb-3">No open round. The series may be paused or ended.</p>
       )}
 
-      {shown === "live" && live && ref ? (
+      {live && ref ? (
         <LivePane
           view={live}
           series={acct}
@@ -339,13 +337,12 @@ function SeriesTicket({ name, score, series, rounds, initialSide = "up", onToast
             if (ok) setAmount("25");
           }}
         />
-      ) : shown === "presale" && presale && ref ? (
+      ) : presale && ref ? (
         <PresalePane
           view={presale}
           series={acct}
           seriesRow={series}
           now={now}
-          liveCloseAtMs={closeAtMs}
           side={side}
           setSide={setSide}
           amount={amount}
@@ -367,6 +364,7 @@ function SeriesTicket({ name, score, series, rounds, initialSide = "up", onToast
           }}
         />
       ) : null}
+      {nextPos && presale && <NextRoundLine pos={nextPos} index={presale.account.index} />}
 
       {units !== null && units > snap.usdg && (
         <div className="mt-3 flex items-center justify-between gap-3 text-xs">
@@ -416,19 +414,24 @@ function SeriesTicket({ name, score, series, rounds, initialSide = "up", onToast
   );
 }
 
-// Before a wallet is connected: where the series stands, from the registry.
+// Before a wallet is connected: the round the ticket will show, from the
+// registry, with the same chip as its pane: the live round when there is
+// one, otherwise the presale round.
 function RegistryLine({ liveRow, presaleRow, now }: { liveRow: BmRoundRow | null; presaleRow: BmRoundRow | null; now: number | null }) {
   if (liveRow && liveRow.target_vi !== null) {
     const close = liveRow.close_at ? new Date(liveRow.close_at).getTime() : null;
+    const until = liveRow.trade_until ? new Date(liveRow.trade_until).getTime() : close;
+    const chip =
+      now === null || close === null || until === null ? null : now < until ? `${fmtLeft(until - now)} left` : now < close ? `Closes in ${fmtLeft(close - now)}` : "Settling";
     return (
-      <StatusRow chip={close && now !== null && now < close ? `${fmtLeft(close - now)} left` : null}>
+      <StatusRow chip={chip}>
         Round {liveRow.idx} · target <span className="tabular-nums font-bold text-primary">{Math.round(liveRow.target_vi)}</span>
       </StatusRow>
     );
   }
   if (presaleRow) {
     const opens = new Date(presaleRow.opens_at).getTime();
-    return <StatusRow chip={now !== null && now < opens ? `Opens in ${fmtLeft(opens - now)}` : null}>Round {presaleRow.idx} · presale</StatusRow>;
+    return <StatusRow chip={now === null ? null : now < opens ? `Opens in ${fmtLeft(opens - now)}` : "Opening…"}>Round {presaleRow.idx} · presale</StatusRow>;
   }
   return null;
 }
@@ -594,13 +597,24 @@ function YourPosition({ pos, round }: { pos: NonNullable<RoundView["position"]>;
   );
 }
 
+// Under the live pane: what the wallet already holds in the next round.
+function NextRoundLine({ pos, index }: { pos: NonNullable<RoundView["position"]>; index: number }) {
+  const up = pos.presaleUp + pos.stakeUp;
+  const down = pos.presaleDown + pos.stakeDown;
+  const held = [up > 0n ? `${fmtUsdg(up)} USDG on UP` : null, down > 0n ? `${fmtUsdg(down)} USDG on DOWN` : null].filter(Boolean).join(" and ");
+  return (
+    <p className="mt-3 text-xs text-tertiary">
+      You also have {held} in round {index}, which opens when this one settles.
+    </p>
+  );
+}
+
 // ---------------------------------------------------------- presale pane
 
 function PresalePane({
   view,
   seriesRow,
   now,
-  liveCloseAtMs,
   side,
   setSide,
   amount,
@@ -612,7 +626,7 @@ function PresalePane({
   busy,
   mock,
   onCommit,
-}: PaneBase & { view: RoundView; seriesRow: BmSeriesRow; liveCloseAtMs: number | null; onCommit: () => void }) {
+}: PaneBase & { view: RoundView; seriesRow: BmSeriesRow; onCommit: () => void }) {
   const [details, setDetails] = useState(false);
   const r = view.account;
   const row = view.row;
@@ -620,7 +634,7 @@ function PresalePane({
   const potDown = r.presaleDown;
   const priceUp = presalePrice(potUp, potDown, "up");
   const net = units && units > 0n ? feeSplit(units, feeBps, finderBps).net : 0n;
-  const opensAt = row ? new Date(row.opens_at).getTime() : liveCloseAtMs;
+  const opensAt = row ? new Date(row.opens_at).getTime() : null;
   const pos = view.position;
 
   // This commit valued as if the round opened now, at the pots plus it.
