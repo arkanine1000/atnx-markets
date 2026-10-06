@@ -272,8 +272,9 @@ export function MarketDetailClient({
   // Rounds replace the bounded markets. Once the program is deployed every
   // market page trades rounds (the ticket offers to start a series where
   // none runs); a bounded market still open on the subject is not shown
-  // here. It stays tradeable from the portfolio's EVM section and resolves
-  // on its own when the index touches a bound.
+  // here. It stays listed in the portfolio's EVM section (which redeems a
+  // win but cannot sell) and resolves on its own when the index touches a
+  // bound.
   const roundsOnly = isRoundsDeployed();
   const series = rounds?.series ?? null;
   const roundRows = useMemo(() => rounds?.rounds ?? [], [rounds]);

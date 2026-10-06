@@ -5,8 +5,7 @@
 
 The hackathon build: two-outcome markets on the Virality Index, on chain. Mechanics, status and how to operate the keeper. Contract addresses are in the [README](../README.md).
 
-
-Since 2026-10-06 market pages and listing badges show rounds only. The bounded markets still open on Robinhood Testnet (nine on that date) stay tradeable from the portfolio's EVM section and resolve on their own when the index touches a bound; the keeper keeps checking for touches.
+Since 2026-10-06 (PR #16), once the rounds program is deployed, market pages and the markets list show rounds only. A market page never shows the bounded ticket, the price chip, the bound lines on the chart, the on-chain trade log or the Bounds and Opened-at-VI tiles, even where a bounded market is still open on the subject, and the list builds no bounds badges. The bounded markets still open on Robinhood Testnet (nine on that date) stay in the portfolio's EVM section, which redeems a win once the market resolves, and they resolve on their own when the index touches a bound; the keeper keeps checking for touches. They can no longer be sold from the site: the portfolio's "Trade" link opens the market page, which has only the rounds ticket.
 
 ## How it works
 

@@ -38,7 +38,7 @@ Trading is on chain; there is no simulated exchange in this build.
                                                ▼
    /api/bm/keeper (Vercel Cron, 5 min, production only) ── lib/bm/keeper-run.ts
       ├─ bounded markets (EVM testnets, first iteration): resolve on a bound touch
-      └─ rolling rounds (Solana devnet, vi_rounds; BM_ROUNDS_ENABLED=1): create series, ante, open, settle, void
+      └─ rolling rounds (Solana devnet, vi_rounds; BM_ROUNDS_ENABLED=1): create series, ante, open, settle, void, claim the keeper's antes
                                                │
                      registry: bm.markets, bm.series, bm.rounds, bm.keeper_log (Supabase)
                                                │

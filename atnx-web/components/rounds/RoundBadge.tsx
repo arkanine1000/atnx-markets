@@ -4,8 +4,8 @@ import type { BmRoundState } from "@/lib/supabase/database-bm";
 import { fmtLeft, useNow } from "./time";
 
 // What a listing tile needs to know about a market's current round, from
-// the registry only (no chain reads in lists). Built on the server from
-// listLiveRounds() in app/app/page.tsx.
+// the registry only (no chain reads in lists). Built on the server by
+// getRoundBadges() in lib/bm/round-badges.ts.
 export interface RoundBadgeInfo {
   idx: number;
   state: BmRoundState;
