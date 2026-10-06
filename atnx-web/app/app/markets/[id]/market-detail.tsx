@@ -269,13 +269,15 @@ export function MarketDetailClient({
     [bounded],
   );
 
-  // Rounds replace the bounded markets. A market with a series trades its
-  // rounds; one without trades rounds too (the ticket offers to start a
-  // series) once the program is deployed, unless a bounded market is
-  // still live on it, which keeps its own ticket until it resolves.
+  // Rounds replace the bounded markets. Once the program is deployed every
+  // market page trades rounds (the ticket offers to start a series where
+  // none runs); a bounded market still open on the subject is not shown
+  // here. It stays tradeable from the portfolio's EVM section and resolves
+  // on its own when the index touches a bound.
+  const roundsOnly = isRoundsDeployed();
   const series = rounds?.series ?? null;
   const roundRows = useMemo(() => rounds?.rounds ?? [], [rounds]);
-  const showRounds = !!series || (isRoundsDeployed() && !liveBounded);
+  const showRounds = !!series || roundsOnly;
   // The live round's target for the chart.
   const roundTarget = useMemo(() => {
     const live = roundRows.find((r) => r.state === "opening" || r.state === "live" || r.state === "settling");
@@ -448,7 +450,7 @@ export function MarketDetailClient({
                     </div>
                     {series ? (
                       <RoundChip series={series} rounds={roundRows} vi={viralityScore} />
-                    ) : (
+                    ) : roundsOnly ? null : (
                       <PriceChip bounded={bounded} vi={viralityScore} />
                     )}
                     {market.description && (
@@ -527,7 +529,7 @@ export function MarketDetailClient({
                   range={range}
                   height={280}
                   bounds={
-                    liveBounded && !series
+                    liveBounded && !series && !roundsOnly
                       ? { lower: liveBounded.lower_bound, upper: liveBounded.upper_bound }
                       : null
                   }
@@ -689,10 +691,9 @@ export function MarketDetailClient({
 
                 {tab === "activity" &&
                   (series ? (
-                    <div className="space-y-5">
-                      <RoundHistory series={series} rounds={roundRows} />
-                      {liveBounded && <ChainTradeLog bounded={bounded} />}
-                    </div>
+                    <RoundHistory series={series} rounds={roundRows} />
+                  ) : roundsOnly ? (
+                    <p className="text-sm text-secondary">No rounds yet on this market.</p>
                   ) : (
                     <ChainTradeLog bounded={bounded} />
                   ))}
@@ -737,13 +738,13 @@ export function MarketDetailClient({
                             ["Source", hostOf(selected.pageUrl)],
                             [
                               "Bounds",
-                              liveBounded
+                              liveBounded && !roundsOnly
                                 ? `${liveBounded.lower_bound} – ${liveBounded.upper_bound}`
                                 : undefined,
                             ],
                             [
                               "Opened at VI",
-                              liveBounded ? Math.round(liveBounded.start_vi) : undefined,
+                              liveBounded && !roundsOnly ? Math.round(liveBounded.start_vi) : undefined,
                             ],
                           ]
                             .filter(([, v]) => v !== undefined && v !== "")
