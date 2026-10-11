@@ -1,6 +1,12 @@
 // Off-chain mirror of the contract's market-maker math, in bigint, so the
 // ticket can quote without a round trip and show the same number the
-// chain will. Must stay in step with contracts/src/BoundedVIMarkets.sol.
+// chain will. Must stay in step with contracts/src/BoundedVIMarkets.sol
+// and programs/bounded_vi/src/math.rs (buy_math, sell_math).
+//
+// The Solana program's presale maths (open_pools, presale_shares,
+// lp_share in math.rs) is not mirrored here: no ticket quotes a presale
+// yet. scripts/bm-sol.ts recomputes the few numbers its e2e asserts; port
+// those functions here when a presale ticket needs them.
 
 export const BPS = 10_000n;
 

@@ -63,7 +63,7 @@ BM_ROUNDS_ENABLED=1 npm run rounds:tick   # one keeper tick, dry (the rounds ste
 npm run bm:keeper:dry                # the same tick as the cron, dry; -- --live for real
 ```
 
-`cargo test -p vi_rounds --lib` runs the program's math tests on a plain Rust toolchain; CI runs it on every push under `programs/`.
+`cargo test -p vi_rounds --lib` and `cargo test -p bounded_vi --lib` run the programs' math tests on a plain Rust toolchain; CI runs both on every push under `programs/`.
 
 ## Seeding trending markets
 
@@ -107,7 +107,7 @@ by the web app at `/privacy`, so deploy the web app before submitting. Bump
 
 - Hosted on **Vercel**, project `atnx-markets`, domain `markets.atnx.app`, Root Directory `atnx-web`. The GitHub integration builds every push: a pull request gets a preview, a push to `main` deploys production. (Until 2026-10-02 the root directory was `.` and only CLI deploys from inside `atnx-web` worked; a `vercel deploy` from inside `atnx-web` now fails, so link at the repository root if a CLI deploy is ever needed.)
 - `vercel.json` schedules `/api/bm/keeper` every 5 min (bounded markets, then rounds when `BM_ROUNDS_ENABLED=1`); Vercel runs crons on the production deployment only. The VI refresh crons stay on production ATNX, whose history this build reads.
-- Solana programs are built on GitHub Actions, never locally: `.github/workflows/solana-build.yml` runs `cargo test -p vi_rounds --lib` on the host toolchain, then `anchor build` for `bounded_vi` and `vi_rounds` with Agave pinned to 4.3.0, and uploads one artifact per program. Deploy from the laptop with `programs/deploy.sh vi_rounds` (needs `gh` and the Solana CLI; pays from `~/.config/solana/devnet.json` unless `PAYER` is set; `--dry` only fetches the artifact and copies the IDL); it deploys the artifact of the newest green run on the current branch (`BRANCH=main` to pick another) with the committed keypair in `keys/` and copies the IDL and types to `atnx-web/lib/bm/idl/`. Then `npm run rounds:sol -- e2e` checks the deploy (after a fresh program id, `npm run rounds:sol -- init` first, and the printed mint goes in `NEXT_PUBLIC_BM_SOL_USDG`), and a commit of the new IDL plus a push to `main` ships it to the site. Details in [programs/README.md](../programs/README.md).
+- Solana programs are built on GitHub Actions, never locally: `.github/workflows/solana-build.yml` runs `cargo test -p vi_rounds --lib` and `cargo test -p bounded_vi --lib` on the host toolchain, then `anchor build` for `bounded_vi` and `vi_rounds` with Agave pinned to 4.3.0, and uploads one artifact per program. Deploy from the laptop with `programs/deploy.sh vi_rounds` (needs `gh` and the Solana CLI; pays from `~/.config/solana/devnet.json` unless `PAYER` is set; `--dry` only fetches the artifact and copies the IDL); it deploys the artifact of the newest green run on the current branch (`BRANCH=main` to pick another) with the committed keypair in `keys/` and copies the IDL and types to `atnx-web/lib/bm/idl/`. Then `npm run rounds:sol -- e2e` checks the deploy (after a fresh program id, `npm run rounds:sol -- init` first, and the printed mint goes in `NEXT_PUBLIC_BM_SOL_USDG`), and a commit of the new IDL plus a push to `main` ships it to the site. Details in [programs/README.md](../programs/README.md).
 - `next.config.ts` is intentionally empty — all routing/CORS lives in `proxy.ts` and route handlers.
 - The fork's extension defaults to `https://markets.atnx.app` (the published upstream extension to www.atnx.app); no rebuild needed to switch between it and a local server.
 
@@ -127,7 +127,7 @@ curl -H "x-vercel-protection-bypass: $BYPASS" https://<preview-url>/app
 # Known rough edges
 
 - The per-source caches and the X, TikTok and post-read daily ledgers are in-memory per instance; the ledgers re-read `vi_samples` every few minutes, so a multi-instance deployment overspends by at most that window.
-- Tests cover the VI math (`npm run test:vi`, node:test through tsx) and the market maths (`npm run test:bm`, `cargo test -p vi_rounds --lib`). `npm run eval:capture` is the regression check for the submission pipeline and the review step; the rest is manual.
+- Tests cover the VI math (`npm run test:vi`, node:test through tsx) and the market maths (`npm run test:bm`, `cargo test -p vi_rounds --lib`, `cargo test -p bounded_vi --lib`). `npm run eval:capture` is the regression check for the submission pipeline and the review step; the rest is manual.
 - Google Trends has no official API. Rate-limit hiccups surface as an unknown reading and the refresh keeps the market's last value.
 - The local Rust compiler crashes, so nothing on the Solana side builds on the laptop; a program change means a push and a CI round trip before it can be deployed.
 - Rounds: the keeper is the oracle and the only key that opens and settles; the faucet and starting a series are open to anyone on devnet; a rollover lands in round N+2; pausing a series ends it. More in [rounds.md](rounds.md#known-limits).
