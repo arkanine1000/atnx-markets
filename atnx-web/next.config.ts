@@ -10,6 +10,9 @@ import type { NextConfig } from "next";
 const optionalX402 = ["@x402/core", "@x402/evm", "@x402/svm", "@x402/extensions", "@x402/express", "@x402/fetch"];
 
 const nextConfig: NextConfig = {
+  // Next 16 refuses a Turbopack build that has a webpack hook and no
+  // turbopack config; the empty object says the hook is webpack-only on purpose.
+  turbopack: {},
   webpack: (config) => {
     config.resolve.alias = {
       ...(config.resolve.alias ?? {}),
