@@ -2,13 +2,40 @@
 
 Two Anchor 0.31.1 programs live here, both on devnet.
 
-`bounded_vi` is the Anchor port of `contracts/src/BoundedVIMarkets.sol`: the same
-instrument, the same market-maker math, with a mock USDG mint whose authority is
-the program's config PDA (`faucet` mints up to 10,000 USDG per call). Program
-`5xdrKVQPYpCJ4YkzDysTmV3XPQN5vVwHV1RhAQ2xvABG`, deployed 2026-10-01; mock USDG
-mint `9cgEJ7nexdmx2n4cDFaC93jvJnfreSNnTjkAXGZtxLEd`; authority, operator and
-oracle are the local devnet wallet. `atnx-web/scripts/bm-sol.ts` runs the faucet,
-a market, trades, resolution and redeem against it (`npm run bm:sol -- e2e`).
+`bounded_vi` started as the Anchor port of `contracts/src/BoundedVIMarkets.sol`:
+the same instrument, the same market-maker math, with a mock USDG mint whose
+authority is the program's config PDA (`faucet` mints up to 10,000 USDG per
+call). Program `5xdrKVQPYpCJ4YkzDysTmV3XPQN5vVwHV1RhAQ2xvABG`, deployed
+2026-10-01; mock USDG mint `9cgEJ7nexdmx2n4cDFaC93jvJnfreSNnTjkAXGZtxLEd`;
+authority, operator and oracle are the local devnet wallet.
+
+Since `feat/bounded-presale` the program opens every market from a presale
+instead of a treasury seed (mechanics in `docs/bounded-markets.md`, "Presale
+(Solana)"; the EVM contract keeps the seed). That version is not deployed yet.
+Its instructions:
+
+| Instruction | Who | What |
+|---|---|---|
+| `initialize(fee_bps)` | authority | config PDA, mock USDG mint; fee capped at 500 bps |
+| `set_roles(operator?, oracle?, fee_recipient?, fee_bps?)` | authority | `fee_recipient` is kept for the layout; nothing pays it now |
+| `faucet(amount)` | anyone | up to 10,000 USDG per call |
+| `create_market(reference)` | operator | market PDA `["market", reference]` and vault `["vault", market]`, status presale; no money moves |
+| `commit(side, amount)` | anyone | presale: fee (`fee_bps`) to the market's fees, net to the side's pot and the `Backer` PDA `["backer", market, holder]` |
+| `open_market(start_e2, lower_e2, upper_e2)` | operator | both pots > 0; T = U + D sets, L = 20 % of T to the pool at p_up = U/T, the rest to the backers |
+| `void_market()` | operator | presale only; backers are refunded through `claim_presale` |
+| `claim_presale()` | backer | open market: credits the backer's shares to their `Position` (`["pos", market, holder]`); void market: refunds commits plus fees and closes the record |
+| `buy(side, invest, min_shares)` / `sell(side, shares, min_return)` | anyone | fixed-product pool, `fee_bps` fee (1 % on devnet); optional `backer` account converts presale shares first |
+| `resolve(winner, vi_e2)` | oracle | open markets only |
+| `redeem()` | holder | winning shares 1:1; optional `backer` account converts first |
+| `finalize()` | anyone, once | resolved markets: winning pool shares + winning LP residual + all fees become `lp_pot` |
+| `claim_lp()` | backer | pays floor(lp_pot · (u + d) / T), converts any unclaimed shares, closes the `Backer` record |
+
+`sweep` and the seed arguments of `create_market` are gone. The `Config` layout
+is unchanged, so the deployed config PDA and mint keep working; the `Market`
+layout changed, so markets made by the seeded version cannot be read after the
+upgrade. `atnx-web/scripts/bm-sol.ts` runs the whole presale lifecycle against
+the deployed program (`npm run bm:sol -- e2e`) and runs `init` first if the
+config PDA is missing.
 
 `vi_rounds` runs rolling rounds on the Virality Index: each round is a dynamic
 pari-mutuel with a presale (mechanics in `docs/rounds.md`). Program
@@ -19,7 +46,8 @@ PDA (`faucet`, up to 10,000 USDG per call); fee 100 bps, of which the finder
 gets 2000 bps. Authority, keeper and treasury are the devnet payer
 `5a5yfYQBX3QYqWZ55agFTHQoxg5Lc4TvT8g3roMfqa2S`. Its fixed-point math
 (`src/math.rs`) has unit tests that run on the host toolchain, without any
-Solana tools: `cargo test -p vi_rounds --lib`. The same math is mirrored in
+Solana tools: `cargo test -p vi_rounds --lib`. `bounded_vi` does the same with
+its pool and presale math: `cargo test -p bounded_vi --lib`. The same math is mirrored in
 `atnx-web/lib/bm/dpm.ts`. `atnx-web/scripts/rounds-sol.ts` sets up the config
 and mint once (`npm run rounds:sol -- init`) and runs a full series against the
 deployed program (`npm run rounds:sol -- e2e`, passed 2026-10-05).
@@ -29,7 +57,7 @@ deployed program (`npm run rounds:sol -- e2e`, passed 2026-10-05).
 The local compiler segfaults, so nothing is built on the laptop. GitHub Actions
 does it (`.github/workflows/solana-build.yml`) on every push that touches
 `programs/`, `Anchor.toml`, `Cargo.toml` or the workflow. The `test` job runs the
-`vi_rounds` unit tests; the `build` job then runs `anchor build` with a pinned
+`vi_rounds` and `bounded_vi` unit tests; the `build` job then runs `anchor build` with a pinned
 Agave release and uploads one artifact per program, named after it, holding the
 `.so`, the IDL and the TS types.
 
@@ -54,6 +82,10 @@ For `vi_rounds` the full flow is: push the program change, wait for
 IDL and types, then `cd atnx-web && npm run rounds:sol -- e2e`. After a fresh
 program id (a new keypair), run `npm run rounds:sol -- init` once before the
 e2e and put the printed mint in `NEXT_PUBLIC_BM_SOL_USDG`.
+
+For `bounded_vi`: push, wait for `solana-build` to go green, `programs/deploy.sh
+bounded_vi`, commit the copied `programs/bounded_vi.idl.json`, then `cd atnx-web
+&& npm run bm:sol -- e2e`.
 
 ## Where the IDLs land
 

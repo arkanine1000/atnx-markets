@@ -3,8 +3,9 @@ name: solana-build
 # Two Anchor programs live under programs/: bounded_vi (the bounded VI
 # markets port) and vi_rounds (rolling VI rounds, a dynamic pari-mutuel).
 #
-# The test job runs vi_rounds' math unit tests on the host toolchain
-# (`cargo test -p vi_rounds --lib`, no Solana tools needed). The build job
+# The test job runs both programs' math unit tests on the host toolchain
+# (`cargo test -p vi_rounds --lib`, `cargo test -p bounded_vi --lib`, no
+# Solana tools needed). The build job
 # runs after it, builds both programs with Anchor and uploads one artifact
 # per program (.so, IDL, TS types). The local machine's compiler segfaults,
 # so this is where the Solana side gets built; `programs/deploy.sh <name>`
@@ -39,6 +40,9 @@ jobs:
 
       - name: vi_rounds unit tests
         run: cargo test -p vi_rounds --lib
+
+      - name: bounded_vi unit tests
+        run: cargo test -p bounded_vi --lib
 
   build:
     needs: test
