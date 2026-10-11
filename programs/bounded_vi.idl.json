@@ -9,6 +9,10 @@
   "instructions": [
     {
       "name": "buy",
+      "docs": [
+        "Spend `invest` USDG on a side. Pass the trader's `backer` account",
+        "(or null) to convert their presale commits first."
+      ],
       "discriminator": [
         102,
         6,
@@ -109,6 +113,11 @@
           }
         },
         {
+          "name": "backer",
+          "writable": true,
+          "optional": true
+        },
+        {
           "name": "trader_usdg",
           "writable": true
         },
@@ -142,12 +151,454 @@
       ]
     },
     {
+      "name": "claim_lp",
+      "docs": [
+        "A backer's share of the LP pot, (u + d) / T of it. Converts any",
+        "unclaimed presale shares into the Position first, then closes the",
+        "Backer record."
+      ],
+      "discriminator": [
+        4,
+        196,
+        142,
+        10,
+        43,
+        200,
+        164,
+        3
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.reference",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "backer",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  97,
+                  99,
+                  107,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              },
+              {
+                "kind": "account",
+                "path": "holder"
+              }
+            ]
+          }
+        },
+        {
+          "name": "position",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              },
+              {
+                "kind": "account",
+                "path": "holder"
+              }
+            ]
+          }
+        },
+        {
+          "name": "holder_usdg",
+          "writable": true
+        },
+        {
+          "name": "holder",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "claim_presale",
+      "docs": [
+        "On an open (or resolved) market: converts the backer's commits into",
+        "Position shares. On a void market: refunds the commits and their",
+        "fees and closes the backer's record (and the empty position)."
+      ],
+      "discriminator": [
+        82,
+        240,
+        122,
+        5,
+        109,
+        66,
+        86,
+        190
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.reference",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "backer",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  97,
+                  99,
+                  107,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              },
+              {
+                "kind": "account",
+                "path": "holder"
+              }
+            ]
+          }
+        },
+        {
+          "name": "position",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              },
+              {
+                "kind": "account",
+                "path": "holder"
+              }
+            ]
+          }
+        },
+        {
+          "name": "holder_usdg",
+          "writable": true
+        },
+        {
+          "name": "holder",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "commit",
+      "docs": [
+        "Presale: lock `amount` USDG on UP (0) or DOWN (1). The fee goes to",
+        "the market's fees (and so, at the end, back to the backers); the net",
+        "joins the side's pot and the backer's record."
+      ],
+      "discriminator": [
+        223,
+        140,
+        142,
+        165,
+        229,
+        208,
+        156,
+        74
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.reference",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "backer",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  97,
+                  99,
+                  107,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              },
+              {
+                "kind": "account",
+                "path": "holder"
+              }
+            ]
+          }
+        },
+        {
+          "name": "holder_usdg",
+          "writable": true
+        },
+        {
+          "name": "holder",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "side",
+          "type": "u8"
+        },
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
       "name": "create_market",
       "docs": [
-        "Opens a market. The operator's `seed` USDG moves into the vault and",
-        "becomes that many complete sets in the pool (50/50 at `up_bps` 5000;",
-        "any other opening probability keeps the larger pool at `seed` and",
-        "hands the shares taken out of the other to the creator)."
+        "Creates a market and its vault in presale. No money moves; the",
+        "bounds are set when the operator opens it."
       ],
       "discriminator": [
         103,
@@ -225,38 +676,10 @@
           }
         },
         {
-          "name": "creator_position",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  112,
-                  111,
-                  115
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "market"
-              },
-              {
-                "kind": "account",
-                "path": "operator"
-              }
-            ]
-          }
-        },
-        {
           "name": "usdg_mint",
           "relations": [
             "config"
           ]
-        },
-        {
-          "name": "operator_usdg",
-          "writable": true
         },
         {
           "name": "operator",
@@ -288,26 +711,6 @@
               32
             ]
           }
-        },
-        {
-          "name": "start_e2",
-          "type": "u64"
-        },
-        {
-          "name": "lower_e2",
-          "type": "u64"
-        },
-        {
-          "name": "upper_e2",
-          "type": "u64"
-        },
-        {
-          "name": "seed",
-          "type": "u64"
-        },
-        {
-          "name": "up_bps",
-          "type": "u16"
         }
       ]
     },
@@ -369,11 +772,56 @@
       ]
     },
     {
+      "name": "finalize",
+      "docs": [
+        "After resolution, once, by anyone: the pool's winning shares, the",
+        "winning LP residual and every fee become the LP pot."
+      ],
+      "discriminator": [
+        171,
+        61,
+        218,
+        56,
+        127,
+        115,
+        12,
+        217
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.reference",
+                "account": "Market"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "initialize",
       "docs": [
         "One-time setup: the config PDA becomes the mint authority of the",
         "(fresh) mock USDG mint. `authority` owns the program's settings,",
-        "is the operator and the oracle until changed."
+        "is the operator and the oracle until changed. `fee_recipient` is",
+        "kept for layout compatibility; nothing pays it since the presale."
       ],
       "discriminator": [
         175,
@@ -436,7 +884,94 @@
       ]
     },
     {
+      "name": "open_market",
+      "docs": [
+        "Ends the presale: mints T = U + D sets, puts 20 % of them in the",
+        "pool at the clearing price U/T, sets the bounds and opens trading.",
+        "Both pots must hold money."
+      ],
+      "discriminator": [
+        116,
+        19,
+        123,
+        75,
+        217,
+        244,
+        69,
+        44
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.reference",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "operator",
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "start_e2",
+          "type": "u64"
+        },
+        {
+          "name": "lower_e2",
+          "type": "u64"
+        },
+        {
+          "name": "upper_e2",
+          "type": "u64"
+        }
+      ]
+    },
+    {
       "name": "redeem",
+      "docs": [
+        "Pays the holder's winning shares 1:1. Pass the `backer` account (or",
+        "null) to convert unclaimed presale shares first."
+      ],
       "discriminator": [
         184,
         12,
@@ -537,6 +1072,11 @@
           }
         },
         {
+          "name": "backer",
+          "writable": true,
+          "optional": true
+        },
+        {
           "name": "trader_usdg",
           "writable": true
         },
@@ -632,6 +1172,9 @@
     },
     {
       "name": "sell",
+      "docs": [
+        "Sell `shares` of a side back to the pool."
+      ],
       "discriminator": [
         51,
         230,
@@ -730,6 +1273,11 @@
               }
             ]
           }
+        },
+        {
+          "name": "backer",
+          "writable": true,
+          "optional": true
         },
         {
           "name": "trader_usdg",
@@ -832,20 +1380,20 @@
       ]
     },
     {
-      "name": "sweep",
+      "name": "void_market",
       "docs": [
-        "After resolution: the pool's own winning shares (what the seed is",
-        "worth) and the accrued fees go to the fee recipient."
+        "Cancels a market still in presale. Every backer then gets their",
+        "commits back in full, fee included, through `claim_presale`."
       ],
       "discriminator": [
-        40,
-        23,
-        234,
+        243,
         175,
-        14,
-        61,
-        154,
-        177
+        46,
+        124,
+        95,
+        101,
+        39,
+        69
       ],
       "accounts": [
         {
@@ -891,47 +1439,30 @@
           }
         },
         {
-          "name": "vault",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "market"
-              }
-            ]
-          }
-        },
-        {
-          "name": "recipient_usdg",
-          "writable": true
-        },
-        {
-          "name": "authority",
+          "name": "operator",
           "signer": true,
           "relations": [
             "config"
           ]
-        },
-        {
-          "name": "token_program",
-          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         }
       ],
       "args": []
     }
   ],
   "accounts": [
+    {
+      "name": "Backer",
+      "discriminator": [
+        199,
+        128,
+        179,
+        190,
+        2,
+        66,
+        118,
+        252
+      ]
+    },
     {
       "name": "Config",
       "discriminator": [
@@ -987,6 +1518,32 @@
       ]
     },
     {
+      "name": "Committed",
+      "discriminator": [
+        70,
+        158,
+        162,
+        86,
+        29,
+        111,
+        143,
+        226
+      ]
+    },
+    {
+      "name": "LpClaimed",
+      "discriminator": [
+        10,
+        0,
+        30,
+        33,
+        125,
+        180,
+        171,
+        129
+      ]
+    },
+    {
       "name": "MarketCreated",
       "discriminator": [
         88,
@@ -1000,6 +1557,58 @@
       ]
     },
     {
+      "name": "MarketFinalized",
+      "discriminator": [
+        83,
+        62,
+        66,
+        204,
+        37,
+        76,
+        234,
+        179
+      ]
+    },
+    {
+      "name": "MarketOpened",
+      "discriminator": [
+        98,
+        146,
+        98,
+        81,
+        117,
+        211,
+        121,
+        211
+      ]
+    },
+    {
+      "name": "MarketVoided",
+      "discriminator": [
+        217,
+        12,
+        138,
+        39,
+        108,
+        75,
+        89,
+        26
+      ]
+    },
+    {
+      "name": "PresaleClaimed",
+      "discriminator": [
+        71,
+        206,
+        74,
+        134,
+        208,
+        95,
+        73,
+        99
+      ]
+    },
+    {
       "name": "Redeemed",
       "discriminator": [
         14,
@@ -1010,6 +1619,19 @@
         165,
         107,
         38
+      ]
+    },
+    {
+      "name": "Refunded",
+      "discriminator": [
+        35,
+        103,
+        149,
+        246,
+        196,
+        123,
+        221,
+        99
       ]
     },
     {
@@ -1037,19 +1659,6 @@
         192,
         10
       ]
-    },
-    {
-      "name": "Swept",
-      "discriminator": [
-        254,
-        138,
-        9,
-        198,
-        192,
-        61,
-        165,
-        135
-      ]
     }
   ],
   "errors": [
@@ -1070,51 +1679,129 @@
     },
     {
       "code": 6003,
-      "name": "BadUpBps",
-      "msg": "opening probability outside 5%..95%"
-    },
-    {
-      "code": 6004,
       "name": "BadSide",
       "msg": "side must be 0 (UP) or 1 (DOWN)"
     },
     {
-      "code": 6005,
+      "code": 6004,
       "name": "ZeroAmount",
       "msg": "amount is zero"
     },
     {
-      "code": 6006,
+      "code": 6005,
       "name": "NotOpen",
       "msg": "market is not open"
     },
     {
-      "code": 6007,
+      "code": 6006,
       "name": "NotResolved",
       "msg": "market is not resolved"
     },
     {
-      "code": 6008,
+      "code": 6007,
       "name": "AlreadyResolved",
       "msg": "market already resolved"
     },
     {
-      "code": 6009,
+      "code": 6008,
       "name": "Slippage",
       "msg": "worse than the minimum you set"
     },
     {
-      "code": 6010,
+      "code": 6009,
       "name": "InsufficientShares",
       "msg": "not enough shares"
     },
     {
+      "code": 6010,
+      "name": "NotPresale",
+      "msg": "market is not in presale"
+    },
+    {
       "code": 6011,
-      "name": "BadRecipient",
-      "msg": "recipient account is not the fee recipient's"
+      "name": "EmptySide",
+      "msg": "both sides need presale money before the market can open"
+    },
+    {
+      "code": 6012,
+      "name": "ThinPool",
+      "msg": "presale too lopsided: the smaller pool side rounds to zero"
+    },
+    {
+      "code": 6013,
+      "name": "AlreadyConverted",
+      "msg": "presale shares already claimed"
+    },
+    {
+      "code": 6014,
+      "name": "BadBacker",
+      "msg": "backer account belongs to another market or holder"
+    },
+    {
+      "code": 6015,
+      "name": "NotFinalized",
+      "msg": "market is not finalized"
+    },
+    {
+      "code": 6016,
+      "name": "AlreadyFinalized",
+      "msg": "market already finalized"
+    },
+    {
+      "code": 6017,
+      "name": "NothingToClaim",
+      "msg": "nothing to claim"
+    },
+    {
+      "code": 6018,
+      "name": "Overflow",
+      "msg": "arithmetic overflow"
     }
   ],
   "types": [
+    {
+      "name": "Backer",
+      "docs": [
+        "One per (market, presale backer), PDA [\"backer\", market, holder]."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "holder",
+            "type": "pubkey"
+          },
+          {
+            "name": "presale_up",
+            "type": "u64"
+          },
+          {
+            "name": "presale_down",
+            "type": "u64"
+          },
+          {
+            "name": "fee_paid",
+            "type": "u64"
+          },
+          {
+            "name": "converted",
+            "type": "bool"
+          },
+          {
+            "name": "lp_claimed",
+            "type": "bool"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
     {
       "name": "Bought",
       "type": {
@@ -1156,7 +1843,51 @@
       }
     },
     {
+      "name": "Committed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "holder",
+            "type": "pubkey"
+          },
+          {
+            "name": "side",
+            "type": "u8"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "fee",
+            "type": "u64"
+          },
+          {
+            "name": "net",
+            "type": "u64"
+          },
+          {
+            "name": "presale_up",
+            "type": "u64"
+          },
+          {
+            "name": "presale_down",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
       "name": "Config",
+      "docs": [
+        "Unchanged from the treasury-seeded version, so the deployed config PDA",
+        "keeps working without a new `initialize`."
+      ],
       "type": {
         "kind": "struct",
         "fields": [
@@ -1191,6 +1922,26 @@
           {
             "name": "bump",
             "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "LpClaimed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "holder",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
           }
         ]
       }
@@ -1268,6 +2019,43 @@
           {
             "name": "bump",
             "type": "u8"
+          },
+          {
+            "name": "presale_up",
+            "type": "u64"
+          },
+          {
+            "name": "presale_down",
+            "type": "u64"
+          },
+          {
+            "name": "lp_residual_up",
+            "type": "u64"
+          },
+          {
+            "name": "lp_residual_down",
+            "type": "u64"
+          },
+          {
+            "name": "lp_pot",
+            "type": "u64"
+          },
+          {
+            "name": "lp_claimed",
+            "type": "u64"
+          },
+          {
+            "name": "opened_at",
+            "type": "i64"
+          },
+          {
+            "name": "_reserved",
+            "type": {
+              "array": [
+                "u8",
+                64
+              ]
+            }
           }
         ]
       }
@@ -1293,6 +2081,50 @@
                 32
               ]
             }
+          }
+        ]
+      }
+    },
+    {
+      "name": "MarketFinalized",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "winner",
+            "type": "u8"
+          },
+          {
+            "name": "pool",
+            "type": "u64"
+          },
+          {
+            "name": "residual",
+            "type": "u64"
+          },
+          {
+            "name": "fees",
+            "type": "u64"
+          },
+          {
+            "name": "lp_pot",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MarketOpened",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
           },
           {
             "name": "start_e2",
@@ -1307,18 +2139,61 @@
             "type": "u64"
           },
           {
-            "name": "seed",
+            "name": "presale_up",
             "type": "u64"
           },
           {
-            "name": "up_bps",
-            "type": "u16"
+            "name": "presale_down",
+            "type": "u64"
+          },
+          {
+            "name": "liquidity",
+            "type": "u64"
+          },
+          {
+            "name": "pool_up",
+            "type": "u64"
+          },
+          {
+            "name": "pool_down",
+            "type": "u64"
+          },
+          {
+            "name": "residual_up",
+            "type": "u64"
+          },
+          {
+            "name": "residual_down",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MarketVoided",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "presale_up",
+            "type": "u64"
+          },
+          {
+            "name": "presale_down",
+            "type": "u64"
           }
         ]
       }
     },
     {
       "name": "Position",
+      "docs": [
+        "One per (market, holder), PDA [\"pos\", market, holder]."
+      ],
       "type": {
         "kind": "struct",
         "fields": [
@@ -1334,7 +2209,51 @@
       }
     },
     {
+      "name": "PresaleClaimed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "holder",
+            "type": "pubkey"
+          },
+          {
+            "name": "up",
+            "type": "u64"
+          },
+          {
+            "name": "down",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
       "name": "Redeemed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "holder",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Refunded",
       "type": {
         "kind": "struct",
         "fields": [
@@ -1408,26 +2327,6 @@
           },
           {
             "name": "pool_down",
-            "type": "u64"
-          }
-        ]
-      }
-    },
-    {
-      "name": "Swept",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "market",
-            "type": "pubkey"
-          },
-          {
-            "name": "pool",
-            "type": "u64"
-          },
-          {
-            "name": "fees",
             "type": "u64"
           }
         ]
