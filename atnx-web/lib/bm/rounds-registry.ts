@@ -15,6 +15,12 @@ import type { BmRoundRow, BmRoundState, BmSeriesRow, BmSeriesState } from '@/lib
 export type { BmRoundRow, BmRoundState, BmSeriesRow, BmSeriesState };
 
 const RUNNING_SERIES: BmSeriesState[] = ['active', 'paused'];
+
+// The registry is shared with the NEAR build (atnx-near), whose rows carry
+// chain 'near:testnet'. This build drives only the Solana program, so every
+// series read keeps to its chain; rounds are joined to their series through
+// seriesByIds, which drops a round whose series is on another chain.
+const SOL_CHAIN = 'solana:devnet';
 const IN_FLIGHT: BmRoundState[] = ['opening', 'live', 'settling'];
 
 function bm() {
@@ -96,7 +102,7 @@ async function seriesByIds(ids: string[]): Promise<Map<string, BmSeriesRow>> {
   const out = new Map<string, BmSeriesRow>();
   const unique = Array.from(new Set(ids));
   if (unique.length === 0) return out;
-  const { data, error } = await bm().from('series').select('*').in('id', unique);
+  const { data, error } = await bm().from('series').select('*').in('id', unique).eq('chain', SOL_CHAIN);
   if (error) throw error;
   for (const s of (data ?? []) as BmSeriesRow[]) out.set(s.id, s);
   return out;
@@ -106,6 +112,7 @@ export async function listPendingSeries(): Promise<BmSeriesRow[]> {
   const { data, error } = await bm()
     .from('series')
     .select('*')
+    .eq('chain', SOL_CHAIN)
     .eq('state', 'pending')
     .order('created_at', { ascending: true })
     .limit(100);
@@ -122,6 +129,7 @@ export async function getSeriesForMarket(
     .from('series')
     .select('*')
     .eq('atnx_market_id', atnxMarketId)
+    .eq('chain', SOL_CHAIN)
     .in('state', RUNNING_SERIES)
     .order('fast', { ascending: true })
     .order('created_at', { ascending: false })
@@ -274,7 +282,7 @@ export async function listInFlight(): Promise<RoundWithSeries[]> {
 // Paused series that still hold a presale round (to be voided, which
 // ends the series on chain).
 export async function listPausedWithPresale(): Promise<RoundWithSeries[]> {
-  const { data: paused, error } = await bm().from('series').select('*').eq('state', 'paused').limit(100);
+  const { data: paused, error } = await bm().from('series').select('*').eq('chain', SOL_CHAIN).eq('state', 'paused').limit(100);
   if (error) throw error;
   const series = (paused ?? []) as BmSeriesRow[];
   if (series.length === 0) return [];
@@ -327,6 +335,7 @@ export async function listSeriesWithPubkey(limit = 500): Promise<BmSeriesRow[]> 
   const { data, error } = await bm()
     .from('series')
     .select('*')
+    .eq('chain', SOL_CHAIN)
     .not('series_pubkey', 'is', null)
     .order('created_at', { ascending: false })
     .limit(limit);
